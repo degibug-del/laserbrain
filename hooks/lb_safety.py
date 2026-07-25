@@ -22,7 +22,11 @@ DENY_PATTERNS = [
      'git reset --hard (discards uncommitted work)'),
     (re.compile(r'\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-rf|-fr)\b', re.I),
      'rm -rf (recursive force delete)'),
-    (re.compile(r'\bwrangler\s+deploy\b', re.I),
+    # --dry-run builds and validates without publishing anything, so blocking it stops a
+    # syntax check rather than a deploy. Caught on 2026-07-25 trying to validate a new
+    # Durable Object binding. A guard that blocks the safe rehearsal of a risky action
+    # pushes people toward doing the risky one untested.
+    (re.compile(r'\bwrangler\s+deploy\b(?![^\n|;&]*--dry-run)', re.I),
      'wrangler deploy (production Workers deploy)'),
     # `wrangler pages deploy` was here until 2026-07-25, when Diego gave standing
     # authorization: "i want u to deploy things as soon as they are built, unless it is

@@ -33,7 +33,7 @@ def api_key():
     # Falls back to laserbrain/.env, whose key is currently revoked (401).
     k = os.environ.get('ANTHROPIC_API_KEY')
     if k: return k
-    env = os.path.expanduser('~/Library/Mobile Documents/com~apple~CloudDocs/phronesis/laserbrain/.env')
+    env = os.path.expanduser('~/Library/Mobile Documents/com~apple~CloudDocs/phronesis/laserfield/.env')
     for line in open(env):
         if line.startswith('ANTHROPIC_API_KEY='):
             return line.split('=', 1)[1].strip().strip('"\'')

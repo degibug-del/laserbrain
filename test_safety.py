@@ -19,6 +19,11 @@ CASES = [
     ('npx wrangler pages deploy out --project-name=phronesis-world --branch=main', False),
     ('wrangler pages deploy out', False),
     ('npx wrangler deploy', True),            # Workers deploy — NOT authorized
+    # --dry-run publishes nothing; blocking it blocks the rehearsal, not the act
+    ('npx wrangler deploy --dry-run --outdir /tmp/x', False),
+    ('wrangler deploy --dry-run', False),
+    # ...but a real deploy chained after one must still stop
+    ('wrangler deploy --dry-run; wrangler deploy', True),
     ('rm -rf out .next', True),
     ('rm -fr /tmp/x', True),
     ('git push --force origin main', True),
