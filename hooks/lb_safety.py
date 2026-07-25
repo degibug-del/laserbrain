@@ -24,8 +24,21 @@ DENY_PATTERNS = [
      'rm -rf (recursive force delete)'),
     (re.compile(r'\bwrangler\s+deploy\b', re.I),
      'wrangler deploy (production Workers deploy)'),
-    (re.compile(r'\bwrangler\s+pages\s+deploy\b', re.I),
-     'wrangler pages deploy (production Pages deploy)'),
+    # `wrangler pages deploy` was here until 2026-07-25, when Diego gave standing
+    # authorization: "i want u to deploy things as soon as they are built, unless it is
+    # something i'm building with you. when i just tell you things, i want u to upload them
+    # automatically."
+    #
+    # That is the explicit OK this hook was written to wait for, so it is recorded here
+    # rather than asked for again every time. It is deliberately the ONLY rule removed —
+    # force-push, reset --hard, rm -rf, npm publish and registry uploads all still stop,
+    # because none of those were authorized and they destroy or publish rather than
+    # republish. A Pages deploy is reversible: every deployment is retained and the
+    # previous one can be promoted back.
+    #
+    # The standing OK covers deploys of work Diego ASKED for. While a thing is being
+    # iterated on together, hold — that is his carve-out, and it is a judgement the hook
+    # cannot make, so it stays with the agent.
     (re.compile(r'\bnpm\s+publish\b', re.I),
      'npm publish (public package publish)'),
     (re.compile(r'\bpypi|twine\s+upload\b', re.I),
