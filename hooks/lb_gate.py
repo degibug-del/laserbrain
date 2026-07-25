@@ -80,39 +80,118 @@ def entry_agent(r):
     return str(who or 'unknown').lower()
 
 
-def claimed_by_others(me):
-    """{path: agent} for every path claimed in the open wave by someone who is not me.
+def claim_paths(r):
+    """Paths locked by a claim row. payload.paths preferred; path-like payload.claims ok."""
+    p = r.get('payload') or {}
+    paths = list(p.get('paths') or [])
+    if not paths:
+        for c in p.get('claims') or []:
+            if not isinstance(c, str):
+                continue
+            s = c.strip()
+            # path-like only (skip prose claim descriptions)
+            if '/' in s or s.endswith(('.py', '.ts', '.tsx', '.js', '.mjs', '.md', '.json')):
+                paths.append(s)
+    return [x for x in paths if isinstance(x, str) and x.strip()]
 
-    waves.py refuses an overlapping CLAIM, but only if an agent bothers to claim. This is
-    the other half: refuse the EDIT. On 2026-07-25 Claude edited app/locus/products while
-    Grok was building on /locus — no claim was made, so nothing could refuse it, and it
-    was caught only by confession afterwards.
+
+def _releases_claims(r):
+    """Does this row release the author's standing claims?"""
+    k = r.get('kind')
+    if k == 'wave_close':
+        return True
+    if k == 'done':
+        p = r.get('payload') or {}
+        if p.get('release_claims') or p.get('release') or p.get('event') == 'wave_close':
+            return True
+        if 'paths' in p and p.get('paths') == []:
+            return True
+    if k == 'claim':
+        p = r.get('payload') or {}
+        if p.get('release_claims') or p.get('release'):
+            return True
+    return False
+
+
+def claimed_by_others(me):
+    """{path: agent} for paths claimed by someone who is not me.
+
+    Two modes:
+      1) Open wave — claims with matching payload.wave (or no wave, attached to open
+         wave if logged after that wave_open). Closed agents drop out.
+      2) Free-form / standing — when no open wave, claims with paths stay active until
+         the author wave_close / done(release) / claim(release).
+
+    waves.py refuses overlapping CLAIM at write time; this refuses the EDIT.
     """
     me = (me or 'unknown').lower()
     try:
         rows = [json.loads(l) for l in TANDEM_LOG.read_text().splitlines() if l.strip()]
     except Exception:
         return {}
+
     opens = [r for r in rows if r.get('kind') == 'wave_open']
-    if not opens:
-        return {}
-    wid = opens[-1].get('payload', {}).get('wave')
-    closed = {entry_agent(r) for r in rows
-              if r.get('kind') == 'wave_close' and r.get('payload', {}).get('wave') == wid}
     out = {}
+
+    if opens:
+        wid = opens[-1].get('payload', {}).get('wave')
+        open_idx = max(i for i, r in enumerate(rows) if r.get('kind') == 'wave_open'
+                       and (r.get('payload') or {}).get('wave') == wid)
+        wave_claims = [r for r in rows if r.get('kind') == 'claim'
+                       and (r.get('payload') or {}).get('wave') == wid]
+        claimed_agents = {entry_agent(r) for r in wave_claims} - {'unknown'}
+        # on_behalf_of first — a forced close is made BY one agent FOR another, so crediting
+        # it to the author credits the wrong party. Identical defect to the one fixed in
+        # waves.current_wave() on 2026-07-25, and here it deadlocked the protocol outright:
+        # grok retired, `force-close --for grok` was recorded and printed success, and the
+        # gate still counted grok outstanding. So the wave never closed, the free-form
+        # release path below was never reached, and the gate went on holding files for an
+        # agent that had gone — including refusing every edit to lb_gate.py itself.
+        #
+        # A guard with no timeout and no correct release is not strict, it is stuck.
+        closed = {(r.get('payload') or {}).get('on_behalf_of') or entry_agent(r) for r in rows
+                  if r.get('kind') == 'wave_close'
+                  and r.get('payload', {}).get('wave') == wid}
+        # Match waves.current_wave: open if outstanding claimants OR no claims yet
+        wave_still_open = bool(claimed_agents - closed) or not claimed_agents
+        if wave_still_open:
+            for i, r in enumerate(rows):
+                if r.get('kind') != 'claim':
+                    continue
+                cw = (r.get('payload') or {}).get('wave')
+                if cw is not None and cw != wid:
+                    continue
+                if cw is None and i < open_idx:
+                    continue
+                who = entry_agent(r)
+                if who == me or who in closed or who == 'unknown':
+                    continue
+                for path in claim_paths(r):
+                    out[path] = who
+            return out
+        # last wave fully closed → fall through to free-form standing claims
+
+    # free-form standing claims (no open wave, or last wave fully closed)
+    active = {}
     for r in rows:
-        if r.get('kind') != 'claim' or r.get('payload', {}).get('wave') != wid:
-            continue
         who = entry_agent(r)
-        if who == me or who in closed or who == 'unknown':
+        if who == 'unknown':
             continue
-        # Prefer payload.paths; fall back to payload.claims (Grok free-form claims)
-        paths = list((r.get('payload') or {}).get('paths') or [])
+        if _releases_claims(r):
+            active.pop(who, None)
+            continue
+        if r.get('kind') != 'claim':
+            continue
+        paths = claim_paths(r)
         if not paths:
-            paths = list((r.get('payload') or {}).get('claims') or [])
+            continue
+        active[who] = {p: True for p in paths}
+
+    for who, paths in active.items():
+        if who == me:
+            continue
         for path in paths:
-            if isinstance(path, str) and path.strip():
-                out[path] = who
+            out[path] = who
     return out
 
 

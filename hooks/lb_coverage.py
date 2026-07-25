@@ -28,6 +28,10 @@ import json, os, sys, pathlib, datetime
 NUDGE_AFTER = 8
 WINDOW, REPEAT, FAILS = 6, 3, 2   # must match laserbrain.observe — test_hook_parity.py pins this
 STATE_DIR = pathlib.Path.home() / '.claude' / 'laserbrain'
+# Written when the user speaks, consumed by mcp-server.mjs on the next check_state. A file
+# rather than shared memory because the hook and the MCP server are separate processes with
+# no channel between them; this is the whole channel.
+USER_TURN = pathlib.Path.home() / '.config' / 'laserbrain' / 'user-turn'
 
 
 def infer_progress(events):
@@ -206,8 +210,23 @@ def main():
                     'laserbrain link: multi-step work in a shared repo → tandem_read '
                     '(limit≥10) and answer open claims before first write. '
                     'Gate: never batch non-laserbrain tools with the check_state that '
-                    'clears the gate — check alone, then reissue.'
+                    'clears the gate — check alone, then reissue. '
+                    'Subagents: parent check_state between spawn waves; children do not '
+                    'share parent harness Φ.'
                 )
+            # Subagent spawn: structural reminder (parent must check between waves)
+            try:
+                tname = str(ev.get('tool_name') or ev.get('toolName') or ev.get('name') or '').lower()
+                if any(x in tname for x in (
+                    'spawn_subagent', 'task', 'agent', 'subagent',
+                )) and 'check_state' not in tname:
+                    extras.append(
+                        'laserbrain subagent: child sessions have their own Φ. '
+                        'check_state on the parent before the next spawn wave; '
+                        'do not assume coverage from the child.'
+                    )
+            except Exception:
+                pass
             # Honesty: if last two spelled checks show same distance while not done, nudge.
             try:
                 sid = session_id_of(ev)
@@ -260,6 +279,22 @@ def main():
         if prompt is not None and not tool:
             if not s.get('goal'):
                 s['goal'] = str(prompt)[:400]
+            # Mark that the NEXT check_state is a re-ground, not a drift.
+            #
+            # check_state receives only (goal, progress, distance), and none of those says
+            # whether the goal changed because the user changed it. That missing bit made
+            # goal-drift 24 of 35 fires in the whole recovered corpus with ZERO coinciding
+            # real errors — 22 of the 24 on the first check after Diego spoke. The rule was
+            # faithfully reporting that the subject had changed. It had. He changed it.
+            #
+            # Thresholding on goal overlap cannot substitute: the anchor values at those 24
+            # fires run continuously from 0.00 to 0.29 with no gap, so any cut just weakens
+            # the rule for everyone. The discriminator genuinely lives out here.
+            try:
+                USER_TURN.parent.mkdir(parents=True, exist_ok=True)
+                USER_TURN.write_text(datetime.datetime.now().isoformat(timespec='seconds'))
+            except Exception:
+                pass          # fail open: a missing flag only restores the old behaviour
             path.write_text(json.dumps(s, indent=2))
             return
 

@@ -125,5 +125,30 @@ show('and it names who closed on whose behalf',
      forced and forced[0]['payload']['on_behalf_of'] == 'claude'
      and forced[0]['payload']['by'] == 'grok')
 
+# ── a forced close must be COUNTED, not merely recorded ─────────────────────
+# The pair of assertions above passed for a fortnight while the forced close did nothing:
+# current_wave() credited it to `from` (the agent doing the forcing) instead of
+# `payload.on_behalf_of`, so the abandoned claimant stayed outstanding and the wave stayed
+# OPEN. Found by running `force-close --for grok`, watching it print success, and seeing
+# the very next `status` still say grok was working. Recorded is not the same as counted.
+reset_log()
+waves.open_wave('a wave someone walks away from', surf='claude', agent='claude')
+waves.claim('claude', ['lasermind/'])
+waves.claim('grok', ['app/locus/'])
+waves.close('claude', 'my part is done')
+row, err = waves.open_wave('the next one', surf='claude', agent='claude')
+show('one agent still working keeps the wave open', err is not None, (err or '')[:46])
+
+import subprocess, sys as _sys
+subprocess.run([_sys.executable, 'waves.py', 'force-close', '--for', 'grok'],
+               env={**os.environ, 'LASERBRAIN_AGENT': 'claude'}, capture_output=True)
+cur = waves.current_wave()
+show('after force-close the outstanding agent is cleared',
+     'grok' not in cur['outstanding'], f"outstanding={cur['outstanding']}")
+show('and the wave actually reads CLOSED', not cur['open'],
+     'this is the assertion that was missing')
+row, err = waves.open_wave('the next one', surf='claude', agent='claude')
+show('so the next wave can open', err is None, err or f"wave {row['payload']['wave']}")
+
 print('\n  ' + ('PASS' if ok else 'FAIL'))
 raise SystemExit(0 if ok else 1)

@@ -101,7 +101,16 @@ def current_wave(rows=None):
     claims = [r for r in rows if r.get('kind') == 'claim' and r.get('payload', {}).get('wave') == wid]
     closes = [r for r in rows if r.get('kind') == 'wave_close' and r.get('payload', {}).get('wave') == wid]
     claimed = {c.get('from') for c in claims}
-    closed = {c.get('from') for c in closes}
+    # A forced close is made BY one agent ON BEHALF OF another, so crediting it to
+    # `from` credits the wrong party: on 2026-07-25 `waves.py force-close --for grok`
+    # printed "✓ force-closed ... recorded, not hidden" and the wave stayed OPEN with grok
+    # still outstanding, because the close was attributed to claude — who had already
+    # closed. The record was right and the reader of it was wrong.
+    #
+    # open_wave's stale path masked this: it force-closes and then never re-checks
+    # cur['open'], so it deadlocked no further and the bug had nothing to show for itself.
+    # test_waves.py asserted the forced close was RECORDED and never that it was COUNTED.
+    closed = {(c.get('payload') or {}).get('on_behalf_of') or c.get('from') for c in closes}
     age = _age_hours(w.get('ts'))
     return {'wave': wid, 'goal': w.get('goal'), 'surf': w.get('payload', {}).get('surf'),
             'opened': w.get('ts'), 'claims': claims, 'claimed': claimed, 'closed': closed,
