@@ -34,6 +34,20 @@ STATE_DIR = pathlib.Path.home() / '.claude' / 'laserbrain'
 USER_TURN = pathlib.Path.home() / '.config' / 'laserbrain' / 'user-turn'
 
 
+def _mark_user_turn():
+    """The user just spoke, so the next check_state is a re-ground rather than a drift.
+
+    Called from BOTH the primary path and the embedded fallback. They are separate routes
+    through this hook and only one runs on any given invocation, which is precisely how
+    the first attempt at this fix came to be inert: it was written into the fallback only.
+    """
+    try:
+        USER_TURN.parent.mkdir(parents=True, exist_ok=True)
+        USER_TURN.write_text(datetime.datetime.now().isoformat(timespec='seconds'))
+    except Exception:
+        pass          # fail open: a missing flag only restores the old behaviour
+
+
 def infer_progress(events):
     """advancing | stuck | circling, from the tool trace alone.
 
@@ -206,6 +220,17 @@ def main():
                          or 'prompt' in ename or 'userprompt' in ename.replace('_', ''))
             extras = []
             if promptish:
+                # Mark that the NEXT check_state is a re-ground, not a drift. See the long
+                # note in the embedded fallback below for why this exists.
+                #
+                # This copy is the one that RUNS. The first version of the fix was written
+                # only into the fallback branch, which fires solely when importing
+                # laserbrain.runtime fails — so the flag was never written, no reground
+                # ever happened, and the whole patch was inert while every test passed.
+                # test_reground.py drives the MCP server directly and simulates the flag
+                # itself, so it could not have caught this. Only asking the live hook for
+                # the file did.
+                _mark_user_turn()
                 extras.append(
                     'laserbrain link: multi-step work in a shared repo → tandem_read '
                     '(limit≥10) and answer open claims before first write. '
@@ -290,11 +315,7 @@ def main():
             # Thresholding on goal overlap cannot substitute: the anchor values at those 24
             # fires run continuously from 0.00 to 0.29 with no gap, so any cut just weakens
             # the rule for everyone. The discriminator genuinely lives out here.
-            try:
-                USER_TURN.parent.mkdir(parents=True, exist_ok=True)
-                USER_TURN.write_text(datetime.datetime.now().isoformat(timespec='seconds'))
-            except Exception:
-                pass          # fail open: a missing flag only restores the old behaviour
+            _mark_user_turn()
             path.write_text(json.dumps(s, indent=2))
             return
 

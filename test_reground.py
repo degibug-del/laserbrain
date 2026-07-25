@@ -148,5 +148,32 @@ show('with no flag at all the old behaviour is exact',
 p.kill()
 clear()
 
+# ── 6. the HOOK actually writes the flag ────────────────────────────────────
+# Everything above simulates the user turn by writing the flag itself, so all of it passed
+# while the fix was completely inert: the flag write had been put in lb_coverage.py's
+# EMBEDDED FALLBACK, which only runs when importing laserbrain.runtime fails. The live
+# path never touched it. Five green assertions, one dead feature.
+#
+# A test that supplies its own precondition can never discover that nothing supplies it in
+# production. This is the half that talks to the real hook.
+HOOK = pathlib.Path(__file__).parent / 'hooks' / 'lb_coverage.py'
+
+def hook(ev):
+    clear()
+    subprocess.run([sys.executable, str(HOOK)], input=json.dumps(ev),
+                   capture_output=True, text=True)
+    return FLAG.exists()
+
+show('the live hook writes the flag on a prompt',
+     hook({'session_id': 'probe', 'prompt': 'do the thing'}))
+show('and on the camelCase shape Grok sends',
+     hook({'sessionId': 'probe', 'userPrompt': 'do the thing'}))
+show('and when only the event name says so',
+     hook({'session_id': 'probe', 'hook_event_name': 'UserPromptSubmit', 'prompt': 'x'}))
+show('but NOT on an ordinary tool call',
+     not hook({'session_id': 'probe', 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}),
+     'otherwise every step would be a free re-ground')
+clear()
+
 print('\n  ' + ('PASS' if ok else 'FAIL'))
 raise SystemExit(0 if ok else 1)
