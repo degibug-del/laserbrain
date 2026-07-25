@@ -18,7 +18,7 @@ the snapshot + how-to-resume. Deeper detail lives in the docs named below.*
   via a Durable Object (holds ground state, distHist, run trace). All four triggers
   verified live (grounded / self-report / goal-drift / stalled); `get_history`
   returns the run trace. Worker: `phronesis-world/workers/laserbrain-mcp-remote`.
-- **Local MCP** — `phronesis/laserfield/mcp-server.mjs` (stdio, offline, in-process
+- **Local MCP** — `phronesis/lasermind/mcp-server.mjs` (stdio, offline, in-process
   state). Same four harness tools added. It's the connected `laserbrain` MCP in
   Claude Code — **the new tools activate on the next session restart** (MCP spawns at
   session start; the running one is the old field-only version).

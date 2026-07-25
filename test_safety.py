@@ -32,6 +32,13 @@ CASES = [
     ('git reset --hard HEAD~1', True),
     ('npm publish', True),
     ('twine upload dist/*', True),
+    ('python3 -m twine upload dist/*', True),
+    ('poetry publish', True),
+    ('uv publish', True),
+    # Prose is not a command. The old pattern's loose alternation matched the bare word
+    # "pypi", so a commit message mentioning the package blocked the commit.
+    ("git commit -m 'the published PyPI package'", False),
+    ('cat notes-about-pypi.md', False),
     # things that must never have been blocked
     ('npm run build', False),
     ('git push origin main', False),

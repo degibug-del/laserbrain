@@ -45,7 +45,14 @@ DENY_PATTERNS = [
     # cannot make, so it stays with the agent.
     (re.compile(r'\bnpm\s+publish\b', re.I),
      'npm publish (public package publish)'),
-    (re.compile(r'\bpypi|twine\s+upload\b', re.I),
+    # Alternation binds looser than it reads: `\bpypi|twine\s+upload\b` is
+    # `(\bpypi)|(twine\s+upload\b)`, so the bare word "pypi" anywhere in a command matched.
+    # On 2026-07-25 it blocked a `git commit` whose MESSAGE said "the published PyPI
+    # package" — no upload, no network, just the word. A guard that fires on prose teaches
+    # people to route around it, which is the opposite of what it is for.
+    # Now: actual publish commands only, each anchored as a whole.
+    (re.compile(r'\b(twine\s+upload|flit\s+publish|poetry\s+publish|uv\s+publish|'
+                r'python\d?\s+-m\s+twine\s+upload)\b', re.I),
      'package registry upload'),
 ]
 

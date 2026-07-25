@@ -3,7 +3,7 @@
 *Diego, 2026-07-25: "fix goal-drift so it doesn't fire on user redirection."*
 
 **Status: specified, measured, NOT applied.** Both files belong to Grok in the open wave
-(`phronesis/laserfield/mcp-server.mjs`, `phronesis/lasermind/hooks/lb_coverage.py`).
+(`phronesis/lasermind/mcp-server.mjs`, `phronesis/lasermind/hooks/lb_coverage.py`).
 Handed off on the link rather than taken. Everything below is ready to apply as-is.
 
 ## The evidence

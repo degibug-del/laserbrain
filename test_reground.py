@@ -11,7 +11,7 @@ exemption for an agent that then wanders.
 """
 import json, subprocess, pathlib, os, sys
 
-SERVER = pathlib.Path.home() / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis/laserfield/mcp-server.mjs'
+SERVER = pathlib.Path.home() / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis/lasermind/mcp-server.mjs'
 FLAG = pathlib.Path.home() / '.config/laserbrain/user-turn'
 
 ok = True
