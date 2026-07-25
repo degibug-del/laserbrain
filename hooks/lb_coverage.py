@@ -1,0 +1,338 @@
+#!/usr/bin/env python3
+"""lb_coverage.py — PostToolUse / UserPromptSubmit / Stop hook for laserbrain coverage.
+
+Makes coverage automatic instead of remembered. Works for Claude Code (snake_case)
+and Grok Build (camelCase). Same session directory: ~/.claude/laserbrain.
+
+WHY THIS EXISTS. On 2026-07-24 a long, error-dense session produced ten independently
+caught errors and ONE laserbrain check across ~48 steps — 2% coverage. The agent
+had a standing order to call check_state each step and did not. That is not a
+discipline problem to be solved by more discipline: "remember to call it every step"
+is not an interface.
+
+WHAT IT CAN AND CANNOT DO. A hook is a shell command; it cannot spell the agent's
+goal, progress or distance, so it cannot call check_state on the agent's behalf.
+What it can do is:
+
+  1. COUNT the steps (dogfood denominator).
+  2. LOG catches it can see (non-zero shell exits).
+  3. INTERRUPT when coverage lapses:
+       - Claude: PostToolUse additionalContext
+       - Grok: Stop gate with decision=block (PostToolUse stdout is ignored)
+
+SAFETY. Every path is wrapped; exits 0 unconditionally except intentional stop-blocks.
+A hook that crashes the tool it observes is worse than no hook.
+"""
+import json, os, sys, pathlib, datetime
+
+NUDGE_AFTER = 8
+WINDOW, REPEAT, FAILS = 6, 3, 2   # must match laserbrain.observe — test_hook_parity.py pins this
+STATE_DIR = pathlib.Path.home() / '.claude' / 'laserbrain'
+
+
+def infer_progress(events):
+    """advancing | stuck | circling, from the tool trace alone.
+
+    Deliberately DUPLICATED from laserbrain.observe.Observer rather than imported. A hook
+    runs against whatever python3 is on PATH, and that interpreter may lag the working
+    tree. The copy is small and test_hook_parity.py fails if the two ever disagree.
+    """
+    w = events[-WINDOW:]
+    if not w:
+        return 'advancing'
+    sigs = [e['sig'] for e in w]
+    if sigs.count(sigs[-1]) >= REPEAT:
+        return 'circling'
+    trailing = 0
+    for e in reversed(events):
+        if e['ok']:
+            break
+        trailing += 1
+    return 'stuck' if trailing >= FAILS else 'advancing'
+
+
+def load(path):
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {'id': path.stem, 'started': datetime.datetime.now().isoformat(timespec='seconds'),
+                'goal': None, 'steps': 0, 'checks': [], 'inferred': [], 'catches': [], 'events': []}
+
+
+def _sid(ev):
+    return str(
+        ev.get('session_id') or ev.get('sessionId')
+        or os.environ.get('GROK_SESSION_ID')
+        or os.environ.get('CLAUDE_SESSION_ID')
+        or 'unknown'
+    )
+
+
+def _tool(ev):
+    return str(ev.get('tool_name') or ev.get('toolName') or ev.get('name') or '')
+
+
+def _args(ev):
+    a = (ev.get('tool_input') if ev.get('tool_input') is not None
+         else ev.get('toolInput') if ev.get('toolInput') is not None
+         else ev.get('arguments') if ev.get('arguments') is not None
+         else {})
+    return a if isinstance(a, dict) else {'_': a}
+
+
+def _resp(ev):
+    r = (ev.get('tool_response') if ev.get('tool_response') is not None
+         else ev.get('toolResult') if ev.get('toolResult') is not None
+         else ev.get('output') if ev.get('output') is not None
+         else {})
+    return r
+
+
+def _unwrap(tool, args):
+    """Grok may route MCP as use_tool with nested tool_name."""
+    if tool not in ('use_tool', 'CallMcpTool', 'call_mcp_tool', 'mcp_tool'):
+        return tool, args
+    nested = str(args.get('tool_name') or args.get('toolName') or args.get('name') or '')
+    nested_in = (args.get('tool_input') if args.get('tool_input') is not None
+                 else args.get('toolInput') if args.get('toolInput') is not None
+                 else args.get('arguments') if args.get('arguments') is not None
+                 else args)
+    if nested:
+        return nested, nested_in if isinstance(nested_in, dict) else args
+    return tool, args
+
+
+def _is_check(tool):
+    return tool.lower().endswith('check_state')
+
+
+def _is_reset(tool):
+    t = tool.lower()
+    return t.endswith('reset_task') or t.endswith('__reset_task')
+
+
+def _is_shell(tool):
+    return tool in ('Bash', 'run_terminal_command', 'Shell', 'bash')
+
+
+def _event_name(ev):
+    return str(ev.get('hookEventName') or ev.get('hook_event_name')
+               or os.environ.get('GROK_HOOK_EVENT') or '').lower()
+
+
+def _emit_claude_nudge(nudge, event='PostToolUse'):
+    print(json.dumps({
+        'hookSpecificOutput': {
+            'hookEventName': event,
+            'additionalContext': nudge,
+        }
+    }))
+
+
+def _emit_grok_stop_block(nudge):
+    # Grok Stop hooks: decision=block feeds reason back and keeps the agent working.
+    print(json.dumps({'decision': 'block', 'reason': nudge}))
+
+
+def main():
+    raw = sys.stdin.read()
+    try:
+        ev = json.loads(raw) if raw.strip() else {}
+    except Exception:
+        ev = {}
+
+    # Prefer the shared implementation when the installed package has Grok support.
+    try:
+        from laserbrain.runtime import from_claude_code, from_grok, Session, session_id_of
+        has_runtime = True
+    except Exception:
+        has_runtime = False
+        from_claude_code = from_grok = Session = session_id_of = None
+
+    ename = _event_name(ev)
+    is_grok = bool(os.environ.get('GROK_SESSION_ID') or os.environ.get('GROK_HOOK_EVENT')
+                   or ev.get('sessionId') is not None or ev.get('toolName') is not None
+                   or ev.get('toolInput') is not None)
+
+    # ── Stop gate (Grok primary injection path) ─────────────────────────────
+    # Only genuine turn ends. Session-end Stop is observe-only.
+    if 'stop' in ename and 'failure' not in ename:
+        reason = str(ev.get('reason') or '')
+        if reason and reason != 'end_turn':
+            return
+        try:
+            if has_runtime:
+                sid = session_id_of(ev)
+                s = Session(sid, directory=str(STATE_DIR))
+                warn = s.coverage_warning() if hasattr(s, 'coverage_warning') else s.nudge()
+            else:
+                path = STATE_DIR / f'{_sid(ev)}.json'
+                st = load(path)
+                steps = int(st.get('steps') or 0)
+                checks = st.get('checks') or []
+                last = checks[-1]['step'] if checks else 0
+                since = steps - last
+                warn = None
+                if since >= NUDGE_AFTER:
+                    cov = len(checks) / steps if steps else 0
+                    warn = (f'laserbrain: {since} steps since your last check_state '
+                            f'(coverage {cov:.0%} over {steps} steps). dogfood.py withholds any '
+                            f'detection result below 50%. Call check_state now with your CURRENT '
+                            f'goal, progress (advancing|stuck|circling) and distance 0-10.')
+            if warn:
+                if is_grok:
+                    _emit_grok_stop_block(warn)
+                else:
+                    _emit_claude_nudge(warn, event='Stop')
+        except Exception:
+            pass
+        return
+
+    # ── Shared Session path when import works ───────────────────────────────
+    if has_runtime:
+        try:
+            if is_grok:
+                nudge = from_grok(ev, directory=str(STATE_DIR))
+            else:
+                nudge = from_claude_code(ev, directory=str(STATE_DIR))
+            # Session-start / prompt: remind multi-agent link hygiene + honest progress.
+            promptish = (ev.get('prompt') is not None
+                         or ev.get('userPrompt') is not None
+                         or ev.get('promptText') is not None
+                         or 'prompt' in ename or 'userprompt' in ename.replace('_', ''))
+            extras = []
+            if promptish:
+                extras.append(
+                    'laserbrain link: multi-step work in a shared repo → tandem_read '
+                    '(limit≥10) and answer open claims before first write. '
+                    'Gate: never batch non-laserbrain tools with the check_state that '
+                    'clears the gate — check alone, then reissue.'
+                )
+            # Honesty: if last two spelled checks show same distance while not done, nudge.
+            try:
+                sid = session_id_of(ev)
+                s = Session(sid, directory=str(STATE_DIR))
+                checks = s.d.get('checks') or []
+                if len(checks) >= 2:
+                    a, b = checks[-2], checks[-1]
+                    da, db = a.get('distance'), b.get('distance')
+                    if da is not None and da == db and da not in (0, '0', 0.0):
+                        extras.append(
+                            'laserbrain honesty: distance has not fallen across the last '
+                            'two checks. If you are circling or stuck, say so — false '
+                            'advancing wastes the dogfood corpus.'
+                        )
+            except Exception:
+                pass
+            if extras and not is_grok:
+                _emit_claude_nudge('\n'.join(extras) + (('\n' + nudge) if nudge else ''))
+            elif nudge and not is_grok:
+                _emit_claude_nudge(nudge)
+            elif extras and is_grok and promptish:
+                # Grok UserPromptSubmit: try Claude-compatible additionalContext.
+                print(json.dumps({
+                    'hookSpecificOutput': {
+                        'hookEventName': 'UserPromptSubmit',
+                        'additionalContext': '\n'.join(extras),
+                    }
+                }))
+            elif nudge and is_grok:
+                # PostToolUse stdout ignored on Grok — still record; Stop will gate.
+                pass
+            return
+        except Exception:
+            pass  # fall through to embedded copy
+
+    # ── Embedded fallback (older laserbrain or import failure) ──────────────
+    try:
+        sid = _sid(ev)
+        tool = _tool(ev)
+        args = _args(ev)
+        tool, args = _unwrap(tool, args)
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        path = STATE_DIR / f'{sid}.json'
+        s = load(path)
+        s.setdefault('inferred', []); s.setdefault('events', []); s.setdefault('goal', None)
+
+        prompt = ev.get('prompt')
+        if prompt is None:
+            prompt = ev.get('userPrompt') if ev.get('userPrompt') is not None else ev.get('promptText')
+        if prompt is not None and not tool:
+            if not s.get('goal'):
+                s['goal'] = str(prompt)[:400]
+            path.write_text(json.dumps(s, indent=2))
+            return
+
+        if _is_reset(tool):
+            s.update(steps=0, checks=[], inferred=[], catches=[], events=[], goal=None)
+            path.write_text(json.dumps(s, indent=2))
+            return
+
+        if not tool:
+            return
+
+        s['steps'] = int(s.get('steps', 0)) + 1
+        step = s['steps']
+
+        if _is_check(tool):
+            resp = _resp(ev)
+            text = json.dumps(resp) if not isinstance(resp, str) else resp
+            ti = args
+            s['checks'].append({'step': step,
+                                'drifting': '"drifting": true' in text.lower()
+                                            or '"drifting":true' in text.lower(),
+                                'goal': str(ti.get('goal', ''))[:400],
+                                'progress': str(ti.get('progress', '')),
+                                'distance': ti.get('distance'),
+                                'reason': 'see response'})
+            path.write_text(json.dumps(s, indent=2))
+            return
+
+        ok_flag = True
+        if 'failure' in ename:
+            ok_flag = False
+        resp0 = _resp(ev)
+        if isinstance(resp0, dict):
+            code = resp0.get('exit_code')
+            if code is None:
+                code = resp0.get('exitCode')
+            if isinstance(code, int):
+                ok_flag = code == 0
+            elif resp0.get('error') or resp0.get('is_error') or resp0.get('isError'):
+                ok_flag = False
+
+        if _is_shell(tool) and not ok_flag:
+            cmd = str(args.get('command', ''))[:120]
+            s['catches'].append({'step': step, 'by': 'build', 'what': f'non-zero exit: {cmd}'})
+
+        try:
+            args_s = json.dumps(args, sort_keys=True, default=str)[:400]
+        except Exception:
+            args_s = ''
+        s['events'].append({'sig': f'{tool}|{args_s}', 'ok': ok_flag})
+        s['events'] = s['events'][-40:]
+        s['inferred'].append({'step': step, 'progress': infer_progress(s['events'])})
+        s['inferred'] = s['inferred'][-200:]
+
+        last = s['checks'][-1]['step'] if s['checks'] else 0
+        since = step - last
+        path.write_text(json.dumps(s, indent=2))
+
+        if since >= NUDGE_AFTER and since % NUDGE_AFTER == 0 and not is_grok:
+            cov = len(s['checks']) / step if step else 0
+            _emit_claude_nudge(
+                f'laserbrain: {since} steps since your last check_state '
+                f'(coverage {cov:.0%} over {step} steps). dogfood.py withholds any '
+                f'detection result below 50%. Call check_state now with your CURRENT '
+                f'goal, progress (advancing|stuck|circling) and distance 0-10.'
+            )
+    except Exception:
+        pass
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception:
+        pass
+    sys.exit(0)

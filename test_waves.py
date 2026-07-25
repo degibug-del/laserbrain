@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""test_waves.py — the wave protocol, against the collisions that motivated it.
+
+Two real collisions on 2026-07-25 with only two agents running:
+
+  1. both fell back to the session id 'unknown' and merged 50 steps into one file
+  2. Claude edited app/locus/products/page.tsx while Grok was building on /locus
+
+Neither was a code failure. Both were coordination failures, and both would have been
+refused by a claim check that ran BEFORE the edit. That is what these tests hold to.
+
+Every case runs against a scratch log, never the live one.
+"""
+import os, json, tempfile, pathlib
+
+TMP = tempfile.mkdtemp()
+os.environ['LASERBRAIN_TANDEM_LOG'] = str(pathlib.Path(TMP) / 'tandem.jsonl')
+
+import waves                                    # noqa: E402  (after the env is set)
+
+ok = True
+
+
+def show(name, passed, detail=''):
+    global ok
+    ok = ok and passed
+    print(f"  {'✓' if passed else '✗'} {name}" + (f"  — {detail}" if detail else ''))
+
+
+def reset_log():
+    p = pathlib.Path(os.environ['LASERBRAIN_TANDEM_LOG'])
+    if p.exists():
+        p.unlink()
+
+
+# ── overlap detection: the part that actually prevents the collision ─────────
+show('identical paths overlap', waves.overlaps('app/locus/', 'app/locus/'))
+show('a parent contains a child', waves.overlaps('app/locus', 'app/locus/products/page.tsx'),
+     'this is the /locus collision, caught')
+show('a child is contained by a parent', waves.overlaps('app/locus/products/page.tsx', 'app/locus'))
+show('a glob matches beneath it', waves.overlaps('app/**', 'app/locus/page.tsx'))
+show('siblings do NOT overlap', not waves.overlaps('app/locus', 'app/laserbeast'))
+show('a prefix that is not a path boundary does not overlap',
+     not waves.overlaps('app/locus', 'app/locusts'),
+     'naive startswith would call these a collision')
+
+# ── a wave, end to end ───────────────────────────────────────────────────────
+reset_log()
+row, err = waves.open_wave('ship the coverage gate', surf='claude', agent='claude')
+show('a wave opens', err is None and row['payload']['wave'] == 1, err or '')
+
+row, err = waves.claim('claude', ['lasermind/hooks/'])
+show('a disjoint claim is accepted', err is None, err or '')
+
+row, err = waves.claim('grok', ['app/locus/'])
+show('a second disjoint claim is accepted', err is None, err or '')
+
+# ── the collision that actually happened ─────────────────────────────────────
+row, err = waves.claim('claude', ['app/locus/products/page.tsx'])
+show('claiming INSIDE another agent\'s scope is refused', err is not None,
+     (err or '')[:74])
+
+# ── the lock disguised as a claim ────────────────────────────────────────────
+row, err = waves.claim('claude', ['app/**'])
+show('an over-broad claim is refused, not merely warned about', err is not None,
+     'LINK.md: the protocol can check overlap, it cannot check good faith')
+
+# ── waves do not overlap in time ─────────────────────────────────────────────
+row, err = waves.open_wave('a second goal', surf='grok', agent='grok')
+show('a new wave cannot open while one is still open', err is not None,
+     (err or '')[:70])
+
+waves.close('claude', 'hooks wired')
+row, err = waves.open_wave('a second goal', surf='grok', agent='grok')
+show('and still cannot while ONE agent has not closed', err is not None,
+     'grok claimed and has not closed')
+
+waves.close('grok', 'locus pages done')
+row, err = waves.open_wave('a second goal', surf='grok', agent='grok')
+show('once everyone closes, the next wave opens', err is None and row['payload']['wave'] == 2,
+     err or 'wave 2')
+
+# ── append-only, always ──────────────────────────────────────────────────────
+lines = pathlib.Path(os.environ['LASERBRAIN_TANDEM_LOG']).read_text().splitlines()
+show('every line is valid json', all(json.loads(l) for l in lines if l.strip()))
+show('nothing was ever rewritten — the log only grew', len(lines) >= 6, f'{len(lines)} lines')
+show('a refused claim wrote NOTHING',
+     sum(1 for l in lines if json.loads(l).get('kind') == 'claim') == 2,
+     'refusals must not pollute the corpus')
+
+# ── the deadlock, and the way out of it ──────────────────────────────────────
+# The first implementation had no timeout: claim three paths, walk away, and no wave
+# could ever open again. The author did exactly that on the live log.
+import datetime
+reset_log()
+waves.open_wave('an abandoned wave', surf='claude', agent='claude')
+waves.claim('claude', ['lasermind/'])
+
+row, err = waves.open_wave('the next one', surf='grok', agent='grok')
+show('a fresh unclosed wave still blocks the next', err is not None, (err or '')[:52])
+
+# age the wave past the stale threshold by rewriting its timestamp in the scratch log
+lp = pathlib.Path(os.environ['LASERBRAIN_TANDEM_LOG'])
+old = (datetime.datetime.now(datetime.timezone.utc)
+       - datetime.timedelta(hours=waves.STALE_AFTER_H + 1)).isoformat(timespec='seconds').replace('+00:00', 'Z')
+lines = []
+for l in lp.read_text().splitlines():
+    d = json.loads(l)
+    if d.get('kind') == 'wave_open':
+        d['ts'] = old
+    lines.append(json.dumps(d))
+lp.write_text('\n'.join(lines) + '\n')
+
+cur = waves.current_wave()
+show('a wave past the threshold reads as stale', cur['stale'], f"{cur['age_h']:.1f}h old")
+
+row, err = waves.open_wave('the next one', surf='grok', agent='grok')
+show('a stale wave no longer deadlocks the protocol', err is None, err or 'wave opened')
+
+forced = [json.loads(l) for l in lp.read_text().splitlines()
+          if json.loads(l).get('payload', {}).get('forced')]
+show('the forced close is RECORDED, not silent', len(forced) == 1,
+     forced[0]['text'][:58] if forced else 'nothing recorded')
+show('and it names who closed on whose behalf',
+     forced and forced[0]['payload']['on_behalf_of'] == 'claude'
+     and forced[0]['payload']['by'] == 'grok')
+
+print('\n  ' + ('PASS' if ok else 'FAIL'))
+raise SystemExit(0 if ok else 1)

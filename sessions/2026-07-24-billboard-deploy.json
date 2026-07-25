@@ -1,0 +1,20 @@
+{
+  "id": "2026-07-24 billboard+site",
+  "steps": 48,
+  "note": "HARNESS NOT ATTACHED. get_history returns 1 step (grounded, phi 0) for the whole session. The catches below are real and independently verified; the fires are absent because check_state was never called, not because it stayed quiet. Recall computed from this measures ADOPTION, not detection. Do not quote it as a detection result.",
+  "checks": [
+    { "step": 1, "drifting": false, "reason": "grounded" }
+  ],
+  "catches": [
+    { "step": 9,  "by": "build",  "what": "billboard navy measured against the void, not its own sky - check-contrast carveRegions did not recurse into nested data-ground" },
+    { "step": 14, "by": "build",  "what": "style block sat outside the declared region, so its colour declarations were judged against the page ground" },
+    { "step": 21, "by": "diego",  "what": "'website looks messed up now' - type sized in vw, but the board is no longer most of the viewport" },
+    { "step": 23, "by": "measure","what": "container's own padding cannot use its own container units; fell back to the viewport and clamped, so every size came out ~13% small" },
+    { "step": 26, "by": "measure","what": "max-width in ch follows the font; the site serif rewrapped the subline to x=879, into the goal ring" },
+    { "step": 28, "by": "measure","what": "my own stated clearance was wrong - claimed ~30px to the subline, measured 70 viewBox units" },
+    { "step": 33, "by": "build",  "what": "six colour leaks in the white theme - dark tokens on paper and paper tokens on lit panels" },
+    { "step": 36, "by": "build",  "what": "three more leaks: a line-range sweep shifted when the palette block grew and recoloured the pricing card instead of the sdk cards" },
+    { "step": 41, "by": "diego",  "what": "passage rendered dark-on-dark and the contrast gate PASSED it - background declared on the outer div, colour on the inner one, so the pair rule never saw them together" },
+    { "step": 44, "by": "diego",  "what": "laserbrain absent from the home nav - the homepage is a bare route with its own nav, so the sitewide link never reached it" }
+  ]
+}
