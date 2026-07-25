@@ -1,0 +1,40 @@
+{
+  "steps": 12,
+  "checks": [
+    {
+      "step": 5,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Work the improvement list: gate message, wire mutate.sh, falsify the site guards, implement waves",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 8,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Implement the wave protocol from LINK.md so it runs rather than only being specified",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 12,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Fix the wave deadlock, gate on claims, record the locus boundary in CLAIM.md, extend guard mutations",
+      "progress": "advancing",
+      "distance": 8
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 2,
+      "what": "a mutation survived \u2014 guard does not cover it",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Work the improvement list: gate message, wire mutate.sh, falsify the site guards, implement waves",
+  "id": "18d090f0-seg18"
+}

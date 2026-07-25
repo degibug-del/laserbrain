@@ -1,0 +1,198 @@
+{
+  "steps": 2500,
+  "checks": [
+    {
+      "step": 2500,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "confirm the restarted laserbrain harness responds and is logging",
+      "progress": "advancing",
+      "distance": 1
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 13,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 38,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Read"
+    },
+    {
+      "step": 43,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 132,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 160,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 564,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 684,
+      "what": "weld guard failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 750,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 751,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 845,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 853,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 909,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1091,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1306,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1314,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1345,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1516,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1518,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1699,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1784,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1966,
+      "what": "weld guard failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1970,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2025,
+      "what": "weld guard failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2127,
+      "what": "weld guard failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2158,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2178,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2331,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2394,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2411,
+      "what": "weld guard failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2448,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "confirm the restarted laserbrain harness responds and is logging",
+  "id": "18d090f0-seg01"
+}

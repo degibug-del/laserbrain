@@ -1,0 +1,62 @@
+{
+  "steps": 36,
+  "checks": [
+    {
+      "step": 9,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Write the canonical laserbrain link protocol doc and spread the wedge palette across the site",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 18,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Write the canonical laserbrain link protocol doc and spread the wedge palette across the site",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 27,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Verify 0.4.2 published correctly and report the state of the shared corpus",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 34,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Make coverage structural by gating tool calls on a spelled check, at a threshold Diego sets",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 36,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Build the mutation gate, run the multi-agent drift study, and make laserbrain-swift public",
+      "progress": "advancing",
+      "distance": 7
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 7,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 10,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Write the canonical laserbrain link protocol doc and spread the wedge palette across the site",
+  "id": "18d090f0-seg15"
+}

@@ -1,0 +1,66 @@
+{
+  "steps": 254,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "correct the book chapters 13-14 \u2014 credit Friston for displacement-and-return, and fix step-0-open to the two-loop formulation",
+      "progress": "advancing",
+      "distance": 7
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 16,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 55,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 161,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 164,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 168,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 212,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 214,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 245,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "correct the book chapters 13-14 \u2014 credit Friston for displacement-and-return, and fix step-0-open to the two-loop formulation",
+  "id": "18d090f0-seg06"
+}

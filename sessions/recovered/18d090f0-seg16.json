@@ -1,0 +1,54 @@
+{
+  "steps": 25,
+  "checks": [
+    {
+      "step": 6,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Build the mutation gate, run the multi-agent drift study, and make laserbrain-swift public",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 13,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Build the mutation gate, run the multi-agent drift study, and make laserbrain-swift public",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 19,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Build the mutation gate, run the multi-agent drift study, and make laserbrain-swift public",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 25,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Work out and build what locus powered by laserbrain means, coordinating with Grok who is building there",
+      "progress": "advancing",
+      "distance": 7
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 3,
+      "what": "a mutation survived \u2014 guard does not cover it",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 7,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Build the mutation gate, run the multi-agent drift study, and make laserbrain-swift public",
+  "id": "18d090f0-seg16"
+}

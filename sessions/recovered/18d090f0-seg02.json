@@ -1,0 +1,41 @@
+{
+  "steps": 19,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "expose the spectral grammar as an MCP tool on the laserbrain worker, and reflect it on the protocols page",
+      "progress": "advancing",
+      "distance": 8
+    },
+    {
+      "step": 3,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "expose the spectral grammar as an MCP tool on the laserbrain worker, and reflect it on the protocols page",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 9,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "expose the spectral grammar as an MCP tool on the laserbrain worker, and reflect it on the protocols page",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 15,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "expose the spectral grammar as an MCP tool on the laserbrain worker, and reflect it on the protocols page",
+      "progress": "advancing",
+      "distance": 1
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "expose the spectral grammar as an MCP tool on the laserbrain worker, and reflect it on the protocols page",
+  "id": "18d090f0-seg02"
+}

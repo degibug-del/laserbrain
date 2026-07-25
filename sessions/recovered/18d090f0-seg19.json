@@ -1,0 +1,48 @@
+{
+  "steps": 20,
+  "checks": [
+    {
+      "step": 3,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Fix the wave deadlock, gate on claims, record the locus boundary in CLAIM.md, extend guard mutations",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 9,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the wave deadlock, gate on claims, record the locus boundary in CLAIM.md, extend guard mutations",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 15,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the wave deadlock, gate on claims, record the locus boundary in CLAIM.md, extend guard mutations",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 20,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Make a laserbrain demo video under 100MB from a real harness trace",
+      "progress": "advancing",
+      "distance": 6
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 11,
+      "what": "a mutation survived \u2014 guard does not cover it",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Fix the wave deadlock, gate on claims, record the locus boundary in CLAIM.md, extend guard mutations",
+  "id": "18d090f0-seg19"
+}

@@ -1,0 +1,41 @@
+{
+  "steps": 23,
+  "checks": [
+    {
+      "step": 5,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Build locus powered by laserbrain: score locus lab runs against their own declared pass line",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 11,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Build locus powered by laserbrain: score locus lab runs against their own declared pass line",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 17,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Build locus powered by laserbrain: score locus lab runs against their own declared pass line",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 23,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Work the improvement list: gate message, wire mutate.sh, falsify the site guards, implement waves",
+      "progress": "advancing",
+      "distance": 4
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Build locus powered by laserbrain: score locus lab runs against their own declared pass line",
+  "id": "18d090f0-seg17"
+}

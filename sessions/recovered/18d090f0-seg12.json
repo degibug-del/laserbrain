@@ -1,0 +1,64 @@
+{
+  "steps": 65,
+  "checks": [
+    {
+      "step": 8,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Install the iOS simulator runtime so the Swift drift engine can run",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 17,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Build the laserbrain iOS app on top of the Swift drift engine and run it in the simulator",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 38,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Build the laserbrain iOS app on top of the Swift drift engine and run it in the simulator",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 47,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Build the laserbrain iOS app on top of the Swift drift engine and run it in the simulator",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 56,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Build the laserbrain iOS app on top of the Swift drift engine and run it in the simulator",
+      "progress": "advancing",
+      "distance": 0
+    },
+    {
+      "step": 65,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Rename the drift-mini island to lonely island so drift means only the particle game",
+      "progress": "advancing",
+      "distance": 4
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 7,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Install the iOS simulator runtime so the Swift drift engine can run",
+  "id": "18d090f0-seg12"
+}

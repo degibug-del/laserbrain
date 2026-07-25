@@ -1,0 +1,208 @@
+{
+  "steps": 1084,
+  "checks": [
+    {
+      "step": 1077,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "instrument my own sessions with laserbrain so real drift data accumulates from long-horizon agentic work",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 1079,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "instrument my own sessions with laserbrain so real drift data accumulates from long-horizon agentic work",
+      "progress": "advancing",
+      "distance": 0
+    },
+    {
+      "step": 1083,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "correct the book A Timely Context \u2014 cite Friston for displacement-and-return, and replace step-0-open with the two-loop formulation",
+      "progress": "advancing",
+      "distance": 8
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 39,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 147,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 186,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 187,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 215,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 256,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 265,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 266,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 463,
+      "what": "weld guard failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 522,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 597,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 605,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 607,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 626,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 627,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 680,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 714,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 774,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 782,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 902,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1009,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1017,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1018,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1027,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1030,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1032,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1033,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1063,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1080,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "instrument my own sessions with laserbrain so real drift data accumulates from long-horizon agentic work",
+  "id": "18d090f0-seg03"
+}

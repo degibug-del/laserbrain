@@ -1,0 +1,25 @@
+{
+  "steps": 4,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Decide what to work on today, grounded in evidence rather than a survey of options",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 4,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the corpus",
+      "progress": "advancing",
+      "distance": 6
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Decide what to work on today, grounded in evidence rather than a survey of options",
+  "id": "18d090f0-seg28"
+}

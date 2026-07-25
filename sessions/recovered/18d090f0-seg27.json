@@ -1,0 +1,56 @@
+{
+  "steps": 24,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Check every page on the site for the same weld bug, across all inline tags not just the four the guard watches",
+      "progress": "advancing",
+      "distance": 7
+    },
+    {
+      "step": 4,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Check every page on the site for the same weld bug, across all inline tags not just the four the guard watches",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 10,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Check every page on the site for the same weld bug, across all inline tags not just the four the guard watches",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 15,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Check every page on the site for the same weld bug, across all inline tags not just the four the guard watches",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 21,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Check every page on the site for the same weld bug, across all inline tags not just the four the guard watches",
+      "progress": "advancing",
+      "distance": 1
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 16,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Check every page on the site for the same weld bug, across all inline tags not just the four the guard watches",
+  "id": "18d090f0-seg27"
+}

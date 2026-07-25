@@ -1,0 +1,25 @@
+{
+  "steps": 12,
+  "checks": [
+    {
+      "step": 6,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Make a laserbrain demo video under 100MB from a real harness trace",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 12,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Improve the laserbrain demo video: fix translucency, the mislabelled bar, and anything else worth fixing",
+      "progress": "advancing",
+      "distance": 4
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Make a laserbrain demo video under 100MB from a real harness trace",
+  "id": "18d090f0-seg20"
+}

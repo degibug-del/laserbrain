@@ -209,3 +209,59 @@ The rule of thumb: **claim detection, not cure; claim the reference must be fixe
 not that fixing it helps.** The first is a theorem you own outright. The second is
 a study you have started and have not yet won — and saying you have is the one
 move the whole protocol exists to catch.
+
+## The first precision figure, and what it says (2026-07-25)
+
+**PRECISION 3/35 = 9%**, a lower bound, over 18 segments in which the harness fired.
+Recall remains withheld: no segment reaches the 50% coverage floor.
+
+Two things had to be fixed before any number existed at all.
+
+**The corpus was being deleted.** `lb_coverage.py`'s `reset_task` branch wiped the session
+record instead of archiving it, and the design instructs a reset on every genuinely new
+task. A working session resets five or six times, so each reset destroyed that segment's
+checks, fires and catches. A ~100-step session sat on disk as `steps: 4`, and the entire
+nine-session corpus held **0 fires**. The harness had been firing all along; the evidence
+was thrown away at every task boundary. Rebuilt from the Claude Code transcript by
+`recover_corpus.py` — 29 segments, 4746 steps, 149 checks, 35 fires, 114 catches. (The
+archive fix belongs in a file Grok holds; handed off on the link rather than taken.)
+
+**Precision was gated on recall's evidence.** `report()` dropped every session below
+`MIN_COVERAGE` before computing either number. But the two ask different questions.
+Recall — "a real error happened, had the harness fired?" — is genuinely unanswerable when
+80% of steps went unchecked. Precision — "the harness fired, was there a real error?" —
+takes each fire as its own evidence; unchecked steps never enter the ratio. Gating both
+meant a 35-fire corpus reported precision from one surviving segment: "0/1 = 0%".
+
+### The result is one rule
+
+| reason | fires | coincided with a real error |
+|---|---|---|
+| **goal-drift** | **24** | **0 (0%)** |
+| stalled | 6 | 1 (17%) |
+| self-report:stuck | 4 | 1 (25%) |
+| self-report:circling | 1 | 1 (100%) |
+
+`goal-drift` is 69% of every fire this instrument has ever produced and has **never once**
+coincided with an independently-detected error. Excluding it, precision is 3/11 = 27%.
+
+And the mechanism is not a mystery. Of the 24 goal-drift fires, **22 were the first check
+after Diego spoke.** The rule is detecting that the subject changed — which it did, because
+the user changed it. That is a true observation and it is not drift.
+
+This is the same shape as the boundary already recorded above for the stall rule, which
+cannot separate "stopped making progress" from "arrived". Here: the anchor comparison
+cannot separate "the agent wandered off its goal" from "the goal was legitimately
+replaced". In an interactive setting the second is constant, so the rule fires constantly
+and means nothing when it does.
+
+It is worth being precise about what is NOT claimed. 9% is a lower bound — a fire with no
+logged error beside it is scored against us, and the catch log only contains errors some
+guard, test or shell independently found. Widening the lookback window from 3 to 20 steps
+lifts overall precision from 9% to 26%, so sparse coverage genuinely depresses it. None of
+that rescues goal-drift, which is 0/24 at every window tested.
+
+**The next move is cheap and testable:** a goal change on the first check after a new user
+turn is a re-ground, not a drift, and the harness has that signal available. Suppress it
+there and the false-alarm rate should fall by roughly two thirds. Until that is measured,
+this row stays as it is.
