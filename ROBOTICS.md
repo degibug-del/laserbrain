@@ -110,3 +110,59 @@ capability. On the site as a "why only laserbrain" point.
   VPD, a clearer "only laserbrain does this")?
 - Build the **plant-mode demo** next (sun sweep + VPD map → best spot), or bank the
   phone-mode prototype and spec for now?
+
+## The limbed direction — Kuramoto coupling (2026-07-25)
+
+*Diego: "use kuramoto coupling for the shoulders, knees, ankles, neck, elbows, and
+wrists of laserbeast." Built and tested in `kuramoto.py` / `test_kuramoto.py`.
+**No hardware. laserbeast has no limbs — this is the controller, ahead of the body.***
+
+Eleven joints — neck, both shoulders, elbows, wrists, knees and ankles — each a phase
+oscillator running at its own natural frequency and pulled toward its neighbours:
+
+    dθᵢ/dt = ωᵢ + (K/|Nᵢ|) · Σ sin(ϑⱼ - ϑᵢ)
+
+The gait is not a keyframe table played back. It is an agreement the joints reach, and
+that difference is the whole reason to use it here.
+
+**Why it belongs to laserbrain, and not merely near it.** A coupled network carries its
+own fixed reference — the order parameter
+
+    r · e^(iφ) = (1/N) · Σ e^(iϑⱼ)
+
+r = 1 is every joint exactly where the gait says it should be relative to every other.
+So **1 − r is displacement**, in the harness's own sense of the word, and here it is
+*measured* rather than inferred. That is the case [[PROOF]] and this file both mean by
+"the instrument runs COMPLETE in hardware": on the software side Φ has no honest signal
+for distance-to-goal and settles for a lower bound; a body computes it exactly.
+
+A limb that jams, slips or loses pressure falls out of lock. r drops before the pose is
+visibly wrong, and `phase_error()` names *which* joint moved — an alarm and a diagnosis,
+not just an alarm. Recovery needs no supervisor: knock a knee 2.4 rad out of phase and it
+returns monotonically to r = 0.990 because the coupling *is* the correction. Nothing
+observes the fault and commands a fix.
+
+Coupling is anatomical, not all-to-all: chains along shoulder→elbow→wrist and knee→ankle,
+contralateral shoulder↔knee (right arm with left leg — the thing that cancels the yaw the
+legs induce), girdle links, and the neck coupled weakly to both shoulders so the head
+follows the body and never steers it. All-to-all would lock harder and let a jammed wrist
+pull on the opposite ankle, turning one stuck joint into a whole-body stumble.
+
+**Three faults found by running it, all mine, all now pinned by tests:**
+
+- The neck bobs twice per stride, and a plain `sin(θⱼ − θᵢ)` cannot lock a 2:1 oscillator
+  to a 1:1 one. It drifted forever and dragged r to 0.68 while every other joint was fine
+  — the measurement reported an incoherent *body* when what was broken was the *model*.
+  Fixed by coupling in reduced phase, ϑ = (θ − ψ)/h, which puts every joint on one gait
+  clock and handles any ratio without a special case.
+- Wrapping θ into [0, 2π) made the neck's reduced phase jump by π once per cycle, so r
+  flickered between 0.99 and 0.82 forever. 0.818 is exactly 10/11 — ten joints agreeing
+  and one pointing backwards — which is what gave it away. θ is now never wrapped.
+- ψ was inverted: a larger ψ made a joint peak *earlier*, so every "distal lags proximal"
+  comment in the table described the reverse of what ran. The contralateral pairs are half
+  a cycle apart and so looked right either way, which is exactly why it survived reading
+  and needed a test.
+
+The suite's most important case is that a network below critical coupling does **not**
+lock (r = 0.135 at K = 0.05). Every other assertion says things synchronise, and all of
+them would pass just as well if `coherence()` returned 0.99 unconditionally.
