@@ -36,6 +36,39 @@ LOOKBACK = 3
 MIN_COVERAGE = 0.5
 
 
+def expand(sess: dict) -> list:
+    """A session file into its scoreable SEGMENTS.
+
+    reset_task archives the interval it closes (Session.reset), so one file holds a list of
+    completed segments plus whatever is live. Each is scored on its own because each IS its
+    own unit: one declared goal, one interval, one denominator.
+
+    Averaging them together is what made coverage meaningless before. A session that spent
+    2500 ungrounded steps early and then ran disciplined for 40 reports the average of the
+    two, which describes neither — and the ungrounded stretch drags every later segment
+    below the gate with it.
+
+    Files written before segments existed have no 'segments' key and score exactly as they
+    did, so the old corpus stays readable.
+    """
+    out = []
+    for i, seg in enumerate(sess.get('segments') or [], 1):
+        d = dict(seg)
+        d['id'] = f"{sess.get('id', '?')}#{i}"
+        out.append(d)
+    # The live tail — the segment in progress, which has not been archived yet.
+    if int(sess.get('steps', 0)) > 0:
+        # Defaults matter: sess.get(k) yields None for an absent key, and score_session
+        # calls len() on three of these. A pre-segments file has no 'inferred' at all, so
+        # copying it as None crashed the scorer on the entire old corpus.
+        d = {k: (sess.get(k) or ([] if k != 'goal' else None))
+             for k in ('goal', 'steps', 'checks', 'inferred', 'catches')}
+        d['steps'] = int(sess.get('steps') or 0)
+        d['id'] = f"{sess.get('id', '?')}#live" if out else sess.get('id', '?')
+        out.append(d)
+    return out or [sess]
+
+
 def score_session(sess: dict) -> dict:
     """sess: {'checks': [{'step', 'drifting', 'reason'}], 'catches': [{'step', 'what', 'by'}]}
 
@@ -176,7 +209,7 @@ def main() -> int:
         files = [f for p in paths for f in glob.glob(p)]
         if not files:
             print('  no session files matched'); return 1
-        rows = [score_session(json.load(open(f))) for f in files]
+        rows = [score_session(seg) for f in files for seg in expand(json.load(open(f)))]
         for r in rows:
             print(f"  {r['session']:<24} fires {r['fires']:<3} catches {r['catches']:<3} "
                   f"hits {r['hits']:<3} false-alarms {r['false_alarms']}")

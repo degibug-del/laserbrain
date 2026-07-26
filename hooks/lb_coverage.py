@@ -320,6 +320,19 @@ def main():
             return
 
         if _is_reset(tool):
+            # Archive, then clear — mirroring Session.reset in laserbrain.runtime. This
+            # branch only runs when importing the SDK failed, but it must not behave
+            # differently when it does: a fallback that silently loses data is worse than
+            # one that fails outright, because nothing reports it.
+            if int(s.get('steps', 0)) > 0:
+                s.setdefault('segments', []).append({
+                    'goal': s.get('goal'),
+                    'steps': int(s.get('steps', 0)),
+                    'checks': s.get('checks', []),
+                    'inferred': s.get('inferred', []),
+                    'catches': s.get('catches', []),
+                    'ended': datetime.datetime.now().isoformat(timespec='seconds'),
+                })
             s.update(steps=0, checks=[], inferred=[], catches=[], events=[], goal=None)
             path.write_text(json.dumps(s, indent=2))
             return
