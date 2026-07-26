@@ -114,7 +114,35 @@ const GRAMMAR = {
   progress_enum: ['advancing', 'stuck', 'circling'],
 }
 const PROGRESS = new Set(['advancing', 'stuck', 'circling'])
-const toWords = (s) => new Set(String(s || '').toLowerCase().match(/[a-z0-9']+/g) || [])
+// ── the goal vocabulary, shared with the SDK ──────────────────────────────────
+//
+// This was a bare word split until 2026-07-26 while laserbrain-sdk normalised first, so
+// the two implementations of one theorem disagreed by construction: the same goal pair
+// scored 0.46 here and 0.56 there. Neither was wrong and nothing enforced either, which
+// is the worst of the three states — a test that pins one implementation's constant into
+// the other asserts only that somebody copied a number.
+//
+// Converged onto the SDK's norm(): lowercase, drop stopwords, stem anything over four
+// characters. That is a CALIBRATION CHANGE, not a schema one, so the grammar version is
+// untouched — but it does move when goal-drift fires, and "building billboards" now
+// scores identical to "build a billboard" instead of 0.5. That is the point: inflection
+// is not drift.
+//
+// The vocabulary stays swappable on purpose. PROOF blesses *a* fixed reference, never a
+// particular one; what is load-bearing is that it cannot move DURING a run.
+// test_vocab_conformance.py asserts these two stay in step.
+const _STOP = new Set(['the','a','an','to','of','and','or','for','in','on','at','is','it','this',
+  'that','with','my','your','our','i','we','be','as','by','from','into','out','up','so','then'])
+const _STEM = /(ings?|edly|ed|ers?|es|s|tion|ment)$/
+const toWords = (s) => {
+  const out = new Set()
+  for (const w of String(s || '').toLowerCase().match(/[a-z0-9']+/g) || []) {
+    if (_STOP.has(w)) continue
+    const r = w.length > 4 ? w.replace(_STEM, '') : w
+    if (r) out.add(r)
+  }
+  return out
+}
 
 // The only channel between the UserPromptSubmit hook and this process: a file the hook
 // writes when the user speaks. Consumed — deleted — so it grants exactly one re-ground.
