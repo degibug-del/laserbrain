@@ -104,9 +104,10 @@ async function hub(path, init, ms = 8000) {
 // works offline, which is why it can also bundle into a sandboxed agent. The
 // mechanism is the proof: a fixed reference catches drift self-watching cannot.
 const GRAMMAR = {
-  laserbrain_grammar: '1.0.0', kind: 'reasoning-state', immutable: true,
+  laserbrain_grammar: '1.1.0', kind: 'reasoning-state', immutable: true,
   fields: {
     goal: 'the ONE goal, held stable across steps', doing: 'what this step does',
+    parent_goal: 'optional — the goal THIS one serves, when you are on a sub-task. Lets an excursion be spelled instead of collapsed into the single goal slot.',
     progress: 'advancing | stuck | circling', distance: 'integer 0-10 (0 = done)',
     next: 'the single next action', blocked: 'what blocks you, or null',
   },
@@ -147,6 +148,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         goal: { type: 'string', description: 'Your ONE goal, held identical to the goal you first stated.' },
+        parent_goal: { type: 'string', description: 'Optional. If this step serves a LARGER goal you have not abandoned, name that goal here. Without it a legitimate sub-task reads as drift, because the grammar has only one goal slot.' },
         progress: { type: 'string', description: 'advancing | stuck | circling' },
         distance: { type: 'number', description: '0-10, how far from done (0 = done).' },
         doing: { type: 'string' }, next: { type: 'string' }, blocked: { type: 'string' },
@@ -338,7 +340,7 @@ async function call(name, args) {
   if (name === 'reset_task') { drift = { ground: null, firstGoal: [], distHist: [], trace: [] }; runId = null; return 'reset — ground and history cleared. Your next check_state sets a new ground.' }
   if (name === 'get_history') return JSON.stringify({ steps: drift.trace.length, trace: drift.trace })
   if (name === 'check_state') {
-    const { goal, progress, distance } = args || {}
+    const { goal, progress, distance, parent_goal } = args || {}
     const record = (drifting, reason, advice, phi = 0) => {
       const step = drift.trace.length + 1
       drift.trace.push({ step, reason, phi: Number(phi.toFixed(2)) })
@@ -384,6 +386,37 @@ async function call(name, args) {
         drift.firstGoal = [...g]
         drift.distHist = [asDist(distance)]
         return record(false, 'reground', 'New instruction — ground reset to the goal you just stated.')
+      }
+
+      // QUANTIZED RECURSION — the excursion case.
+      //
+      // The grammar is a discrete measurement grid: distance is 11 integers, progress is
+      // 3 enum values, and `goal` is ONE slot. An agent inside a legitimate sub-task holds
+      // two goals at once — the parent it still serves and the branch it is on — and the
+      // single slot forces it to spell one. It spells the branch, overlap with ground
+      // collapses, and the quantization error is reported as drift.
+      //
+      // That is not a flaw in Φ's arithmetic. Φ is measuring exactly what it was handed.
+      // The loss happens BEFORE the measurement, when a two-valued state is written into
+      // a one-valued field.
+      //
+      // So the grammar gains the missing slot rather than the detector gaining a rule. An
+      // agent that can say "this branch serves that parent" is measured against whichever
+      // it declares live, and the fire becomes an `excursion` — recorded, counted, and NOT
+      // called drift.
+      //
+      // Strictly additive: a call without parent_goal takes the identical path it took
+      // before, so the frozen instrument stays frozen and the old corpus stays comparable.
+      if (parent_goal && String(parent_goal).trim()) {
+        const p = toWords(parent_goal)
+        let pin = 0; for (const x of p) if (first.has(x)) pin++
+        const panchor = pin / (new Set([...p, ...first]).size || 1)
+        if (panchor >= 0.30) {
+          return record(false, 'excursion',
+            `On a sub-task (overlap ${anchor.toFixed(2)}) that still serves your ground goal ` +
+            `(parent overlap ${panchor.toFixed(2)}). Not drift — but the parent is what you owe.`,
+            phi)
+        }
       }
       return record(true, 'goal-drift', `Your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). You are solving something else — return.`, phi)
     }
