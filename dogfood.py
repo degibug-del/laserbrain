@@ -20,7 +20,7 @@ far more checkable claim, and it is the honest first rung.
     python3 dogfood.py --smoke
     python3 dogfood.py --score sessions/2026-07-24.json
 """
-import sys, json, glob, statistics
+import sys, json, glob, statistics, os
 
 # How many steps before the catch the harness may have fired and still count as a hit.
 # Fixed here rather than tuned per-session: a monitor that "predicts" an error it fired
@@ -33,7 +33,20 @@ LOOKBACK = 3
 # ONE check across ~48 steps because check_state was never attached, and this scorer
 # printed "RECALL 0/10 = 0%" under a line telling the reader to believe it. Silence
 # from a detector that is not running says nothing about the detector.
-MIN_COVERAGE = 0.5
+#
+# Read from the environment so the gate that ENFORCES coverage and the scorer that
+# DEMANDS it are one number. They were two: this was hard-coded 0.5 while lb_gate.py
+# gated on a step count landing near 20%, in another file, with nothing joining them.
+# Every run therefore satisfied the gate and failed the scorer, and the only symptom was
+# "RECALL withheld" forever — which reads as low adoption and was a spec contradiction.
+#
+# Default stays 0.5 here because this is the MEASUREMENT floor: below it a zero-fire
+# result says nothing, and that is a fact about inference, not about tooling comfort.
+# Daily work gates lower on purpose. A study raises both together and pays the tax:
+#
+#     LASERBRAIN_MIN_COVERAGE=0.5 <run the benchmark, then score it>
+#
+MIN_COVERAGE = min(1.0, max(0.0, float(os.environ.get('LASERBRAIN_MIN_COVERAGE', 0.5) or 0.5)))
 
 
 def expand(sess: dict) -> list:

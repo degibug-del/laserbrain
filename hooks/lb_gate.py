@@ -57,6 +57,35 @@ WRITE_TOOLS = (
 # honest trade: the corpus stays attributable and dense enough to be worth reading, and
 # the gate stays closed until someone decides the detection result is worth 1.
 BLOCK_AFTER = 4
+
+# ── the coverage floor, in ONE place ────────────────────────────────────────────
+# The paragraph above records a real decision: 50% coverage means a check between every
+# tool call, and that tax gets abandoned, so daily use gates at a cadence that lands
+# around 20-25%. Tonight's sessions ran 21-29%, so the trade is holding.
+#
+# What was NOT decided is that the two thresholds live in different files with nothing
+# joining them. dogfood.py had MIN_COVERAGE = 0.5 hard-coded and this hook had a step
+# count, so no one editing either could see the other, and a run could satisfy the gate
+# while being unscoreable — which is every run we have.
+#
+# So the floor is named once, here, and read from the environment. A benchmark sets it to
+# the scorer's floor and pays the tax deliberately for the length of the study:
+#
+#     LASERBRAIN_MIN_COVERAGE=0.5 <run the benchmark>
+#
+# and dogfood.py reads the same variable, so the number the gate enforces and the number
+# the scorer demands cannot disagree by accident again. They can still be set low on
+# purpose; that is a choice someone makes, not a contradiction nobody sees.
+DEFAULT_MIN_COVERAGE = 0.20
+
+
+def min_coverage():
+    """The coverage floor this run is held to. Shared with dogfood.py."""
+    try:
+        v = float(os.environ.get('LASERBRAIN_MIN_COVERAGE', DEFAULT_MIN_COVERAGE))
+    except (TypeError, ValueError):
+        return DEFAULT_MIN_COVERAGE
+    return min(1.0, max(0.0, v))
 STATE_DIR = pathlib.Path.home() / '.claude' / 'laserbrain'
 # Shared corpus lives under ~/.claude/laserbrain for historical reasons (both agents).
 # Alias doc: ~/.config/laserbrain/sessions → same path (see sync / rules).
@@ -372,14 +401,30 @@ def main():
         return                                   # cannot attribute / no session → do not gate
 
     since = steps_since_check(sess)
-    if since < BLOCK_AFTER:
-        return
-
     steps = int(sess.get('steps', 0) or 0)
     cov = (len(sess.get('checks') or []) / steps) if steps else 0.0
+    floor = min_coverage()
+
+    # Two ways to be gated, and they answer different questions.
+    #
+    #   since >= BLOCK_AFTER   you have gone too long without checking RIGHT NOW.
+    #   cov   <  floor         the run as a whole is below the floor it is held to,
+    #                          which is what decides whether the corpus can be scored.
+    #
+    # Only the first existed before, so an agent could satisfy the gate at every moment
+    # and still finish a run that dogfood.py refuses to score. Checking coverage too
+    # makes compliance mean the thing it is supposed to mean. It also self-corrects in
+    # the agent's favour: front-load checks and the coverage term stays quiet, so
+    # discipline early buys slack later rather than being forgotten.
+    late = since >= BLOCK_AFTER
+    thin = steps >= 8 and cov < floor          # ignore the first few steps, where one
+    if not (late or thin):                     # check swings coverage wildly
+        return
+    why = (f'{since} steps since your last check_state' if late
+           else f'coverage {cov:.0%} is below the {floor:.0%} floor this run is held to')
     reason = (
-        f'laserbrain gate: {since} steps since your last check_state '
-        f'(coverage {cov:.0%} over {steps} steps).\n'
+        f'laserbrain gate: {why} '
+        f'(coverage {cov:.0%} over {steps} steps, floor {floor:.0%}).\n'
         f'Blocked because nudging did not work — coverage was 10% one day and 6% the '
         f'next while this same reminder printed every 8 steps.\n'
         f'THIS CALL DID NOT RUN. Nothing was written, executed or sent — you must '
