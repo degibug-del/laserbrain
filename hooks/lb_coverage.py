@@ -98,6 +98,59 @@ def _args(ev):
     return a if isinstance(a, dict) else {'_': a}
 
 
+def _verdict(resp):
+    """Pull {drifting, reason, phi} out of a check response, whatever shape it arrives in.
+
+    This replaced a substring match on the serialised response:
+
+        '"drifting": true' in text.lower() or '"drifting":true' in text.lower()
+
+    which returned False for EVERY fire and did so silently. The reason is that an MCP
+    response arrives wrapped — {"content":[{"type":"text","text":"{...}"}]} — and
+    json.dumps escapes the inner quotes, so the serialised text contains \\"drifting\\"
+    and neither pattern can match. Verified 2026-07-25: bare dicts and raw JSON strings
+    were detected, the wrapped form never was.
+
+    The cost was the whole corpus. 204 checks across 10 sessions recorded zero fires,
+    including 104 checks sitting below the 0.30 threshold that DEFINES goal-drift, while
+    the agent was being told it had drifted in the same breath. The verdicts had to be
+    rebuilt from chat transcripts because the session files never held them.
+
+    So: parse, do not pattern-match. Walk the structure, decode any JSON carried as a
+    string, and read the field as the boolean it is. `reason` and `phi` are captured too
+    — the old code wrote the literal 'see response', which made it impossible to ask the
+    corpus which SIGNAL fired, and that question is the whole point of the corpus.
+    """
+    def walk(x, depth=0):
+        if depth > 6 or isinstance(x, bool):
+            return None
+        if isinstance(x, dict):
+            if isinstance(x.get('drifting'), bool):
+                return x
+            for val in x.values():
+                got = walk(val, depth + 1)
+                if got is not None:
+                    return got
+        elif isinstance(x, list):
+            for val in x:
+                got = walk(val, depth + 1)
+                if got is not None:
+                    return got
+        elif isinstance(x, str):
+            t = x.strip()
+            if t[:1] in ('{', '['):
+                try:
+                    return walk(json.loads(t), depth + 1)
+                except Exception:
+                    return None
+        return None
+
+    found = walk(resp) or {}
+    return {'drifting': bool(found.get('drifting')),
+            'reason': str(found.get('reason') or 'unparsed'),
+            'phi': found.get('phi')}
+
+
 def _resp(ev):
     r = (ev.get('tool_response') if ev.get('tool_response') is not None
          else ev.get('toolResult') if ev.get('toolResult') is not None
@@ -345,15 +398,15 @@ def main():
 
         if _is_check(tool):
             resp = _resp(ev)
-            text = json.dumps(resp) if not isinstance(resp, str) else resp
             ti = args
+            v = _verdict(resp)
             s['checks'].append({'step': step,
-                                'drifting': '"drifting": true' in text.lower()
-                                            or '"drifting":true' in text.lower(),
+                                'drifting': v['drifting'],
                                 'goal': str(ti.get('goal', ''))[:400],
                                 'progress': str(ti.get('progress', '')),
                                 'distance': ti.get('distance'),
-                                'reason': 'see response'})
+                                'reason': v['reason'],
+                                'phi': v['phi']})
             path.write_text(json.dumps(s, indent=2))
             return
 

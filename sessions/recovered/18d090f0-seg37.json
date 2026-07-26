@@ -1,0 +1,56 @@
+{
+  "steps": 25,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Fix the corpus wipe: archive each segment on reset_task instead of deleting it",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 7,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the corpus wipe: archive each segment on reset_task instead of deleting it",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 12,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the corpus wipe: archive each segment on reset_task instead of deleting it",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 18,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the corpus wipe: archive each segment on reset_task instead of deleting it",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 22,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Recover the dogfood corpus from the transcripts and score it",
+      "progress": "advancing",
+      "distance": 5
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 15,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Fix the corpus wipe: archive each segment on reset_task instead of deleting it",
+  "id": "18d090f0-seg37"
+}

@@ -1,0 +1,25 @@
+{
+  "steps": 8,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Add a required username to drift and get it live as a mass online multiplayer game",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 6,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Add a required username to drift and get it live as a mass online multiplayer game",
+      "progress": "advancing",
+      "distance": 1
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Add a required username to drift and get it live as a mass online multiplayer game",
+  "id": "18d090f0-seg32"
+}

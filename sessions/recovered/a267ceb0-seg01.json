@@ -1,0 +1,735 @@
+{
+  "steps": 10589,
+  "checks": [],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 7,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 28,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 49,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Read"
+    },
+    {
+      "step": 91,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 130,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 144,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 182,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 268,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 301,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 831,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1972,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2019,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2170,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2367,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2426,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2669,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2672,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2678,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2708,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2756,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2758,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2763,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2765,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 3548,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 3852,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 3859,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 3865,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 4112,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 4321,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 4328,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 4387,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 4655,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5020,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5021,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5023,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5024,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5025,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5051,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5070,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5114,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5189,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5190,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5238,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5244,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5292,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5299,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5303,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5310,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5311,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5313,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5316,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5318,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5320,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5335,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5359,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5371,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5429,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5440,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5553,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5555,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5556,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5558,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5560,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5567,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5570,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5573,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5940,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 5990,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6105,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6136,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6176,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6263,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6345,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6348,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6349,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6564,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6632,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6858,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6873,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 6878,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 7101,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 7464,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 7470,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 7476,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 7486,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 7604,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 7609,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8238,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8353,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8408,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8466,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8491,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8560,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8592,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8644,
+      "what": "a check suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8678,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8723,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8877,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8955,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 8985,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9058,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9113,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9123,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9434,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9436,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9485,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9489,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9647,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9650,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9661,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9673,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9847,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9879,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9984,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 9986,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 10044,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 10062,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 10086,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 10303,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 10476,
+      "what": "typescript error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 10500,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": null,
+  "id": "a267ceb0-seg01"
+}

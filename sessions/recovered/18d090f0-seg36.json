@@ -1,0 +1,169 @@
+{
+  "steps": 99,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Rebuild DRIFT natively for iOS in SpriteKit, starting from the particle field and attractor core",
+      "progress": "advancing",
+      "distance": 8
+    },
+    {
+      "step": 7,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Rebuild DRIFT natively for iOS in SpriteKit, starting from the particle field and attractor core",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 11,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Rebuild DRIFT natively for iOS in SpriteKit, starting from the particle field and attractor core",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 18,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Rebuild DRIFT natively for iOS in SpriteKit, starting from the particle field and attractor core",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 20,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Wire the multiplayer WebSocket session into the native DRIFT scene",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 26,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Wire the multiplayer WebSocket session into the native DRIFT scene",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 32,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Wire the multiplayer WebSocket session into the native DRIFT scene",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 35,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Create an Xcode project for native DRIFT so it builds, runs and can be archived",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 40,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Create an Xcode project for native DRIFT so it builds, runs and can be archived",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 44,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Create an Xcode project for native DRIFT so it builds, runs and can be archived",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 50,
+      "drifting": true,
+      "reason": "self-report:stuck",
+      "goal": "Create an Xcode project for native DRIFT so it builds, runs and can be archived",
+      "progress": "stuck",
+      "distance": 2
+    },
+    {
+      "step": 56,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Create an Xcode project for native DRIFT so it builds, runs and can be archived",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 62,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Create an Xcode project for native DRIFT so it builds, runs and can be archived",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 68,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Create an Xcode project for native DRIFT so it builds, runs and can be archived",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 74,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Create an Xcode project for native DRIFT so it builds, runs and can be archived",
+      "progress": "advancing",
+      "distance": 0
+    },
+    {
+      "step": 78,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Design the DRIFT app icon and show Diego rendered examples",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 81,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Design the DRIFT app icon and fix the scoring model",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 86,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Design the DRIFT app icon and fix the scoring model",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 91,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Give Diego an accurate inventory of what is left to do",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 97,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Answer whether native DRIFT is optimized, with measurement, and inventory what is left",
+      "progress": "advancing",
+      "distance": 3
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Rebuild DRIFT natively for iOS in SpriteKit, starting from the particle field and attractor core",
+  "id": "18d090f0-seg36"
+}

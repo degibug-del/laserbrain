@@ -1,0 +1,57 @@
+{
+  "steps": 22,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Rename the stale laserbrain directory to laserfield and update every reference",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 5,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Move the harness servers out of laserfield into their proper homes",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 8,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Move the harness servers out of laserfield into their proper homes",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 15,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Move the harness servers out of laserfield into their proper homes",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 19,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Answer whether drift can go on the iOS App Store, grounded in what already exists",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 22,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Build the native iOS surface for drift: Game Center, native server browser, haptics, iCloud sync",
+      "progress": "advancing",
+      "distance": 7
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Rename the stale laserbrain directory to laserfield and update every reference",
+  "id": "18d090f0-seg34"
+}
