@@ -1,5 +1,5 @@
 {
-  "laserbrain_grammar": "1.2.0",
+  "laserbrain_grammar": "1.2.1",
   "kind": "reasoning-state",
   "immutable": true,
   "fields": {
@@ -16,6 +16,7 @@
   "well_formed": "a non-empty goal and a progress in progress_enum",
   "laserscore": {
     "what": "One well-formed reading written in this grammar at a single step. The grammar is the notation; a laserscore is what gets written in it. It is grammatical or it is not — there is no partial credit, and ungrammaticality is itself the first drift signal.",
+    "precondition": "A laserscore exists only for a well_formed state. A goal that cannot be spelled in this grammar produces no laserscore and, therefore, no drift score — the verdict is 'ungrammatical' and the laserscore is null. That null is not a missing field; it is the first detection, and it happens before any arithmetic exists. This is why the scope is any GRAMMATICAL goal rather than any goal: what is scored is what an agent can spell, not what it can think.",
     "measured": ["goal", "progress", "distance"],
     "carried": ["doing", "next", "blocked", "parent_goal"],
     "canonical_form": "⟨normalized goal tokens, sorted, |-joined⟩ progress dN, and ⊂ ⟨parent tokens⟩ when a parent_goal is named",
@@ -24,6 +25,7 @@
   },
   "drift_score": {
     "what": "The number derived from a laserscore by measuring it against the ground laserscore — the first one written this run.",
+    "requires": "a laserscore. There is no drift score without one, and no partial score for a partly-spellable state.",
     "symbol": "Φ",
     "formula": "0.5·jaccard_distance(goal_tokens, ground_goal_tokens) + 0.3·|distance − ground_distance|/10 + 0.2·(progress ≠ ground_progress)",
     "range": "0.0 (identical to ground) to 1.0 (nothing in common)",

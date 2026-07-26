@@ -120,5 +120,15 @@ show('the grammar names the derivation', 'derivation' in grammar,
 show('laserscore names what Φ measures',
      (grammar.get('laserscore') or {}).get('measured') == ['goal', 'progress', 'distance'])
 
+# The public description promises "any GRAMMATICAL goal". The grammar has to state that
+# scope in its own words, or the sentence on the site is the only place it exists — and
+# the site is not the reference. Added in 1.2.1 for exactly that reason.
+show('laserscore states the grammaticality precondition',
+     bool((grammar.get('laserscore') or {}).get('precondition')))
+show('drift_score states that it requires a laserscore',
+     bool((grammar.get('drift_score') or {}).get('requires')))
+show('the precondition says an unspellable goal yields no score',
+     'no laserscore' in str((grammar.get('laserscore') or {}).get('precondition', '')))
+
 print('\n  ' + ('PASS' if ok else 'FAIL'))
 raise SystemExit(0 if ok else 1)
