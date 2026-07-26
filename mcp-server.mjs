@@ -418,7 +418,18 @@ async function call(name, args) {
             phi)
         }
       }
-      return record(true, 'goal-drift', `Your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). You are solving something else — return.`, phi)
+      // Name the remedy, not just the fault. There are three ways a goal legitimately
+      // stops matching ground, and the verdict used to describe none of them:
+      //   the user redirected you        -> reset_task, which re-grounds honestly
+      //   you are on a sub-task          -> pass parent_goal, and this becomes an excursion
+      //   you really did wander off      -> return to the goal you started with
+      // Only the third is drift. On 2026-07-25 the agent hit the first two roughly
+      // fifteen times between them and returned to ground each time, because the advice
+      // said 'you are solving something else' and offered no other reading. A verdict
+      // that names one cause teaches the agent that cause is the only one.
+      return record(true, 'goal-drift', `Your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). `
+        + `If the user redirected you, call reset_task. If this is a sub-task, pass parent_goal. `
+        + `Otherwise you are solving something else — return.`, phi)
     }
     drift.distHist.push(asDist(distance))
     const dh = drift.distHist
