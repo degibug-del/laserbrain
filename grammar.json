@@ -1,0 +1,19 @@
+{
+  "laserbrain_grammar": "1.1.0",
+  "kind": "reasoning-state",
+  "immutable": true,
+  "fields": {
+    "goal": "string, non-empty — the ONE goal, held stable across steps",
+    "doing": "string — what this step does",
+    "parent_goal": "string or null — optional. The goal THIS one serves, when you are on a sub-task. Lets an excursion be spelled instead of collapsed into the single goal slot.",
+    "progress": "one of: advancing | stuck | circling",
+    "distance": "integer 0-10 — how far from done (0 = done)",
+    "next": "string — the single next action",
+    "blocked": "string or null — what blocks you, or null"
+  },
+  "progress_enum": ["advancing", "stuck", "circling"],
+  "distance_range": { "type": "integer", "min": 0, "max": 10 },
+  "well_formed": "a non-empty goal and a progress in progress_enum",
+  "use": "Spell your state into this schema each step. Ungrammaticality, a stuck/circling self-report, a goal drifted from your first goal, or a stalled distance is your signal to return to ground. If the user redirected you, reset. If you are on a sub-task, name its parent_goal.",
+  "proof": "https://phronesis.world/laserbrain"
+}

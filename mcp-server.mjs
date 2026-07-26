@@ -25,9 +25,10 @@
 // and gets noticed, instead of this one client quietly enjoying a private
 // path nobody else tests. Override with LASERBRAIN_HUB to read a local hub.
 import { appendFile, mkdir } from 'node:fs/promises'
-import { existsSync, unlinkSync } from 'node:fs'
+import { existsSync, unlinkSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const HUB = process.env.LASERBRAIN_HUB || 'https://phronesis.world/api/laserbrain'
 // Which mind is holding this MCP process. Claude and Grok both speak into the
@@ -103,16 +104,20 @@ async function hub(path, init, ms = 8000) {
 // check_state measures displacement against a FIXED ground with no network. It
 // works offline, which is why it can also bundle into a sandboxed agent. The
 // mechanism is the proof: a fixed reference catches drift self-watching cannot.
-const GRAMMAR = {
-  laserbrain_grammar: '1.1.0', kind: 'reasoning-state', immutable: true,
-  fields: {
-    goal: 'the ONE goal, held stable across steps', doing: 'what this step does',
-    parent_goal: 'optional — the goal THIS one serves, when you are on a sub-task. Lets an excursion be spelled instead of collapsed into the single goal slot.',
-    progress: 'advancing | stuck | circling', distance: 'integer 0-10 (0 = done)',
-    next: 'the single next action', blocked: 'what blocks you, or null',
-  },
-  progress_enum: ['advancing', 'stuck', 'circling'],
-}
+// ── the grammar: read, not restated ──────────────────────────────────────────
+//
+// This was a literal here AND a literal in phronesis-world's API route, and by
+// 2026-07-26 they disagreed: the endpoint served 1.0.0 without parent_goal while this
+// process served 1.1.0 with it. A document that declares `immutable: true` published in
+// two versions is failing at the one property it asserts — the reference an agent checks
+// against was not the reference a reader could fetch.
+//
+// So there is one file now and this reads it. The site keeps a synced copy because a
+// static deploy cannot reach this repo at runtime, and test_grammar_conformance.py
+// compares the file, the copy, and the LIVE endpoint. Divergence is a test failure rather
+// than something noticed months later by someone curling the URL.
+const GRAMMAR = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'grammar.json'), 'utf8'))
 const PROGRESS = new Set(['advancing', 'stuck', 'circling'])
 // ── the goal vocabulary, shared with the SDK ──────────────────────────────────
 //
