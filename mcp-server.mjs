@@ -163,6 +163,22 @@ const consumeUserTurn = () => {
 }
 const asDist = (d) => { const n = parseInt(d, 10); return isNaN(n) ? 5 : Math.max(0, Math.min(10, n)) }
 const jac = (a, b) => { if (!a.size && !b.size) return 0; let i = 0; for (const x of a) if (b.has(x)) i++; return 1 - i / new Set([...a, ...b]).size }
+// A LASERSCORE is one well-formed reading written in the grammar at a single step. The
+// grammar is the notation; the laserscore is what gets written in it; Φ is a measurement
+// taken of that writing. Naming the middle term matters because it is where grammaticality
+// lives: a state either can be spelled or it cannot, and failing to spell it is the first
+// drift signal, detected before any number exists.
+//
+// The canonical form renders exactly the three slots Φ reads, with inflection already
+// collapsed by toWords. That is deliberate: it makes the measurement grid visible. Anyone
+// reading two consecutive laserscores can see why "building billboards" and "build a
+// billboard" do not score as drift -- they write the same score.
+const laserscore = (s, parent) => {
+  const tok = v => [...toWords(v)].sort().join('|')
+  const base = `⟨${tok(s.goal)}⟩ ${s.progress} d${asDist(s.distance)}`
+  return parent && String(parent).trim() ? `${base} ⊂ ⟨${tok(parent)}⟩` : base
+}
+
 const displacement = (s, g) =>
   0.5 * jac(toWords(s.goal), toWords(g.goal)) + 0.3 * Math.abs(asDist(s.distance) - g.distance) / 10 + 0.2 * (s.progress === g.progress ? 0 : 1)
 let drift = { ground: null, firstGoal: [], distHist: [], trace: [] }
@@ -386,8 +402,14 @@ async function call(name, args) {
       // is the cheapest real study this project has and it was unanswerable for one
       // missing field. AGENT is already read from LASERBRAIN_AGENT at the top — it
       // simply was never written down.
-      if (drifting) logDrift({ ts: new Date().toISOString(), run: runId, agent: AGENT, step, reason, phi: Number(phi.toFixed(2)), goal, progress, distance: asDist(distance), dist_recent: drift.distHist.slice(-4) })
-      return JSON.stringify({ drifting, reason, phi: Number(phi.toFixed(2)), advice })
+      // The laserscore exists exactly when the state is grammatical, which is why it is
+      // computed from the same condition the ungrammatical verdict tests rather than from a
+      // flag passed in. A null here is not a missing field -- it is the finding.
+      const score = (goal && String(goal).trim() && PROGRESS.has(progress))
+        ? laserscore({ goal, progress, distance }, parent_goal)
+        : null
+      if (drifting) logDrift({ ts: new Date().toISOString(), run: runId, agent: AGENT, step, reason, phi: Number(phi.toFixed(2)), laserscore: score, goal, progress, distance: asDist(distance), dist_recent: drift.distHist.slice(-4) })
+      return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)), advice })
     }
     if (!goal || !String(goal).trim() || !PROGRESS.has(progress))
       return record(true, 'ungrammatical', 'You cannot spell a clear goal and a valid progress. Stop and return to ground.')

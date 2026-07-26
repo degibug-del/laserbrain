@@ -1,5 +1,5 @@
 {
-  "laserbrain_grammar": "1.1.0",
+  "laserbrain_grammar": "1.2.0",
   "kind": "reasoning-state",
   "immutable": true,
   "fields": {
@@ -14,6 +14,22 @@
   "progress_enum": ["advancing", "stuck", "circling"],
   "distance_range": { "type": "integer", "min": 0, "max": 10 },
   "well_formed": "a non-empty goal and a progress in progress_enum",
+  "laserscore": {
+    "what": "One well-formed reading written in this grammar at a single step. The grammar is the notation; a laserscore is what gets written in it. It is grammatical or it is not — there is no partial credit, and ungrammaticality is itself the first drift signal.",
+    "measured": ["goal", "progress", "distance"],
+    "carried": ["doing", "next", "blocked", "parent_goal"],
+    "canonical_form": "⟨normalized goal tokens, sorted, |-joined⟩ progress dN, and ⊂ ⟨parent tokens⟩ when a parent_goal is named",
+    "example": "⟨class|first|laserscore|make⟩ advancing d7",
+    "why_normalized": "The canonical form shows exactly what the drift score reads, inflection already collapsed. 'building billboards' and 'build a billboard' write the same laserscore, because they are the same intent and must not score as drift."
+  },
+  "drift_score": {
+    "what": "The number derived from a laserscore by measuring it against the ground laserscore — the first one written this run.",
+    "symbol": "Φ",
+    "formula": "0.5·jaccard_distance(goal_tokens, ground_goal_tokens) + 0.3·|distance − ground_distance|/10 + 0.2·(progress ≠ ground_progress)",
+    "range": "0.0 (identical to ground) to 1.0 (nothing in common)",
+    "note": "Φ measures displacement from ground, not badness. A large Φ on a task you were told to switch to is correct and expected — that is what reset_task is for."
+  },
+  "derivation": "state → laserscore (grammatical) → drift score (numerical). The grammar decides the first arrow; the ground decides the second. Nothing is measured that was not first spelled.",
   "use": "Spell your state into this schema each step. Ungrammaticality, a stuck/circling self-report, a goal drifted from your first goal, or a stalled distance is your signal to return to ground. If the user redirected you, reset. If you are on a sub-task, name its parent_goal.",
   "proof": "https://phronesis.world/laserbrain"
 }
