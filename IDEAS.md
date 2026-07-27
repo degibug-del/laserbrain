@@ -29,8 +29,12 @@ keep the claims separate ([[CLAIM]]). Do not build before the H1 run is reported
 **laserbrain is a subbrand of phronesis**, not a single product — its own line of
 AI **software and robotics** products for agents. So:
 
-- **phronesis** — the modern design studio + thinktank ("AI, tailored"). Tailors AI,
-  builds AI products for agents, funds the thinktank.
+- **phronesis** — **a design studio laboratory.** Diego's words, 2026-07-26, arrived at
+  across three corrections: "phronesis is the thinktank", then "a design laboratory",
+  then "a design studio laboratory". The line this replaces read *the modern design
+  studio + thinktank ... funds the thinktank*, which made it two entities with a
+  transfer between them. It is one thing, and it IS the thinktank — nothing separate is
+  being funded.
 - **laserbrain** — the subbrand / product line for agents. Under it:
   - *the drift-fixer* — an adaptive stop for agents (proven; the flagship).
   - *the field / "redtooth agent coupler"* — one shared live state agents read and
