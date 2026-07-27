@@ -537,7 +537,14 @@ process.stdin.on('data', async (chunk) => {
           result: {
             protocolVersion: '2024-11-05',
             capabilities: { tools: {} },
-            serverInfo: { name: 'laserbrain', version: '1.1.0' },
+            // 1.1.0 → 1.2.0 on 2026-07-26. This had not moved while the server's
+            // RESPONSE SHAPE changed (check_state now returns `laserscore`) and its
+            // VERDICTS changed (self-report floor 0 → 0.15, stall window 3 → 4). A
+            // client handshaking with this server was told 1.1.0 and handed something
+            // else. This is the server's own version and does not track the grammar,
+            // which is at 1.2.1 on its own scheme — the two matching at 1.1.0 was a
+            // coincidence that made the staleness harder to see.
+            serverInfo: { name: 'laserbrain', version: '1.2.0' },
           },
         })
       } else if (req.method === 'tools/list') {
