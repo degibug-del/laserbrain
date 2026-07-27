@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""test_verdict_parity.py — the two implementations must decide the same way.
+
+THE DEFECT THIS PINS. On 2026-07-26 the MCP server and the PyPI SDK disagreed about when
+to fire, and had for as long as both existed:
+
+    self-report floor   server Φ > 0        SDK Φ > 0.15
+    stall window        server 3            SDK 4
+    reground            server had it       SDK did not
+
+So the same agent, spelling the same state, got a different verdict depending on whether
+it called the server or imported the package — and the server disagreed with the numbers
+published on phronesis.world/laserbrain/how as well. Nothing compared them, so nothing
+said.
+
+WHAT THIS FILE CHECKS, AND WHAT IT DOES NOT. It compares the three calibration constants
+and the verdict VOCABULARY of each single-agent implementation. It does not execute the
+server's decision procedure — that lives inside a stateful MCP handler and driving it
+would mean reimplementing it here, which would test the reimplementation. So this is a
+narrower claim than "identical behaviour", and it is the claim that would have caught
+every divergence actually found. Where it is silent, it says so rather than implying
+coverage it does not have.
+
+_Dialogue's extra verdicts (topic-drift, echo-spiral, deliberation-stall) are excluded on
+purpose: they belong to the multi-agent case, which the server does not implement. That is
+scope, not divergence, and conflating the two would make this test lie.
+"""
+import pathlib
+import re
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / 'laserbrain-sdk'))
+import laserbrain as lb                                              # noqa: E402
+
+SERVER = pathlib.Path(__file__).parent / 'mcp-server.mjs'
+ok = True
+
+
+def show(name, passed, detail=''):
+    global ok
+    ok = ok and passed
+    print(f"  {'✓' if passed else '✗'} {name}" + (f"  — {detail}" if detail else ''))
+
+
+src = SERVER.read_text()
+
+# ── the three numbers ───────────────────────────────────────────────────────
+cal = lb.PUBLISHED
+for const, attr in (('GOAL_MIN', 'goal_min'),
+                    ('SELF_REPORT_MIN', 'self_report_min'),
+                    ('STALL_WINDOW', 'stall_window')):
+    m = re.search(rf'^const {const} = ([\d.]+)$', src, re.M)
+    if not m:
+        show(f'server declares {const}', False, 'not found — is it still inline?')
+        continue
+    server_val, sdk_val = float(m.group(1)), float(getattr(cal, attr))
+    show(f'{const} agrees', server_val == sdk_val,
+         f'server {server_val} vs sdk {sdk_val}')
+
+# ── and that they are the numbers the site publishes ────────────────────────
+HOW = pathlib.Path.home() / 'phronesis-world' / 'app' / 'laserbrain' / 'how' / 'page.tsx'
+if HOW.exists():
+    how = HOW.read_text()
+    for label, value in (('goal_min', cal.goal_min),
+                         ('self_report_min', cal.self_report_min),
+                         ('stall_window', cal.stall_window)):
+        # Compared as numbers, not strings: the page writes 0.30 and the SDK holds 0.3,
+        # which are the same figure. The first draft of this check string-matched and
+        # failed on that, which is a test reporting a divergence that does not exist —
+        # exactly as bad as missing one that does.
+        m = re.search(rf'{label}\s+([\d.]+)', how)
+        got = float(m.group(1)) if m else None
+        show(f'the site publishes {label} = {value:g}', got == float(value),
+             'not found on the page' if got is None else f'page says {got:g}')
+else:
+    show('the how page could be read', False, f'missing: {HOW}')
+
+# ── the vocabulary ──────────────────────────────────────────────────────────
+server_verdicts = set(re.findall(r"record\((?:true|false), '([a-z-]+)'", src))
+server_verdicts |= {'self-report'} if 'self-report:${progress}' in src else set()
+
+run_src = lb.__file__ and pathlib.Path(lb.__file__).read_text()
+run_block = run_src[run_src.index('class _Run'):run_src.index('class _Dialogue')]
+sdk_verdicts = set(re.findall(r"emit\(f?'([a-z-]+)", run_block))
+sdk_verdicts = {v.split(':')[0] if v.startswith('self-report') else v for v in sdk_verdicts}
+
+show('the single-agent verdict vocabularies match',
+     server_verdicts == sdk_verdicts,
+     f'server-only {sorted(server_verdicts - sdk_verdicts)} · '
+     f'sdk-only {sorted(sdk_verdicts - server_verdicts)}')
+
+# ── the rule the corpus says matters most ───────────────────────────────────
+# goal-drift was 24 of 35 graded fires with 0 true catches, and 22 of those 24 were the
+# first check after the user spoke. reground is what turns those into a correct no-fire,
+# so if either implementation loses it the instrument's precision problem comes straight
+# back. Checked by name in both, and by behaviour in the SDK.
+show('server can emit reground', 'reground' in server_verdicts)
+show('sdk can emit reground', 'reground' in sdk_verdicts)
+
+h = lb.Harness()
+h.check(goal='write a JSON parser in Python', progress='advancing', distance=8)
+drift = lb.Harness()
+drift.check(goal='write a JSON parser in Python', progress='advancing', distance=8)
+v_drift = drift.check(goal='add an LRU cache', progress='advancing', distance=5)
+v_reg = h.check(goal='add an LRU cache', progress='advancing', distance=5, user_turn=True)
+show('without a user turn the same move is goal-drift', v_drift.reason == 'goal-drift',
+     v_drift.reason)
+show('with one it is reground, and does not count as drift',
+     v_reg.reason == 'reground' and not v_reg.drifting, v_reg.reason)
+after = h.check(goal='add an LRU cache', progress='advancing', distance=4)
+show('reground actually moves ground, not just the label',
+     after.reason == 'advancing' and after.phi < 0.10, f'Φ={after.phi}')
+
+print('\n  ' + ('PASS' if ok else 'FAIL'))
+raise SystemExit(0 if ok else 1)

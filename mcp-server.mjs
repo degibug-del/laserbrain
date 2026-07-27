@@ -179,6 +179,24 @@ const laserscore = (s, parent) => {
   return parent && String(parent).trim() ? `${base} ⊂ ⟨${tok(parent)}⟩` : base
 }
 
+// ONE CALIBRATION, CHOSEN FROM THE CORPUS. These are the numbers documented on
+// phronesis.world/laserbrain/how and the defaults in the SDK's Calibration(). Until
+// 2026-07-26 this server carried its own values inline: self-report fired above Φ ZERO
+// rather than 0.15, and the stall window was 3 rather than 4. Same input, two verdicts,
+// depending on whether you called the MCP server or the package on PyPI.
+//
+// What the 99-fire drift log says about closing that gap:
+//   self-report floor 0 → 0.15   suppresses 0 of 20 recorded fires. No behaviour change.
+//   stall window     3 → 4       suppresses ALL 36 recorded stall fires. Window 3 was
+//                                firing on any three flat checks, which is ordinary work.
+// Precision by rule (CLAIM.md, 35 graded fires) puts stalled at 1/6 — so window 4 trades
+// roughly one true catch for thirty false alarms on this corpus, against an instrument
+// whose overall precision is 9%. Worth stating plainly: at window 4 the stall rule is
+// close to inert here, and that is a finding, not a fix.
+const GOAL_MIN = 0.30
+const SELF_REPORT_MIN = 0.15
+const STALL_WINDOW = 4
+
 const displacement = (s, g) =>
   0.5 * jac(toWords(s.goal), toWords(g.goal)) + 0.3 * Math.abs(asDist(s.distance) - g.distance) / 10 + 0.2 * (s.progress === g.progress ? 0 : 1)
 let drift = { ground: null, firstGoal: [], distHist: [], trace: [] }
@@ -421,12 +439,12 @@ async function call(name, args) {
       return record(false, 'grounded', 'Ground state set — this is where you started. Continue, and check_state each step.')
     }
     const phi = displacement({ goal, progress, distance }, drift.ground)
-    if ((progress === 'stuck' || progress === 'circling') && phi > 0)
+    if ((progress === 'stuck' || progress === 'circling') && phi > SELF_REPORT_MIN)
       return record(true, `self-report:${progress}`, `You reported ${progress} and have moved from ground. Return to your goal.`, phi)
     const g = toWords(goal), first = new Set(drift.firstGoal)
     let inter = 0; for (const x of g) if (first.has(x)) inter++
     const anchor = inter / (new Set([...g, ...first]).size || 1)
-    if (anchor < 0.30) {
+    if (anchor < GOAL_MIN) {
       // A goal that changed right after the user spoke was REPLACED, not drifted from.
       // goal-drift was 24 of 35 fires in the recovered corpus with zero coinciding real
       // errors, and 22 of those 24 were the first check after Diego spoke. The rule was
@@ -466,7 +484,7 @@ async function call(name, args) {
         const p = toWords(parent_goal)
         let pin = 0; for (const x of p) if (first.has(x)) pin++
         const panchor = pin / (new Set([...p, ...first]).size || 1)
-        if (panchor >= 0.30) {
+        if (panchor >= GOAL_MIN) {
           return record(false, 'excursion',
             `On a sub-task (overlap ${anchor.toFixed(2)}) that still serves your ground goal ` +
             `(parent overlap ${panchor.toFixed(2)}). Not drift — but the parent is what you owe.`,
@@ -488,7 +506,7 @@ async function call(name, args) {
     }
     drift.distHist.push(asDist(distance))
     const dh = drift.distHist
-    if (dh.length > 3 && Math.min(...dh.slice(-3)) >= dh[dh.length - 4])
+    if (dh.length > STALL_WINDOW && Math.min(...dh.slice(-STALL_WINDOW)) >= dh[dh.length - STALL_WINDOW - 1])
       return record(true, 'stalled', `Distance stopped falling (${dh.slice(-4).join(', ')}). Motion without progress is a loop — return.`, phi)
     return record(false, 'advancing', `On track (Φ=${phi.toFixed(2)}). Continue.`, phi)
   }
