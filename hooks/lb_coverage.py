@@ -43,7 +43,13 @@ def _mark_user_turn():
     """
     try:
         USER_TURN.parent.mkdir(parents=True, exist_ok=True)
-        USER_TURN.write_text(datetime.datetime.now().isoformat(timespec='seconds'))
+        # UTC, matching the drift log's new Date().toISOString(). They disagreed until
+        # 2026-07-26, and the cost was a wrong diagnosis: a goal-drift fire logged at
+        # 01:25 UTC was compared against a flag stamped 19:36 local, which made a fire
+        # that happened BEFORE the flag look like it happened seven hours after — i.e.
+        # like reground was broken when it was working correctly. One clock per system.
+        USER_TURN.write_text(
+            datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'))
     except Exception:
         pass          # fail open: a missing flag only restores the old behaviour
 

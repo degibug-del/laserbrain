@@ -212,7 +212,12 @@ move the whole protocol exists to catch.
 
 ## The first precision figure, and what it says (2026-07-25)
 
-**PRECISION 3/35 = 9%**, a lower bound, over 18 segments in which the harness fired.
+**PRECISION 4/50 = 8%**, a lower bound, over 24 segments in which the harness fired.
+*(Re-scored 2026-07-26. This section previously read 3/35 = 9% over 18 segments; the
+corpus has grown since and `dogfood.py --score 'sessions/recovered/*.json'` now returns
+4/50. The by-reason table below is from the earlier graded pass and has NOT been
+re-graded — current fire counts are goal-drift 31, self-report 10, stalled 9. Re-run the
+scorer before quoting any figure from this file.)*
 Recall remains withheld: no segment reaches the 50% coverage floor.
 
 Two things had to be fixed before any number existed at all.
