@@ -59,11 +59,16 @@ import {{ readFileSync }} from 'node:fs'
 const src = readFileSync({json.dumps(str(SERVER))}, 'utf8')
 const words = src.match(/const _STOP = new Set\\(\\[[\\s\\S]*?\\n\\}}/)
 const dist  = src.match(/const asDist = .*/)
+// The renderer enforces the grammar's precondition, so it needs the progress enum in
+// scope. Extracted rather than restated: a second copy of the enum in this test would be
+// one more thing that can drift from the server, which is what the test exists to stop.
+const prog  = src.match(/const PROGRESS = new Set\\(\\[.*?\\]\\)/)
 const score = src.match(/const laserscore = \\(s, parent\\) => \\{{[\\s\\S]*?\\n\\}}/)
 if (!words) {{ console.error('could not extract toWords'); process.exit(2) }}
 if (!dist)  {{ console.error('could not extract asDist');  process.exit(2) }}
+if (!prog)  {{ console.error('could not extract PROGRESS'); process.exit(2) }}
 if (!score) {{ console.error('could not extract laserscore'); process.exit(2) }}
-const fn = new Function(words[0] + '\\n' + dist[0] + '\\n' + score[0] + '; return laserscore;')()
+const fn = new Function(words[0] + '\\n' + dist[0] + '\\n' + prog[0] + '\\n' + score[0] + '; return laserscore;')()
 const cases = {json.dumps(CASES)}
 console.log(JSON.stringify(cases.map(([g, p, d, par]) =>
   fn({{ goal: g, progress: p, distance: d }}, par))))

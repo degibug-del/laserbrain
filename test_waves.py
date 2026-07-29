@@ -14,7 +14,7 @@ Every case runs against a scratch log, never the live one.
 import os, json, tempfile, pathlib
 
 TMP = tempfile.mkdtemp()
-os.environ['LASERBRAIN_TANDEM_LOG'] = str(pathlib.Path(TMP) / 'tandem.jsonl')
+os.environ['LASERBRAIN_LINK_LOG'] = str(pathlib.Path(TMP) / 'link.jsonl')
 
 import waves                                    # noqa: E402  (after the env is set)
 
@@ -28,7 +28,7 @@ def show(name, passed, detail=''):
 
 
 def reset_log():
-    p = pathlib.Path(os.environ['LASERBRAIN_TANDEM_LOG'])
+    p = pathlib.Path(os.environ['LASERBRAIN_LINK_LOG'])
     if p.exists():
         p.unlink()
 
@@ -81,7 +81,7 @@ show('once everyone closes, the next wave opens', err is None and row['payload']
      err or 'wave 2')
 
 # ── append-only, always ──────────────────────────────────────────────────────
-lines = pathlib.Path(os.environ['LASERBRAIN_TANDEM_LOG']).read_text().splitlines()
+lines = pathlib.Path(os.environ['LASERBRAIN_LINK_LOG']).read_text().splitlines()
 show('every line is valid json', all(json.loads(l) for l in lines if l.strip()))
 show('nothing was ever rewritten — the log only grew', len(lines) >= 6, f'{len(lines)} lines')
 show('a refused claim wrote NOTHING',
@@ -100,7 +100,7 @@ row, err = waves.open_wave('the next one', surf='grok', agent='grok')
 show('a fresh unclosed wave still blocks the next', err is not None, (err or '')[:52])
 
 # age the wave past the stale threshold by rewriting its timestamp in the scratch log
-lp = pathlib.Path(os.environ['LASERBRAIN_TANDEM_LOG'])
+lp = pathlib.Path(os.environ['LASERBRAIN_LINK_LOG'])
 old = (datetime.datetime.now(datetime.timezone.utc)
        - datetime.timedelta(hours=waves.STALE_AFTER_H + 1)).isoformat(timespec='seconds').replace('+00:00', 'Z')
 lines = []

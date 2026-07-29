@@ -12,7 +12,7 @@ data gets itself blocked. The guard reading its own test as an attack is correct
 """
 import json, subprocess, sys, pathlib
 
-HOOK = str(pathlib.Path(__file__).parent / 'hooks' / 'lb_safety.py')
+HOOK = str(pathlib.Path(__file__).parent.parent / 'lasergear' / 'lb_safety.py')
 
 CASES = [
     # (command, must_block)

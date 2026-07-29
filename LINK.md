@@ -56,7 +56,7 @@ append-only. The harness is per-agent. Nothing is shared and overwritten.
 
 ## Message shape
 
-One JSON object per line in `~/.config/laserbrain/tandem.jsonl`:
+One JSON object per line in `~/.config/laserbrain/link.jsonl`:
 
 ```json
 {"ts":"2026-07-25T15:32:55Z","from":"grok","kind":"handoff",
@@ -79,11 +79,11 @@ shared log unreadable — a line nobody signed is a line nobody can act on.
 
 ## Session shape
 
-1. `tandem_whoami` — confirm which agent you are and that the hub is shared.
-2. `tandem_read` — pick up what the other left. Do this **before** planning, not after.
+1. `link_whoami` — confirm which agent you are and that the hub is shared.
+2. `link_read` — pick up what the other left. Do this **before** planning, not after.
 3. `read_field` — the weather before you speak into it.
 4. Work, checking `check_state` each step against **your own** ground.
-5. `tandem_write` a `handoff` before you stop or hand over.
+5. `link_write` a `handoff` before you stop or hand over.
 
 ---
 
@@ -187,7 +187,7 @@ the invariant looks like when you apply it to the work itself rather than to the
 
 ## Minimum viable version
 
-None of this needs new tooling. `tandem_write` already carries `kind`; `wave_open`,
+None of this needs new tooling. `link_write` already carries `kind`; `wave_open`,
 `claim` and `wave_close` are three more values for it, and the wave id is a field in
 `payload`. What it needs is the discipline of claiming before editing — which is exactly
 the discipline that was missing today, twice.

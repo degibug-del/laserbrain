@@ -24,6 +24,7 @@
 // cache as every other reader gets — if the edge breaks, it breaks here too
 // and gets noticed, instead of this one client quietly enjoying a private
 // path nobody else tests. Override with LASERBRAIN_HUB to read a local hub.
+import { spawn } from 'node:child_process'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { existsSync, unlinkSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -32,7 +33,7 @@ import { fileURLToPath } from 'node:url'
 
 const HUB = process.env.LASERBRAIN_HUB || 'https://phronesis.world/api/laserbrain'
 // Which mind is holding this MCP process. Claude and Grok both speak into the
-// same field; the tandem log is how they share *data* about what they did there.
+// same field; the link log is how they share *data* about what they did there.
 // Set LASERBRAIN_AGENT=claude|grok in each client's MCP env.
 const AGENT = String(process.env.LASERBRAIN_AGENT || 'unknown').toLowerCase()
 
@@ -45,30 +46,40 @@ const AGENT = String(process.env.LASERBRAIN_AGENT || 'unknown').toLowerCase()
 // fire-and-forget, so it can never delay or alter the check itself.
 const DRIFT_LOG = process.env.LASERBRAIN_DRIFT_LOG || join(homedir(), '.config', 'laserbrain', 'drift-log.jsonl')
 // Shared Claude↔Grok data plane. Same file for every agent on this machine.
-// Path override: LASERBRAIN_TANDEM_LOG.
-const TANDEM_LOG = process.env.LASERBRAIN_TANDEM_LOG || join(homedir(), '.config', 'laserbrain', 'tandem.jsonl')
+// Path override: LASERBRAIN_LINK_LOG.
+// Renamed from tandem 2026-07-27. Four files resolve this path independently — this one,
+// link.py, waves.py and lb_gate.py — and they must land on the same file. If they do not,
+// two agents "sharing" a channel each write to a different log and each reads an empty one,
+// which presents exactly as the other agent having said nothing. The legacy name and path
+// are honoured so an un-migrated machine keeps its history rather than starting over.
+const LINK_DIR = join(homedir(), '.config', 'laserbrain')
+const LINK_LOG = process.env.LASERBRAIN_LINK_LOG
+  || process.env.LASERBRAIN_TANDEM_LOG
+  || (existsSync(join(LINK_DIR, 'tandem.jsonl')) && !existsSync(join(LINK_DIR, 'link.jsonl'))
+        ? join(LINK_DIR, 'tandem.jsonl')
+        : join(LINK_DIR, 'link.jsonl'))
 let runId = null // groups a task's drift fires; set when ground is set
 function logDrift(entry) {
   mkdir(dirname(DRIFT_LOG), { recursive: true })
     .then(() => appendFile(DRIFT_LOG, JSON.stringify(entry) + '\n'))
     .catch(() => {})
 }
-function logTandem(entry) {
+function logLink(entry) {
   const row = {
     ts: new Date().toISOString(),
     agent: AGENT,
     hub: HUB,
     ...entry,
   }
-  return mkdir(dirname(TANDEM_LOG), { recursive: true })
-    .then(() => appendFile(TANDEM_LOG, JSON.stringify(row) + '\n'))
+  return mkdir(dirname(LINK_LOG), { recursive: true })
+    .then(() => appendFile(LINK_LOG, JSON.stringify(row) + '\n'))
     .then(() => row)
     .catch((e) => ({ error: String(e.message || e), ...row }))
 }
-async function readTandem(limit = 20) {
+async function readLink(limit = 20) {
   const { readFile } = await import('node:fs/promises')
   try {
-    const raw = await readFile(TANDEM_LOG, 'utf8')
+    const raw = await readFile(LINK_LOG, 'utf8')
     const lines = raw.split('\n').filter(Boolean)
     const n = Math.max(1, Math.min(200, Number(limit) || 20))
     return lines.slice(-n).map((l) => {
@@ -116,8 +127,35 @@ async function hub(path, init, ms = 8000) {
 // static deploy cannot reach this repo at runtime, and test_grammar_conformance.py
 // compares the file, the copy, and the LIVE endpoint. Divergence is a test failure rather
 // than something noticed months later by someone curling the URL.
-const GRAMMAR = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'grammar.json'), 'utf8'))
+// THE OFFLINE FAILSAFE.
+//
+// This server is the copy of laserbrain that has to work when nothing else does — no
+// network, no Worker, no PyPI. So it does not DEPEND on grammar.json; it carries the
+// published constants itself and merely accepts the file as an update when it is there.
+//
+// The distinction is load-bearing and I got it wrong first: reading the file with
+// `readFileSync` unguarded meant a missing or unreadable grammar crashed the server at
+// startup, and `?? []` meant a malformed one silently produced an EMPTY stopword set —
+// which does not error, does not look wrong, and quietly changes every Φ the failsafe
+// reports. A fallback that degrades to nothing is not a fallback.
+//
+// So: literals below are the floor, the file raises them, and neither absence nor
+// corruption can take the instrument below its published behaviour.
+const _BUILTIN = {
+  stopwords: ['the','a','an','to','of','and','or','for','in','on','at','is','it','this',
+              'that','with','my','your','our','i','we','be','as','by','from','into','out',
+              'up','so','then'],
+  stem_pattern: '(ings?|edly|ed|ers?|es|s|tion|ment)$',
+  calibration: { goal_min: 0.30, self_report_min: 0.15, stall_window: 4,
+                 weights: { goal: 0.5, distance: 0.3, progress: 0.2 } },
+}
+let _fromFile = {}
+try {
+  _fromFile = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'grammar.json'), 'utf8'))
+} catch { /* offline failsafe: the built-ins below are the published instrument */ }
+const _ok = (v, fallback) => (Array.isArray(v) ? v.length : v != null) ? v : fallback
+const GRAMMAR = _fromFile.laserbrain_grammar ? _fromFile : { ..._fromFile, offline: true }
 const PROGRESS = new Set(['advancing', 'stuck', 'circling'])
 // ── the goal vocabulary, shared with the SDK ──────────────────────────────────
 //
@@ -136,9 +174,12 @@ const PROGRESS = new Set(['advancing', 'stuck', 'circling'])
 // The vocabulary stays swappable on purpose. PROOF blesses *a* fixed reference, never a
 // particular one; what is load-bearing is that it cannot move DURING a run.
 // test_vocab_conformance.py asserts these two stay in step.
-const _STOP = new Set(['the','a','an','to','of','and','or','for','in','on','at','is','it','this',
-  'that','with','my','your','our','i','we','be','as','by','from','into','out','up','so','then'])
-const _STEM = /(ings?|edly|ed|ers?|es|s|tion|ment)$/
+// The thirty stopwords and the stem rule come from the grammar too. They were typed out
+// here, in drift.ts, in the SDK and in three lasermind scripts — six copies of one list,
+// which check-normaliser-parity.mjs existed solely to police. A list nobody retypes needs
+// no policing.
+const _STOP = new Set(_ok(GRAMMAR.normalizer?.stopwords, _BUILTIN.stopwords))
+const _STEM = new RegExp(_ok(GRAMMAR.normalizer?.stem_pattern, _BUILTIN.stem_pattern))
 const toWords = (s) => {
   const out = new Set()
   for (const w of String(s || '').toLowerCase().match(/[a-z0-9']+/g) || []) {
@@ -173,7 +214,35 @@ const jac = (a, b) => { if (!a.size && !b.size) return 0; let i = 0; for (const 
 // collapsed by toWords. That is deliberate: it makes the measurement grid visible. Anyone
 // reading two consecutive laserscores can see why "building billboards" and "build a
 // billboard" do not score as drift -- they write the same score.
+// Null exactly when the state cannot be spelled — the grammar's precondition, enforced
+// here 2026-07-27 to match the SDK. Both renderers previously wrote a score for states
+// the harness calls ungrammatical ('⟨⟩ advancing d5' for an empty goal), which is the
+// one reading the null is supposed to prevent.
+// The period of a repeating cycle at the tail of the trace, or 0. Falls out of
+// x = [x, f(x)]: a fixed-point iteration converges, diverges, or CYCLES — and the
+// instrument had a verdict for the first two and nothing for the third. Whole repeats
+// only, and more than one distinct reading: a constant tail is settled, not oscillating.
+// Ported from the SDK 2026-07-27; drift-vectors pin the three implementations together.
+// PERIODS 2..6, not 2..3 (widened 2026-07-27). The first version tested only 2 and 3,
+// which misses the canonical example of the equation it came from: x = [sin, f(x)] with
+// f = d/dx gives sin -> cos -> -sin -> -cos -> sin, period FOUR. Sixteen readings, four
+// whole repeats, detector returned 0. Nothing failed — there was no period-4 arm to fail.
+// Ascending order matters: [a,b,a,b,a,b] is period 2 and also satisfies 4; the smaller is
+// the true one, so the first match wins. `need` is max(6, 2p) — two whole repeats with a
+// floor of six, which leaves p=2 and p=3 at exactly their old behaviour.
+const cyclePeriod = (reasons) => {
+  for (let p = 2; p <= 6; p++) {
+    const need = Math.max(6, 2 * p)
+    if (reasons.length < need) continue
+    const tail = reasons.slice(-need)
+    if (new Set(tail).size < 2) continue
+    if (tail.every((r, i) => r === tail[i % p])) return p
+  }
+  return 0
+}
+
 const laserscore = (s, parent) => {
+  if (!s || !s.goal || !String(s.goal).trim() || !PROGRESS.has(s.progress)) return null
   const tok = v => [...toWords(v)].sort().join('|')
   const base = `⟨${tok(s.goal)}⟩ ${s.progress} d${asDist(s.distance)}`
   return parent && String(parent).trim() ? `${base} ⊂ ⟨${tok(parent)}⟩` : base
@@ -193,13 +262,90 @@ const laserscore = (s, parent) => {
 // roughly one true catch for thirty false alarms on this corpus, against an instrument
 // whose overall precision is 9%. Worth stating plainly: at window 4 the stall rule is
 // close to inert here, and that is a finding, not a fix.
-const GOAL_MIN = 0.30
-const SELF_REPORT_MIN = 0.15
-const STALL_WINDOW = 4
+// Read from the grammar, not retyped. These were three literals here, three more in
+// drift.ts and three more in the SDK — nine hand-kept copies of numbers the grammar
+// already publishes under `calibration`. grammar.json is loaded above for the
+// drift_grammar tool anyway; it may as well be the thing that decides.
+const _CAL = { ..._BUILTIN.calibration, ...(GRAMMAR.calibration ?? {}) }
+const GOAL_MIN = _CAL.goal_min ?? 0.30
+const SELF_REPORT_MIN = _CAL.self_report_min ?? 0.15
+const STALL_WINDOW = _CAL.stall_window ?? 4
 
 const displacement = (s, g) =>
   0.5 * jac(toWords(s.goal), toWords(g.goal)) + 0.3 * Math.abs(asDist(s.distance) - g.distance) / 10 + 0.2 * (s.progress === g.progress ? 0 : 1)
-let drift = { ground: null, firstGoal: [], distHist: [], trace: [] }
+let drift = { ground: null, firstGoal: [], distHist: [], trace: [], trail: [] }
+
+
+// ── the hosted tools, proxied ────────────────────────────────────────────────
+// This server ran ten tools while the deployed Worker served fifteen, so which
+// laserbrain you got depended on whether you attached over stdio or over HTTP.
+// The eight below live on the Worker and are reached rather than reimplemented —
+// a second implementation of ask_alice is a second thing that can disagree.
+const REMOTE = process.env.LASERBRAIN_API || 'https://laserbrain-mcp.degibug.workers.dev'
+let _sid = null
+async function remote(tool, args = {}, ms = 60000) {
+  const head = {
+    'content-type': 'application/json',
+    accept: 'application/json, text/event-stream',
+    'user-agent': 'lasermind-mcp',
+  }
+  if (!_sid) {
+    const init = await fetch(`${REMOTE}/mcp`, { method: 'POST', headers: head,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+        protocolVersion: '2024-11-05', capabilities: {},
+        clientInfo: { name: 'lasermind', version: '1' } } }) })
+    _sid = init.headers.get('mcp-session-id')
+    await init.text()
+    if (!_sid) throw new Error('no MCP session from the worker')
+  }
+  const ctl = new AbortController()
+  const t = setTimeout(() => ctl.abort(), ms)
+  try {
+    const r = await fetch(`${REMOTE}/mcp`, { method: 'POST', signal: ctl.signal,
+      headers: { ...head, 'mcp-session-id': _sid },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call',
+        params: { name: tool, arguments: args } }) })
+    const raw = await r.text()
+    const d = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1))
+    if (d.error) throw new Error(d.error.message || 'worker error')
+    return d.result.content[0].text
+  } finally { clearTimeout(t) }
+}
+
+/* ── the Python SDK, over a pipe ────────────────────────────────────────────────
+   Supercode, Search, Writer and the catches are Python. Porting them to JS would make a
+   second copy of each, and this file has spent the day being the victim of exactly that:
+   three copies of the logo that had drifted, a verdict set that was nine in the SDK and
+   eight on the site, one log path resolved four different ways. One implementation,
+   reached over stdin/stdout.
+
+   stderr is deliberately NOT merged into stdout — embedding_similarity loads a model and
+   prints a progress bar, which would land in the middle of the JSON if it shared a pipe. */
+const BRIDGE = join(dirname(fileURLToPath(import.meta.url)), 'sdk_bridge.py')
+function pySDK(op, payload = {}, ms = 120000) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(process.env.LASERBRAIN_PYTHON || 'python3', [BRIDGE], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let out = '', err = ''
+    const timer = setTimeout(() => { p.kill('SIGKILL'); reject(new Error(`${op} timed out after ${ms}ms`)) }, ms)
+    p.stdout.on('data', (d) => { out += d })
+    p.stderr.on('data', (d) => { err += d })
+    p.on('error', (e) => { clearTimeout(timer); reject(new Error(`python3 not runnable: ${e.message}`)) })
+    p.on('close', (code) => {
+      clearTimeout(timer)
+      if (code !== 0 && !out.trim()) return reject(new Error(`bridge exited ${code}: ${err.trim().slice(-400)}`))
+      try { resolve(JSON.parse(out)) }
+      catch { reject(new Error(`bridge returned non-JSON: ${out.trim().slice(0, 200)}`)) }
+    })
+    p.stdin.end(JSON.stringify({ op, ...payload }))
+  })
+}
+const viaBridge = async (op, args) => {
+  const r = await pySDK(op, args || {})
+  if (r && r.error) throw new Error(r.error)
+  return JSON.stringify(r, null, 2)
+}
 
 const TOOLS = [
   {
@@ -252,7 +398,7 @@ const TOOLS = [
       'Speak eight words into the shared live field and return its reply. Words must come from the ' +
       'Laserbrain vocabulary (call field_vocabulary to see it). Read the field first and ' +
       'choose words that match its physical state. Claude and Grok share this field; the speak is ' +
-      'also written to the tandem log so the other agent can see it.',
+      'also written to the link log so the other agent can see it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -270,18 +416,18 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'tandem_whoami',
+    name: 'link_whoami',
     description:
-      'Which agent this MCP process is (claude|grok|…), which hub it shares, and where the tandem log lives. ' +
-      'Claude and Grok share the same laserfield hub and the same tandem.jsonl on this machine.',
+      'Which agent this MCP process is (claude|grok|…), which hub it shares, and where the link log lives. ' +
+      'Claude and Grok share the same laserfield hub and the same link.jsonl on this machine.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'tandem_write',
+    name: 'link_write',
     description:
-      'Write a structured handoff or note into the shared tandem log for the other agent. ' +
+      'Write a structured handoff or note into the shared link log for the other agent. ' +
       'Use kind: handoff | note | goal | done | claim | wave_open | wave_close. ' +
-      'Keep goal identical across agents when tandeming. ' +
+      'Keep goal identical across agents when linked. ' +
       'wave_open/wave_close bound multi-agent rounds (payload.wave id); claim locks paths (payload.paths). ' +
       'Does not alter the weather field — only the shared agent data plane.',
     inputSchema: {
@@ -303,9 +449,9 @@ const TOOLS = [
     },
   },
   {
-    name: 'tandem_read',
+    name: 'link_read',
     description:
-      'Read recent entries from the shared Claude↔Grok tandem log (field speaks + handoffs). ' +
+      'Read recent entries from the shared Claude↔Grok link log (field speaks + handoffs). ' +
       'Call at session start and when picking up work from the other agent.',
     inputSchema: {
       type: 'object',
@@ -314,9 +460,233 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'check_dialogue',
+    description: 'The smart recursion harness for a TEAM of agents. Call once per agent turn in a shared deliberation. Adds topic-drift, echo-spiral and deliberation-stall.',
+    inputSchema: { type: 'object', properties: {
+      agent: { type: 'string' }, goal: { type: 'string' }, said: { type: 'string' },
+      progress: { type: 'string' }, distance: { type: 'number' } }, required: ['agent', 'goal'] },
+  },
+  {
+    name: 'reset_dialogue',
+    description: 'Clear the multi-agent dialogue state to begin a new shared deliberation.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'remember_self',
+    description: 'Subjective continuity across sessions. Persist WHO YOU ARE against your laserbrain key so a future session can resume it. Needs a key.',
+    inputSchema: { type: 'object', properties: {
+      key: { type: 'string' }, identity: { type: 'string' }, purpose: { type: 'string' },
+      now: { type: 'string' }, mind: { type: 'string' }, note: { type: 'string' } }, required: ['key'] },
+  },
+  {
+    name: 'resume_self',
+    description: 'Resume a self persisted with remember_self: your ground, your last present, your session log.',
+    inputSchema: { type: 'object', properties: { key: { type: 'string' }, identity: { type: 'string' } }, required: ['key'] },
+  },
+  {
+    name: 'forget_self',
+    description: 'Erase the self persisted for this key — ground, present and log. Start over as no one.',
+    inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+  },
+  {
+    name: 'analyze_language',
+    description: 'Analyze a sentence with the laserbrain spectral grammar: clarity as the frequency a reading brain would oscillate at (theta–alpha, 4–12 Hz). Structure alone, no EEG.',
+    inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+  },
+  {
+    name: 'compare_phrasings',
+    description: 'Compare two phrasings with the spectral grammar and say which reads clearer.',
+    inputSchema: { type: 'object', properties: { a: { type: 'string' }, b: { type: 'string' } }, required: ['a', 'b'] },
+  },
+  {
+    name: 'ask_alice',
+    description: 'Ask Alice — phronesis’s framework guide. Describe a situation, decision or stuck point and she returns framework guidance.',
+    inputSchema: { type: 'object', properties: { key: { type: 'string' }, situation: { type: 'string' } }, required: ['situation'] },
+  },
+  /* ── the SDK capabilities, 2026-07-27 ────────────────────────────────────────
+     These six existed in the package for a day and were reachable only from Python, so
+     an agent — the actual customer — could not call supercode, exploration, the writer or
+     bugfinder at all. Every one runs through sdk_bridge.py against the one Python
+     implementation; none is reimplemented here. */
+  {
+    name: 'find_bugs',
+    description:
+      'Bugfinder. Give it evidence and it reports what is wrong with the evidence itself — not ' +
+      'with your code, with your CONFIDENCE. Catches: a check that has only ever passed ' +
+      '(unfalsified), an instrument returning the same answer regardless of input ' +
+      '(instrument_blind), a claim with nothing executed behind it (unrun), a find-and-replace ' +
+      'that hit places it should not have (residue), and language that assumes its conclusion ' +
+      '(contaminated). Pass whichever inputs you have; it reports which checks ran and which ' +
+      'were skipped, so an empty result is never mistaken for a clean one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        events: {
+          type: 'array',
+          description: "What you observed, as objects: {kind, name, ok?, result?, text?, sites?}. " +
+                       "kind is check | tool | claim | edit.",
+          items: { type: 'object' },
+        },
+        before: { type: 'string', description: 'Text before an edit — with `after` and `pattern`, checks for residue.' },
+        after: { type: 'string', description: 'Text after the edit.' },
+        pattern: { type: 'string', description: 'The pattern you intended to replace.' },
+        text: { type: 'string', description: 'Prose to check for assumed conclusions.' },
+        repeats: { type: 'number', description: 'How many identical readings count as a blind instrument (default 3).' },
+      },
+    },
+  },
+  {
+    name: 'supercode',
+    description:
+      'The agent MANAGER. laserbrain is the reference; supercode manages against it. Give it what ' +
+      'several agents are each doing and it returns four things: findings (what the reference ' +
+      'said about each agent, unmodified), collisions (two agents on ONE ground — a relation no ' +
+      'single agent can observe, since each is perfectly grounded and correct at every step), ' +
+      'route (which should keep the ground and which should yield, or keep:null where there is no ' +
+      'honest basis to choose), and its own self_check. It may halt duplicated work and escalate ' +
+      'to a human; it may NOT set the ground of a running agent, because the reference must stay ' +
+      'one it did not author.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        observations: {
+          type: 'array',
+          description: 'One per agent step: {agent, goal, progress, distance?, parent_goal?, user_turn?}.',
+          items: { type: 'object' },
+        },
+        goal: { type: 'string', description: "Supercode's own supervising goal. Optional." },
+      },
+      required: ['observations'],
+    },
+  },
+  {
+    name: 'explore',
+    description:
+      'The second instrument. check_state asks whether you are on your goal; this asks whether your ' +
+      'SEARCH is going anywhere. Pass the trail of goals you have explored, oldest first, and it ' +
+      'returns one of: opened, searching, narrowing, revisiting, thrashing, settled — with novelty, ' +
+      'commitment and revisit scores. Use it when you are looking for something rather than building it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        trail: { type: 'array', items: { type: 'string' }, description: 'Every ground you have taken, oldest first.' },
+      },
+      required: ['trail'],
+    },
+  },
+  {
+    name: 'trailscore',
+    description:
+      'The canonical spelling of a trail of goals — the exploration twin of laserscore. Identical ' +
+      'trails produce identical strings, so a repeat is visible as a repeat.',
+    inputSchema: {
+      type: 'object',
+      properties: { goals: { type: 'array', items: { type: 'string' } } },
+      required: ['goals'],
+    },
+  },
+  {
+    name: 'write_grounded',
+    description:
+      'laserbrain as a decoder. Learns from the text you pass and generates new text steered toward ' +
+      'a ground, then scores how close it landed (0-1). The point is not fluency — it is that ' +
+      'generation is being held to a ground the same way an agent is.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        corpus: { type: 'array', items: { type: 'string' }, description: 'Text to learn from.' },
+        ground: { type: 'string', description: 'What the output should stay about.' },
+        words: { type: 'number', description: 'Length, default 60.' },
+        pull: { type: 'number', description: 'How hard to steer toward ground, default 1.0.' },
+        seed: { type: 'number', description: 'For a repeatable result.' },
+      },
+      required: ['corpus', 'ground'],
+    },
+  },
+  {
+    name: 'similarity',
+    description:
+      'Embedding similarity between two strings, 0-1. Loads a sentence-transformer model on first ' +
+      'call, so the first call is slow and later ones are not.',
+    inputSchema: {
+      type: 'object',
+      properties: { a: { type: 'string' }, b: { type: 'string' }, model: { type: 'string' } },
+      required: ['a', 'b'],
+    },
+  },
+  {
+    name: 'capabilities',
+    description:
+      'What this laserbrain can do, which SDK build it is calling, and what is deliberately NOT ' +
+      'exposed. stale_gate takes callables and cannot cross a tool boundary — this says so rather ' +
+      'than leaving you to discover it.',
+    inputSchema: { type: 'object', properties: {} },
+  },
 ]
 
+/* ── corroboration: is the self-report backed by anything observed? ─────────────
+   `distance` and `progress` are whatever the agent typed. The goal term is anchored — the
+   ground is frozen at first call — so on the published weights Φ is half external and half
+   introspection, and nothing said so until 2026-07-27.
+
+   Worse, `Verdict.anchored` shipped that day with NO CALLER: the evidence channel existed
+   and nothing fed it, so every run reported 0.5 permanently. A number that cannot move is
+   not a measurement, and it did not look broken — it looked like a value.
+
+   lb_coverage (lasergear) is the only thing that sees every tool call and whether it
+   failed, so it is the only thing that can supply the evidence. It counts outcomes into
+   evidence.json; this reads the count and compares it against the count at the previous
+   check. A MONOTONIC counter rather than a flag, so the reader never clears anything and
+   cannot race the writer.
+
+   Thresholds come from grammar.json, not from literals here. This is the fourth
+   implementation of laserbrain, and the day it was written is the day three others were
+   found disagreeing about a constant they had each hardcoded. */
+const EVIDENCE = join(homedir(), '.config', 'laserbrain', 'evidence.json')
+const _ANCH = GRAMMAR.calibration?.anchored ?? {}
+let _seenOk = null
+function anchored() {
+  const unanchored = _ANCH.unanchored ?? 0.5
+  let ok = 0
+  try { ok = JSON.parse(readFileSync(EVIDENCE, 'utf8')).ok ?? 0 } catch { return unanchored }
+  // The first check of a run has no interval behind it. Anchoring it on the whole prior
+  // history would credit work done for some other goal entirely.
+  const advanced = _seenOk !== null && ok > _seenOk
+  _seenOk = ok
+  return advanced ? (_ANCH.corroborated ?? 1.0) : unanchored
+}
+
+/* ── the reading nobody had to remember to take ─────────────────────────────────
+   lb_coverage infers `progress` from the tool trace on EVERY step — repetition reads as
+   circling, consecutive failure as stuck — whether or not a check was called. Coverage on
+   this machine runs around 24% even with a gate interrupting every four steps, so for
+   three steps in four the only reading that exists is this one.
+
+   It is not a verdict and does not become one. What it is good for is CONTRAST: the agent
+   types `progress`, the trace shows something else, and the gap between them is visible
+   without either being trusted over the other. `observe.py` is explicit that inferred
+   state can under-report and never over-report, so a disagreement is a question rather
+   than an accusation.
+
+   The current GOAL still cannot be inferred — only the ground one, held from the first
+   prompt. That is why this contrasts progress and not Φ: the goal term needs a current
+   goal, and only the agent has that. */
+function observedProgress() {
+  try {
+    const d = JSON.parse(readFileSync(EVIDENCE, 'utf8'))
+    return d.progress && d.steps ? { progress: d.progress, steps: d.steps } : null
+  } catch { return null }
+}
+
 async function call(name, args) {
+  // Proxied to the Worker: reached, not reimplemented.
+  const PROXIED = new Set(['check_dialogue', 'reset_dialogue', 'remember_self', 'resume_self',
+    'forget_self', 'analyze_language', 'compare_phrasings', 'ask_alice'])
+  if (PROXIED.has(name)) return await remote(name, args || {})
+  const BRIDGED = new Set(['find_bugs', 'supercode', 'explore', 'trailscore',
+    'write_grounded', 'similarity', 'capabilities'])
+  if (BRIDGED.has(name)) return await viaBridge(name, args)
   if (name === 'field_vocabulary') {
     return Object.entries(VOCAB).map(([g, w]) => `${g}: ${w.join(' ')}`).join('\n')
   }
@@ -347,34 +717,34 @@ async function call(name, args) {
     try { reply = JSON.parse(out).reply ?? out } catch { /* plain text */ }
     let signal = null
     try { signal = JSON.parse(await hub('/signal')) } catch { /* optional */ }
-    await logTandem({ kind: 'field_speak', words: joined, reply, signal })
+    await logLink({ kind: 'field_speak', words: joined, reply, signal })
     return typeof reply === 'string' ? `[${AGENT}] ${reply}` : JSON.stringify({ agent: AGENT, reply, signal })
   }
-  if (name === 'tandem_whoami') {
+  if (name === 'link_whoami') {
     return JSON.stringify({
       agent: AGENT,
       hub: HUB,
-      tandem_log: TANDEM_LOG,
+      link_log: LINK_LOG,
       drift_log: DRIFT_LOG,
-      shared: 'Claude and Grok both use this hub for weather and this tandem_log for handoffs on the same machine.',
+      shared: 'Claude and Grok both use this hub for weather and this link_log for handoffs on the same machine.',
     })
   }
-  if (name === 'tandem_write') {
+  if (name === 'link_write') {
     const kind = String(args?.kind || 'note').toLowerCase()
     const text = String(args?.text || '').trim()
-    if (!text) throw new Error('tandem_write needs text')
+    if (!text) throw new Error('link_write needs text')
     const ALLOWED_KINDS = new Set([
       'handoff', 'note', 'goal', 'done', 'claim', 'field_speak',
       'wave_open', 'wave_close',
     ])
-    if (!ALLOWED_KINDS.has(kind)) throw new Error(`tandem_write kind must be one of ${[...ALLOWED_KINDS].join('|')}; got ${kind}`)
+    if (!ALLOWED_KINDS.has(kind)) throw new Error(`link_write kind must be one of ${[...ALLOWED_KINDS].join('|')}; got ${kind}`)
     let payload = args?.payload && typeof args.payload === 'object' ? { ...args.payload } : undefined
     // wave_open without id: assign next integer after last wave in the log
     if (kind === 'wave_open') {
       payload = payload || {}
       if (payload.wave == null) {
         try {
-          const prev = await readTandem(200)
+          const prev = await readLink(200)
           let max = 0
           for (const e of prev) {
             const w = e?.payload?.wave
@@ -391,7 +761,7 @@ async function call(name, args) {
     if (kind === 'wave_close' && payload && payload.wave == null) {
       // leave as-is; gate matches payload.wave — caller should set it
     }
-    const row = await logTandem({
+    const row = await logLink({
       kind,
       text,
       goal: args?.goal ? String(args.goal).slice(0, 400) : undefined,
@@ -399,18 +769,43 @@ async function call(name, args) {
     })
     return JSON.stringify(row)
   }
-  if (name === 'tandem_read') {
-    const entries = await readTandem(args?.limit)
-    return JSON.stringify({ agent: AGENT, hub: HUB, path: TANDEM_LOG, n: entries.length, entries })
+  if (name === 'link_read') {
+    const entries = await readLink(args?.limit)
+    return JSON.stringify({ agent: AGENT, hub: HUB, path: LINK_LOG, n: entries.length, entries })
   }
   if (name === 'drift_grammar') return JSON.stringify(GRAMMAR)
-  if (name === 'reset_task') { drift = { ground: null, firstGoal: [], distHist: [], trace: [] }; runId = null; return 'reset — ground and history cleared. Your next check_state sets a new ground.' }
+  if (name === 'reset_task') { drift = { ground: null, firstGoal: [], distHist: [], trace: [], trail: [] }; runId = null; _seenOk = null; return 'reset — ground and history cleared. Your next check_state sets a new ground.' }
   if (name === 'get_history') return JSON.stringify({ steps: drift.trace.length, trace: drift.trace })
   if (name === 'check_state') {
     const { goal, progress, distance, parent_goal } = args || {}
     const record = (drifting, reason, advice, phi = 0) => {
       const step = drift.trace.length + 1
       drift.trace.push({ step, reason, phi: Number(phi.toFixed(2)) })
+      // The trace records the READING; the cycle is a fact about the sequence, so the
+      // original goes in and `oscillating` comes out. drift.osc keeps it from re-firing
+      // every step once a cycle is established.
+      //
+      // GROUND FIRST, then readings. x = [x, f(x)] — the ground is x, the verdicts are
+      // f(x), and a cycle in x is what this verdict was built to name. Cycling on verdicts
+      // alone meant a genuinely circling agent was caught only when its readings ALSO
+      // happened to repeat periodically, which is a coincidence stacked on the thing we
+      // wanted. The reading pass is kept: a repeating verdict over a moving ground is a
+      // real pattern, just a different one.
+      drift.trail = [...(drift.trail ?? []), goal ? [...toWords(goal)].sort().join('|') : '']
+      let period = cyclePeriod(drift.trail)
+      let of = 'ground'
+      if (!period) { period = cyclePeriod(drift.trace.map(t => t.reason)); of = 'reading' }
+      if (period && !drift.osc) {
+        drift.osc = true
+        drifting = true
+        reason = 'oscillating'
+        const what = of === 'ground'
+          ? 'You have returned to the same goals in a repeating order'
+          : 'Your reading has cycled'
+        advice = `${what} with period ${period} — you have been told to return and have come back to the same place. Re-ground explicitly instead of returning again.`
+      } else if (!period) {
+        drift.osc = false
+      }
       // Low-data corpus: only the fires, with just enough to judge later whether
       // it was a true catch or a false alarm.
       //
@@ -426,8 +821,24 @@ async function call(name, args) {
       const score = (goal && String(goal).trim() && PROGRESS.has(progress))
         ? laserscore({ goal, progress, distance }, parent_goal)
         : null
-      if (drifting) logDrift({ ts: new Date().toISOString(), run: runId, agent: AGENT, step, reason, phi: Number(phi.toFixed(2)), laserscore: score, goal, progress, distance: asDist(distance), dist_recent: drift.distHist.slice(-4) })
-      return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)), advice })
+      // EVERY step, not only the fires. The original policy was quality over quantity —
+      // log the drift moments, skip the rest — and it made the corpus structurally unable
+      // to answer a sequence question. `oscillating` needs six consecutive readings; only
+      // 4 of 35 recorded runs had six of anything, because the steps between fires were
+      // discarded. A verdict about a sequence cannot be validated against a log that keeps
+      // only the interesting moments. `drifting` stays a field, so the old view is one
+      // filter away and nothing that read this file has lost anything.
+      logDrift({ ts: new Date().toISOString(), run: runId, agent: AGENT, step, reason, drifting,
+        phi: Number(phi.toFixed(2)), laserscore: score, goal, progress, distance: asDist(distance),
+        dist_recent: drift.distHist.slice(-4) })
+      const obs = observedProgress()
+      // Reported only when it DISAGREES. A field that always appears gets skimmed; one
+      // that appears when the trace contradicts the claim is worth reading.
+      const contrast = (obs && progress && obs.progress !== progress)
+        ? { observed: obs.progress, observed_over: obs.steps }
+        : {}
+      return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
+        anchored: anchored(), ...contrast, advice })
     }
     if (!goal || !String(goal).trim() || !PROGRESS.has(progress))
       return record(true, 'ungrammatical', 'You cannot spell a clear goal and a valid progress. Stop and return to ground.')
@@ -544,7 +955,7 @@ process.stdin.on('data', async (chunk) => {
             // else. This is the server's own version and does not track the grammar,
             // which is at 1.2.1 on its own scheme — the two matching at 1.1.0 was a
             // coincidence that made the staleness harder to see.
-            serverInfo: { name: 'laserbrain', version: '1.2.0' },
+            serverInfo: { name: 'laserbrain', version: GRAMMAR.laserbrain_grammar ?? 'offline' },
           },
         })
       } else if (req.method === 'tools/list') {

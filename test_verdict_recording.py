@@ -70,7 +70,7 @@ v = _verdict(wrapped(FIRE))
 show('the reason is kept, not "see response"', v['reason'] == 'goal-drift', v['reason'])
 show('Φ is kept too', v['phi'] == 0.46, str(v['phi']))
 show('an unreadable response says so rather than guessing',
-     _verdict('garbage')['reason'] == 'unparsed')
+     _verdict('garbage')['reason'] == 'no-reading')
 
 
 # ── the proof that this test can fail ───────────────────────────────────────

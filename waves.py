@@ -29,8 +29,24 @@ the one rule every failure so far has broken.
 """
 import sys, json, os, datetime, pathlib, fnmatch
 
-LOG = pathlib.Path(os.environ.get('LASERBRAIN_TANDEM_LOG',
-                                  pathlib.Path.home() / '.config/laserbrain/tandem.jsonl'))
+
+def _link_log_default():
+    """~/.config/laserbrain/link.jsonl, falling back to the pre-rename tandem.jsonl.
+
+    Renamed 2026-07-27. FOUR files resolve this path independently — link.py, waves.py,
+    lb_gate.py and mcp-server.mjs — and they must land on the same file. If they do not,
+    two agents "sharing" a channel each write to a different log and each reads an empty
+    one, which presents exactly as the other agent having said nothing. The legacy path is
+    honoured when it exists and the new one does not, so an un-migrated machine keeps its
+    history instead of silently starting over.
+    """
+    base = pathlib.Path.home() / '.config' / 'laserbrain'
+    new, old = base / 'link.jsonl', base / 'tandem.jsonl'
+    return old if (old.exists() and not new.exists()) else new
+
+LOG = pathlib.Path(os.environ.get('LASERBRAIN_LINK_LOG')
+                   or os.environ.get('LASERBRAIN_TANDEM_LOG')
+                   or _link_log_default())
 
 # A claim this broad is technically a claim and practically a lock on everything under it.
 # The protocol can check overlap; it cannot check good faith, so it says so out loud.
