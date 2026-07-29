@@ -25,7 +25,11 @@ import json
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent / 'hooks'))
+# lb_coverage moved to lasergear/ on 2026-07-27 when the instruction layer got its own
+# home. This still pointed at lasermind/hooks/, so the file has raised ImportError ever
+# since — a test written because "nothing compared the two" spent two days comparing
+# nothing. Found 2026-07-29 by running every python file rather than trusting green.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'lasergear'))
 from lb_coverage import _verdict                                    # noqa: E402
 
 ok = True

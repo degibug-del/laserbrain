@@ -1,5 +1,5 @@
 {
-  "laserbrain_grammar": "1.17.0",
+  "laserbrain_grammar": "1.18.0",
   "kind": "reasoning-state",
   "immutable": true,
   "fields": {
@@ -128,6 +128,26 @@
       "why_not_a_verdict": "The nine verdicts are about ONE agent against ONE ground and stay that way. This is a supervisor finding: it describes a relation between agents, which is a different kind of object and does not belong in a set that means something else.",
       "threshold": "0.60 Jaccard on normalised ground goals. Above this the two are doing the same work; below it they merely share vocabulary. Deliberately higher than goal_min (0.30) \u2014 that threshold asks whether ONE agent has left its own ground, which is a weaker claim than two agents occupying the same one.",
       "added": "2026-07-28"
+    },
+    "explore": {
+      "what": "The second instrument's thresholds. Search measures work whose goal is supposed to move, so it needs its own calibration \u2014 the harness asks whether a fixed ground was left, the search asks whether a moving one is going anywhere.",
+      "min_commitment": 2,
+      "revisit_min": 0.6,
+      "settled_max": 0.15,
+      "window": 4,
+      "means": {
+        "min_commitment": "A ground abandoned in fewer steps than this was glanced at, not worked.",
+        "revisit_min": "Overlap with an already-abandoned ground that counts as being back where you were.",
+        "settled_max": "Novelty below this means the search has stopped finding new territory.",
+        "window": "How many recent grounds the novelty reading looks across."
+      },
+      "shares_a_value_with": {
+        "revisit_min": "collision_min (0.60) \u2014 SAME IDEA. Both ask whether two grounds overlap enough to be the same place: collision across agents, revisit across time for one agent. If one moves the other probably should.",
+        "window": "stall_window (4) \u2014 SAME IDEA. How many steps back to look.",
+        "settled_max": "self_report_min (0.15) \u2014 COINCIDENCE ONLY. Novelty of territory is not a \u03a6 threshold. These two must NOT be unified; they share a number and nothing else."
+      },
+      "why_written_down": "Three of the four match a harness constant and only two mean the same thing. A later reader tidying all three into one would be right twice and would couple two unrelated ideas once, so that moving either breaks the other.",
+      "added": "2026-07-29"
     }
   },
   "verdicts": {
@@ -233,7 +253,7 @@
       "note": "Not a sixth layer. It lives inside laserbrain and is listed here because the reference/manager division is what makes its authority legible."
     }
   },
-  "content_hash": "a45026703d39696a",
+  "content_hash": "e218ddd761807a07",
   "content_hash_what": "sha256 of this FILE's own lines, excluding the three that carry the version and these hashes. Deliberately not a hash of re-serialised JSON: Python and JavaScript disagree about identical content \u2014 Python escapes non-ASCII by default and writes 1.0 where JavaScript writes 1 \u2014 so a cross-language content hash compares serialisers rather than content. Both attempts failed that way before this one. Bytes are bytes. Exists because grammar 1.6.0 came to mean two different documents on 2026-07-28: seven additions under one version, canonical and live both announcing 1.6.0 with different content, while sync-grammar --check compared the copies to each other and passed.",
   "operator_patterns": {
     "what": "Shell commands whose effect cannot be taken back. Used by Operator.classify() to ESCALATE a caller's declaration, never to relax it: a command matching one of these is treated as irreversible even if the caller said otherwise, and a command matching none is left exactly as the caller declared. That asymmetry is the whole point \u2014 a classifier that could talk the guard down would be a way around it.",
