@@ -1,5 +1,5 @@
 {
-  "laserbrain_grammar": "1.18.0",
+  "laserbrain_grammar": "1.19.0",
   "kind": "reasoning-state",
   "immutable": true,
   "fields": {
@@ -253,7 +253,7 @@
       "note": "Not a sixth layer. It lives inside laserbrain and is listed here because the reference/manager division is what makes its authority legible."
     }
   },
-  "content_hash": "e218ddd761807a07",
+  "content_hash": "536029dbbb71d98a",
   "content_hash_what": "sha256 of this FILE's own lines, excluding the three that carry the version and these hashes. Deliberately not a hash of re-serialised JSON: Python and JavaScript disagree about identical content \u2014 Python escapes non-ASCII by default and writes 1.0 where JavaScript writes 1 \u2014 so a cross-language content hash compares serialisers rather than content. Both attempts failed that way before this one. Bytes are bytes. Exists because grammar 1.6.0 came to mean two different documents on 2026-07-28: seven additions under one version, canonical and live both announcing 1.6.0 with different content, while sync-grammar --check compared the copies to each other and passed.",
   "operator_patterns": {
     "what": "Shell commands whose effect cannot be taken back. Used by Operator.classify() to ESCALATE a caller's declaration, never to relax it: a command matching one of these is treated as irreversible even if the caller said otherwise, and a command matching none is left exactly as the caller declared. That asymmetry is the whole point \u2014 a classifier that could talk the guard down would be a way around it.",
@@ -835,5 +835,107 @@
     ],
     "the_lesson": "Two of the seven were found by searching the disk, not by remembering them. A map that is not written down is not a map, and a vocabulary nobody lists twice gets written twice.",
     "added": "2026-07-29"
+  },
+  "modulation": {
+    "what": "The POLICY layer. The detector says an agent left its ground; this says which drifts a given role should act on. Detection is the theorem and is identical for everyone; what a role tolerates is negotiable, which is why it lives here and not in the instrument.",
+    "why_here": "It lived only in workers/laserbrain-mcp-remote/src/teams.ts, so modulate could be served by the Worker and by nothing else \u2014 a local MCP server would have had to duplicate the table, making a fourth copy of a list this project has already watched drift twice. Moved to the grammar 2026-07-29 so every implementation reads one source.",
+    "modes": [
+      "ungrammatical",
+      "topic-drift",
+      "echo-spiral",
+      "deliberation-stall",
+      "goal-drift",
+      "stalled",
+      "self-report:stuck",
+      "self-report:circling"
+    ],
+    "depths": {
+      "deep": [
+        "ungrammatical",
+        "topic-drift",
+        "goal-drift"
+      ],
+      "balanced": [
+        "ungrammatical",
+        "topic-drift",
+        "goal-drift",
+        "echo-spiral",
+        "self-report:stuck",
+        "self-report:circling"
+      ],
+      "tight": [
+        "ungrammatical",
+        "topic-drift",
+        "echo-spiral",
+        "deliberation-stall",
+        "goal-drift",
+        "stalled",
+        "self-report:stuck",
+        "self-report:circling"
+      ]
+    },
+    "means": {
+      "deep": "only the hard, unambiguous drifts return it \u2014 it may recurse through stalls and momentary agreement, because an explorer needs room.",
+      "balanced": "also returns on the mid drifts (echo, self-report), tolerates a stall.",
+      "tight": "returns on any drift at all."
+    },
+    "added": "2026-07-29",
+    "presets": [
+      {
+        "name": "deep-search",
+        "task": "deep exploratory search or research",
+        "roles": [
+          {
+            "role": "explorer",
+            "recurse": "deep"
+          },
+          {
+            "role": "checker",
+            "recurse": "tight",
+            "return": "The exploration has drifted. Restate the goal and verify the last step against it."
+          }
+        ]
+      },
+      {
+        "name": "iterative-refinement",
+        "task": "iterative drafting and critique",
+        "roles": [
+          {
+            "role": "drafter",
+            "recurse": "balanced"
+          },
+          {
+            "role": "critic",
+            "recurse": "balanced",
+            "modes": [
+              "echo-spiral",
+              "topic-drift",
+              "ungrammatical"
+            ],
+            "return": "You are agreeing, not improving. Name one concrete flaw and change it."
+          }
+        ]
+      },
+      {
+        "name": "adversarial-deliberation",
+        "task": "debate toward a resolved answer",
+        "roles": [
+          {
+            "role": "advocate-a",
+            "recurse": "deep"
+          },
+          {
+            "role": "advocate-b",
+            "recurse": "deep"
+          },
+          {
+            "role": "synthesizer",
+            "recurse": "tight",
+            "return": "The debate is looping. State the single decision that resolves the shared goal."
+          }
+        ]
+      }
+    ],
+    "why_presets_here": "The recursion-team catalogue lived only in teams.ts too, so a local server could offer modulate with depths but not with teams \u2014 the same divergence one level down. Lifted from teams.ts verbatim 2026-07-29."
   }
 }

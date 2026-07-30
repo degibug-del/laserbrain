@@ -370,6 +370,25 @@ const TOOLS = [
     },
   },
   {
+    name: 'modulate',
+    description:
+      'Check your state AND get the intervention your role should take. Same verdict as ' +
+      'check_state, plus a policy decision: whether THIS role returns on THIS drift, and the ' +
+      'wording to return with. Pass team + role for a recursion-team preset; without them ' +
+      'every drift returns, unstyled. Offline.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string', description: 'Your ONE goal, held identical to the goal you first stated.' },
+        progress: { type: 'string', description: 'advancing | stuck | circling' },
+        distance: { type: 'number', description: '0-10, how far from done (0 = done).' },
+        team: { type: 'string', description: 'A recursion-team preset name.' },
+        role: { type: 'string', description: 'Which role in that team this agent is playing.' },
+      },
+      required: ['goal'],
+    },
+  },
+  {
     name: 'reset_task',
     description: 'Clear the drift-fixer ground state and history to begin a new task.',
     inputSchema: { type: 'object', properties: {} },
@@ -776,6 +795,45 @@ async function call(name, args) {
   if (name === 'drift_grammar') return JSON.stringify(GRAMMAR)
   if (name === 'reset_task') { drift = { ground: null, firstGoal: [], distHist: [], trace: [], trail: [] }; runId = null; _seenOk = null; return 'reset — ground and history cleared. Your next check_state sets a new ground.' }
   if (name === 'get_history') return JSON.stringify({ steps: drift.trace.length, trace: drift.trace })
+  if (name === 'modulate') {
+    // POLICY, not detection. The verdict comes from the same check_state below and is not
+    // negotiable; which drifts a given role acts on is, and comes from grammar.modulation.
+    // Both tables were TypeScript-only until 2026-07-29, which is exactly why this server
+    // could not offer modulate — copying them here would have been a fourth copy of a list
+    // this project has already watched drift twice.
+    const { team, role, ...rest } = args || {}
+    const mod = GRAMMAR.modulation || {}
+    const presets = mod.presets || []
+    const tpl = team ? presets.find((p) => p.name === team) : null
+    if (team && !tpl) {
+      return JSON.stringify({ error: `no preset named ${team}`, presets: presets.map((p) => p.name) })
+    }
+    const r = tpl && role ? (tpl.roles || []).find((x) => x.role === role) : null
+    if (tpl && role && !r) {
+      return JSON.stringify({ error: `${team} has no role ${role}`, roles: (tpl.roles || []).map((x) => x.role) })
+    }
+    const raw = await call('check_state', rest)
+    let v
+    try { v = JSON.parse(raw) } catch { return raw }
+    const modes = mod.modes || []
+    let m
+    if (!modes.includes(v.reason)) {
+      m = { return: false, advice: v.advice, basis: `${v.reason} is not a drift mode` }
+    } else if (!r) {
+      m = { return: true, advice: v.advice, basis: 'unstyled — every drift returns' }
+    } else {
+      const acts = (r.modes && r.modes.length) ? r.modes : ((mod.depths || {})[r.recurse] || [])
+      const ret = acts.includes(v.reason)
+      m = {
+        return: ret,
+        advice: ret ? (r.return || v.advice) : `${r.role} (recurse: ${r.recurse}) tolerates ${v.reason} — recursing on.`,
+        basis: `${r.role} recurses ${r.recurse}`,
+      }
+    }
+    m.team = tpl ? tpl.name : null
+    m.role = r ? r.role : null
+    return JSON.stringify({ ...v, modulation: m })
+  }
   if (name === 'check_state') {
     const { goal, progress, distance, parent_goal } = args || {}
     const record = (drifting, reason, advice, phi = 0) => {
