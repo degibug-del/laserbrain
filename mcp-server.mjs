@@ -723,14 +723,14 @@ const readContexts = () => {
 
 // Returns what was known BEFORE this sighting, so a caller can tell "first time here"
 // from "fourth time here" — the prior is the evidence; the update is bookkeeping.
-const rememberContext = (id, goal, distance, reason, run) => {
-  if (!id) return null
+const rememberContext = (id, goal, distance, reason, run, score) => {
+  if (!id) return { prior: null, repetition: 0 }
   const all = readContexts()
   const prior = all[id] ? { ...all[id] } : null
   const now = new Date().toISOString()
   const e = all[id] ?? {
     id, tokens: [...toWords(goal)].sort(), first_seen: now,
-    sessions: [], checks: 0, best_distance: null, outcomes: {},
+    sessions: [], checks: 0, best_distance: null, outcomes: {}, spellings: {},
   }
   e.last_seen = now
   e.checks = (e.checks ?? 0) + 1
@@ -740,11 +740,28 @@ const rememberContext = (id, goal, distance, reason, run) => {
   e.outcomes[reason] = (e.outcomes[reason] ?? 0) + 1
   e.sessions = e.sessions ?? []
   if (run && !e.sessions.includes(run)) e.sessions.push(run)
+  // THE TWO MECHANISMS, USED TOGETHER.
+  //
+  // The context says which work this is; the laserscore says exactly what was written
+  // about it. Counting spellings WITHIN a context is a reading neither can give alone —
+  // context has no notion of state, and a laserscore on its own has no memory.
+  //
+  // An identical spelling repeated means goal AND progress AND distance are all
+  // unchanged, which is a sharper claim than the stall rule's "distance stopped
+  // falling": distance can sit flat while the goal legitimately moves through sub-work,
+  // and that reads as a stall when it is ordinary progress. The same sentence written
+  // twice cannot be that. It is the grammar catching the repetition, not the number.
+  e.spellings = e.spellings ?? {}
+  let repetition = 0
+  if (score) {
+    e.spellings[score] = (e.spellings[score] ?? 0) + 1
+    repetition = e.spellings[score]
+  }
   all[id] = e
   try {
     writeFileSync(CONTEXTS, JSON.stringify(all, null, 1))
   } catch { /* fail open: a context we cannot store is a memory we do not have, not an error */ }
-  return prior
+  return { prior, repetition }
 }
 
 /* ── the reading nobody had to remember to take ─────────────────────────────────
@@ -818,6 +835,15 @@ function judgeWork() {
     // most useful thing history can say, and no per-run reading can ever say it.
     const priorRuns = known ? (known.sessions ?? []).filter(s => s !== runId).length : 0
 
+    // The two mechanisms read together. `repetition` is how many times the CURRENT
+    // spelling has been written in this context, and `ceiling` is the closest this
+    // context has ever come to done across every session. Neither is available to either
+    // mechanism alone: the context knows which work this is but nothing about its state,
+    // and a laserscore states the case exactly but remembers nothing.
+    const spellings = (known && known.spellings) ? known.spellings : {}
+    const repetition = Math.max(0, ...Object.values(spellings), 0)
+    const ceiling = known && known.best_distance != null ? known.best_distance : null
+
     const obs = observedProgress()
     const scores = {
       goal: Number(goalScore.toFixed(2)),
@@ -825,6 +851,8 @@ function judgeWork() {
       pace: Number(pace.toFixed(2)),
       evidence: anchored(),
       recurrence: priorRuns,
+      repetition,
+      ceiling,
       drift: trace.length ? trace[trace.length - 1].phi : 0,
     }
 
@@ -862,6 +890,22 @@ function judgeWork() {
       verdict = 'wrong-problem'
       because = `A repeating cycle was detected and the distance is not falling — you have returned to the same place after being told to return.`
       counsel = 'Returning again will land you here a third time. Change the approach, not the position.'
+    } else if (judged && repetition >= 3 && pace <= 0) {
+      // THRESHOLD FROM THE CORPUS, not from taste. Across 382 contexts in drift-log.jsonl
+      // the maximum identical-spelling repeat distributes: >=2 fires on 9.7% (noise —
+      // ordinary work restates itself once), >=3 on 2.6% (ten contexts), >=4 on 1.0%.
+      // Three is selective without being inert, which is the failure mode this repo
+      // already names for stall window 4: "close to inert here, and that is a finding".
+      //
+      // A stronger claim than `stalled`, and deliberately placed above `narrow`. Stalled
+      // reads the distance alone, and distance sits flat through legitimate sub-work; an
+      // identical laserscore means goal, progress AND distance are all unchanged. Not
+      // merely failing to get closer — writing the same sentence about the same work.
+      verdict = 'repeating'
+      because = `The identical state has been written ${repetition} times in this context. `
+        + `Goal, progress and distance are all unchanged.`
+      counsel = 'Not a slow patch — the same patch. Change what you are doing, or say plainly what '
+        + 'is blocking it. Restating the position will not move it.'
     } else if (now != null && now >= 6 && flat >= STALL_WINDOW) {
       verdict = 'narrow'
       because = `Distance has sat at ${dh.slice(-flat).join(', ')} for ${flat} checks without falling, and ${now} is still far from done.`
@@ -1114,7 +1158,7 @@ async function call(name, args) {
       // Recorded every step, not just the fires: a context whose history exists only for
       // its bad moments cannot answer "did this ever work".
       const ctx = contextId(goal)
-      rememberContext(ctx, goal, distance, reason, runId)
+      const { repetition } = rememberContext(ctx, goal, distance, reason, runId, score)
       // laserbrain calls phronesis itself, rather than waiting to be asked.
       //
       // A tool the agent has to REMEMBER to call is a tool that does not run. Coverage on
@@ -1135,7 +1179,11 @@ async function call(name, args) {
         }
       } catch { /* judgment is an addition to the reading, never a precondition for it */ }
       return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
-        goal_score, context: ctx, anchored: anchored(), ...contrast,
+        goal_score, context: ctx,
+        // Only once it means something. Writing a state once is the normal case and a 1
+        // here would be noise on every healthy step.
+        ...(repetition > 1 ? { repetition } : {}),
+        anchored: anchored(), ...contrast,
         ...(judgment ? { judgment } : {}), advice })
     }
     if (!goal || !String(goal).trim() || !PROGRESS.has(progress))
