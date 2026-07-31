@@ -983,9 +983,15 @@ async function call(name, args) {
         + `The subject keeps moving while the ground stays put.`
       counsel = 'You are not solving what you set out to solve. Either reset_task to the goal you '
         + 'actually have now, or return to the original and finish it.'
-    } else if (oscillations > 0) {
+    } else if (oscillations > 0 && pace <= 0) {
+      // `pace <= 0` is load-bearing, and it was found by dogfooding rather than reasoning:
+      // this judgment fired on a run whose distance had gone 6→4→3→2 monotonically. The
+      // cycle detector reads the VERDICT sequence, which repeats naturally when a healthy
+      // run is re-grounded a few times, and a repeating verdict over falling distance is a
+      // rhythm, not a loop. Circling means coming back to the same place; a run measurably
+      // closer than it was has not come back anywhere.
       verdict = 'wrong-problem'
-      because = `A repeating cycle was detected — you have returned to the same place after being told to return.`
+      because = `A repeating cycle was detected and the distance is not falling — you have returned to the same place after being told to return.`
       counsel = 'Returning again will land you here a third time. Change the approach, not the position.'
     } else if (now != null && now >= 6 && flat >= STALL_WINDOW) {
       verdict = 'narrow'
