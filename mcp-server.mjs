@@ -26,7 +26,7 @@
 // path nobody else tests. Override with LASERBRAIN_HUB to read a local hub.
 import { spawn } from 'node:child_process'
 import { appendFile, mkdir } from 'node:fs/promises'
-import { existsSync, unlinkSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, unlinkSync, readFileSync, writeFileSync, openSync, closeSync, statSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -723,7 +723,54 @@ const readContexts = () => {
 
 // Returns what was known BEFORE this sighting, so a caller can tell "first time here"
 // from "fourth time here" — the prior is the evidence; the update is bookkeeping.
-const rememberContext = (id, goal, distance, reason, run, score) => {
+// Serialise read-modify-write on contexts.json across processes AND languages.
+//
+// Measured before this existed: eight concurrent writers recording five checks each
+// stored 36 of 40. The file never corrupted — small writes land atomically enough for
+// that — but updates were silently lost, because every writer read the whole map, edited
+// its own entry, and wrote the whole map back over everyone else's.
+//
+// Silent undercounting is worse here than an error would be: `repetition` is what raises
+// the `repeating` verdict, so a dropped write does not merely lose a statistic, it
+// suppresses a judgment that was true.
+//
+// 'wx' is O_CREAT|O_EXCL, the same atomic primitive the Python side takes, which is what
+// lets the server and the package exclude each other rather than each locking alone. A
+// lock older than ten seconds is stolen so a crashed writer cannot wedge the store; on
+// timeout the write proceeds unlocked, a possibly-lost update being strictly better than
+// dropping the write with certainty.
+const withContextLock = (fn, timeoutMs = 2000) => {
+  const lock = CONTEXTS + '.lock'
+  const deadline = Date.now() + timeoutMs
+  let held = false
+  for (;;) {
+    try {
+      mkdirSync(dirname(CONTEXTS), { recursive: true })
+      closeSync(openSync(lock, 'wx'))
+      held = true
+      break
+    } catch (e) {
+      if (e && e.code === 'EEXIST') {
+        try {
+          if (Date.now() - statSync(lock).mtimeMs > 10000) { unlinkSync(lock); continue }
+        } catch { /* vanished under us: retry */ }
+        if (Date.now() > deadline) break
+        // Node has no sync sleep; spin briefly. The critical section is a small file
+        // write, so contention is measured in milliseconds.
+        const until = Date.now() + 5
+        while (Date.now() < until) { /* spin */ }
+        continue
+      }
+      break
+    }
+  }
+  try { return fn() } finally { if (held) { try { unlinkSync(lock) } catch { /* already gone */ } } }
+}
+
+const rememberContext = (id, goal, distance, reason, run, score) =>
+  withContextLock(() => rememberContextLocked(id, goal, distance, reason, run, score))
+
+const rememberContextLocked = (id, goal, distance, reason, run, score) => {
   if (!id) return { prior: null, repetition: 0 }
   const all = readContexts()
   const prior = all[id] ? { ...all[id] } : null
@@ -738,8 +785,19 @@ const rememberContext = (id, goal, distance, reason, run, score) => {
   e.best_distance = (e.best_distance == null) ? d : Math.min(e.best_distance, d)
   e.outcomes = e.outcomes ?? {}
   e.outcomes[reason] = (e.outcomes[reason] ?? 0) + 1
+  // Sessions are CAPPED, with the true total kept alongside. The list was unbounded and
+  // the whole map is read and rewritten on every check, so an ever-growing array does not
+  // merely take disk — it makes every future check slower, forever. One context in the
+  // real store had already reached 88 session ids. The list only has to recognise the
+  // CURRENT run to avoid double-counting it; `session_count` carries the history that
+  // judgment actually reads.
   e.sessions = e.sessions ?? []
-  if (run && !e.sessions.includes(run)) e.sessions.push(run)
+  e.session_count = e.session_count ?? e.sessions.length
+  if (run && !e.sessions.includes(run)) {
+    e.sessions.push(run)
+    e.session_count += 1
+    if (e.sessions.length > 20) e.sessions = e.sessions.slice(-20)
+  }
   // THE TWO MECHANISMS, USED TOGETHER.
   //
   // The context says which work this is; the laserscore says exactly what was written
@@ -833,7 +891,12 @@ function judgeWork() {
     const known = ctx ? readContexts()[ctx] : null
     // Sessions BEFORE this one. A context met four times that never closed is the single
     // most useful thing history can say, and no per-run reading can ever say it.
-    const priorRuns = known ? (known.sessions ?? []).filter(s => s !== runId).length : 0
+    // From session_count, not the capped list: reading sessions.length would quietly stop
+    // counting past twenty and weaken `abandon` exactly on the longest-running contexts,
+    // which are the ones it exists to catch.
+    const _sess = known ? (known.sessions ?? []) : []
+    const _total = known ? (known.session_count ?? _sess.length) : 0
+    const priorRuns = Math.max(0, _total - (_sess.includes(runId) ? 1 : 0))
 
     // The two mechanisms read together. `repetition` is how many times the CURRENT
     // spelling has been written in this context, and `ceiling` is the closest this
