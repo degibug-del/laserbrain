@@ -769,6 +769,139 @@ function observedProgress() {
   } catch { return null }
 }
 
+  /* ── phronesis ──────────────────────────────────────────────────────────────────
+     Measurement and judgment are different acts, and this instrument only did the first.
+     Φ is a distance; it is silent on whether the journey is worth making. An agent can
+     hold a perfect goal score, report advancing honestly, sit at Φ=0.05 — and still be
+     eleven checks into work that has not moved the distance once. Every existing verdict
+     calls that "advancing", because by its own definition it is.
+
+     So this reads the same trace and asks the question Φ cannot: given what has actually
+     happened, keep going or stop? It is deliberately willing to say abandon. An
+     instrument that can only ever counsel continuing is not offering judgment, it is
+     offering encouragement, and the agent already supplies plenty of that itself.
+
+     Several scores rather than one, because a single number hides which thing went wrong:
+     a goal held faithfully through hard work and a goal quietly swapped for an easier one
+     can both sit at the same Φ, and the difference is the only thing worth knowing. */
+function judgeWork() {
+    const trace = drift.trace ?? []
+    const dh = drift.distHist ?? []
+    const steps = trace.length
+    if (!drift.ground || !steps) {
+      return ({
+        verdict: 'ungrounded',
+        because: 'No ground state — nothing has been measured yet.',
+        counsel: 'Call check_state with your goal first; judgment needs a trace to judge.',
+      })
+    }
+
+    const started = dh[0] ?? null, now = dh[dh.length - 1] ?? null
+    const closed = (started != null && now != null) ? started - now : 0
+    const pace = steps ? closed / steps : 0
+    const count = (r) => trace.filter(t => t.reason === r).length
+    const stalls = count('stalled'), goalDrifts = count('goal-drift')
+    const regrounds = count('reground'), oscillations = count('oscillating')
+
+    // Length of the trailing run in which distance never improved on its own best.
+    let flat = 0
+    for (let i = dh.length - 1; i > 0; i--) { if (dh[i] >= dh[i - 1]) flat++; else break }
+
+    const first = new Set(drift.firstGoal ?? [])
+    const cur = new Set(toWords(drift.ground.goal ?? ''))
+    let inter = 0; for (const x of cur) if (first.has(x)) inter++
+    const goalScore = first.size ? inter / (new Set([...cur, ...first]).size || 1) : 1
+
+    const ctx = contextId(drift.ground.goal ?? '')
+    const known = ctx ? readContexts()[ctx] : null
+    // Sessions BEFORE this one. A context met four times that never closed is the single
+    // most useful thing history can say, and no per-run reading can ever say it.
+    const priorRuns = known ? (known.sessions ?? []).filter(s => s !== runId).length : 0
+
+    const obs = observedProgress()
+    const scores = {
+      goal: Number(goalScore.toFixed(2)),
+      closure: started ? Number((closed / started).toFixed(2)) : (now === 0 ? 1 : 0),
+      pace: Number(pace.toFixed(2)),
+      evidence: anchored(),
+      recurrence: priorRuns,
+      drift: trace.length ? trace[trace.length - 1].phi : 0,
+    }
+
+    // Three checks before any hard verdict. Replaying the 141-run corpus, several
+    // two-check runs were handed 'narrow' and 'wrong-problem' on a trace with almost
+    // nothing in it. Judgment needs evidence; two readings is a rumour.
+    const judged = steps >= 3
+
+    let verdict, because, counsel
+    if (judged && steps >= 12 && closed <= 0) {
+      verdict = 'abandon'
+      because = `${steps} checks. Distance began at ${started} and stands at ${now} — it has never once improved. `
+        + `Nothing tried so far has moved this.`
+      counsel = 'Stop. Either the approach is wrong or the goal is not reachable as stated. '
+        + 'Say plainly what is blocking it rather than taking a thirteenth run at it.'
+    } else if (priorRuns >= 2 && closed <= 0) {
+      verdict = 'abandon'
+      because = `This context (${ctx}) has been opened in ${priorRuns} earlier sessions and closed in none. `
+        + `Best distance ever reached is ${known?.best_distance}; this run has closed ${closed}.`
+      counsel = 'A problem that resists three separate attempts is usually the wrong problem. '
+        + 'Change the approach or hand it back before spending another session.'
+    } else if (judged && goalDrifts >= 3 && goalDrifts > regrounds && pace <= 0) {
+      verdict = 'wrong-problem'
+      because = `The goal has failed its overlap check ${goalDrifts} times against only ${regrounds} legitimate re-grounds. `
+        + `The subject keeps moving while the ground stays put.`
+      counsel = 'You are not solving what you set out to solve. Either reset_task to the goal you '
+        + 'actually have now, or return to the original and finish it.'
+    } else if (oscillations > 0 && pace <= 0) {
+      // `pace <= 0` is load-bearing, and it was found by dogfooding rather than reasoning:
+      // this judgment fired on a run whose distance had gone 6→4→3→2 monotonically. The
+      // cycle detector reads the VERDICT sequence, which repeats naturally when a healthy
+      // run is re-grounded a few times, and a repeating verdict over falling distance is a
+      // rhythm, not a loop. Circling means coming back to the same place; a run measurably
+      // closer than it was has not come back anywhere.
+      verdict = 'wrong-problem'
+      because = `A repeating cycle was detected and the distance is not falling — you have returned to the same place after being told to return.`
+      counsel = 'Returning again will land you here a third time. Change the approach, not the position.'
+    } else if (now != null && now >= 6 && flat >= STALL_WINDOW) {
+      verdict = 'narrow'
+      because = `Distance has sat at ${dh.slice(-flat).join(', ')} for ${flat} checks without falling, and ${now} is still far from done.`
+      counsel = 'The goal is too large to close in one move. Name the smallest piece that would '
+        + 'genuinely reduce the distance, make that the goal, and reset_task to it.'
+    } else if (obs && obs.progress && obs.progress !== 'advancing' && pace <= 0) {
+      verdict = 'verify'
+      because = `The runtime trace reads ${obs.progress} over ${obs.steps} steps while distance has closed ${closed}.`
+      counsel = 'Your self-report and the observed trace disagree. Check something external — run it, '
+        + 'read the output — before reporting progress again.'
+    } else if (now != null && now <= 2 && closed > 0) {
+      verdict = 'finish'
+      because = `Distance is ${now}, down from ${started} over ${steps} checks.`
+      counsel = 'Close it out. Do not add scope, refactor, or polish — finish what was asked and stop.'
+    } else if (judged && stalls > 0 && pace <= 0 && now != null && now >= 4) {
+      // `now >= 4` came out of the corpus: this branch was telling runs sitting at distance
+      // 1 or 2 to break the goal into smaller pieces. At distance 1 you are nearly there and
+      // the counsel is simply wrong — narrowing a goal one step from done adds ceremony, not
+      // progress. Splitting is for work too large to close, which is a statement about the
+      // distance remaining, not about the stall.
+      verdict = 'narrow'
+      because = `${stalls} stall${stalls > 1 ? 's' : ''} recorded and net distance closed is ${closed} over ${steps} checks, still at ${now}.`
+      counsel = 'Motion without progress. Pick one concrete sub-result you can actually finish, and make that the goal.'
+    } else {
+      verdict = 'continue'
+      because = `Distance ${started} → ${now} over ${steps} checks (${pace.toFixed(2)}/check), goal held at ${scores.goal}.`
+      counsel = pace > 0
+        ? 'Working. Keep the goal fixed and keep going.'
+        : 'Holding ground but not closing yet. If the next two checks do not move the distance, narrow the goal.'
+    }
+
+    return ({
+      verdict, scores, because, counsel,
+      context: ctx,
+      seen_before: priorRuns > 0
+        ? { sessions: priorRuns, best_distance: known?.best_distance ?? null, checks: known?.checks ?? 0 }
+        : null,
+    })
+}
+
 async function call(name, args) {
   // Proxied to the Worker: reached, not reimplemented.
   const PROXIED = new Set(['check_dialogue', 'reset_dialogue', 'remember_self', 'resume_self',
@@ -905,128 +1038,7 @@ async function call(name, args) {
     m.role = r ? r.role : null
     return JSON.stringify({ ...v, modulation: m })
   }
-  /* ── phronesis ──────────────────────────────────────────────────────────────────
-     Measurement and judgment are different acts, and this instrument only did the first.
-     Φ is a distance; it is silent on whether the journey is worth making. An agent can
-     hold a perfect goal score, report advancing honestly, sit at Φ=0.05 — and still be
-     eleven checks into work that has not moved the distance once. Every existing verdict
-     calls that "advancing", because by its own definition it is.
-
-     So this reads the same trace and asks the question Φ cannot: given what has actually
-     happened, keep going or stop? It is deliberately willing to say abandon. An
-     instrument that can only ever counsel continuing is not offering judgment, it is
-     offering encouragement, and the agent already supplies plenty of that itself.
-
-     Several scores rather than one, because a single number hides which thing went wrong:
-     a goal held faithfully through hard work and a goal quietly swapped for an easier one
-     can both sit at the same Φ, and the difference is the only thing worth knowing. */
-  if (name === 'phronesis') {
-    const trace = drift.trace ?? []
-    const dh = drift.distHist ?? []
-    const steps = trace.length
-    if (!drift.ground || !steps) {
-      return JSON.stringify({
-        verdict: 'ungrounded',
-        because: 'No ground state — nothing has been measured yet.',
-        counsel: 'Call check_state with your goal first; judgment needs a trace to judge.',
-      })
-    }
-
-    const started = dh[0] ?? null, now = dh[dh.length - 1] ?? null
-    const closed = (started != null && now != null) ? started - now : 0
-    const pace = steps ? closed / steps : 0
-    const count = (r) => trace.filter(t => t.reason === r).length
-    const stalls = count('stalled'), goalDrifts = count('goal-drift')
-    const regrounds = count('reground'), oscillations = count('oscillating')
-
-    // Length of the trailing run in which distance never improved on its own best.
-    let flat = 0
-    for (let i = dh.length - 1; i > 0; i--) { if (dh[i] >= dh[i - 1]) flat++; else break }
-
-    const first = new Set(drift.firstGoal ?? [])
-    const cur = new Set(toWords(drift.ground.goal ?? ''))
-    let inter = 0; for (const x of cur) if (first.has(x)) inter++
-    const goalScore = first.size ? inter / (new Set([...cur, ...first]).size || 1) : 1
-
-    const ctx = contextId(drift.ground.goal ?? '')
-    const known = ctx ? readContexts()[ctx] : null
-    // Sessions BEFORE this one. A context met four times that never closed is the single
-    // most useful thing history can say, and no per-run reading can ever say it.
-    const priorRuns = known ? (known.sessions ?? []).filter(s => s !== runId).length : 0
-
-    const obs = observedProgress()
-    const scores = {
-      goal: Number(goalScore.toFixed(2)),
-      closure: started ? Number((closed / started).toFixed(2)) : (now === 0 ? 1 : 0),
-      pace: Number(pace.toFixed(2)),
-      evidence: anchored(),
-      recurrence: priorRuns,
-      drift: trace.length ? trace[trace.length - 1].phi : 0,
-    }
-
-    let verdict, because, counsel
-    if (steps >= 12 && closed <= 0) {
-      verdict = 'abandon'
-      because = `${steps} checks. Distance began at ${started} and stands at ${now} — it has never once improved. `
-        + `Nothing tried so far has moved this.`
-      counsel = 'Stop. Either the approach is wrong or the goal is not reachable as stated. '
-        + 'Say plainly what is blocking it rather than taking a thirteenth run at it.'
-    } else if (priorRuns >= 2 && closed <= 0) {
-      verdict = 'abandon'
-      because = `This context (${ctx}) has been opened in ${priorRuns} earlier sessions and closed in none. `
-        + `Best distance ever reached is ${known?.best_distance}; this run has closed ${closed}.`
-      counsel = 'A problem that resists three separate attempts is usually the wrong problem. '
-        + 'Change the approach or hand it back before spending another session.'
-    } else if (goalDrifts >= 3 && goalDrifts > regrounds) {
-      verdict = 'wrong-problem'
-      because = `The goal has failed its overlap check ${goalDrifts} times against only ${regrounds} legitimate re-grounds. `
-        + `The subject keeps moving while the ground stays put.`
-      counsel = 'You are not solving what you set out to solve. Either reset_task to the goal you '
-        + 'actually have now, or return to the original and finish it.'
-    } else if (oscillations > 0 && pace <= 0) {
-      // `pace <= 0` is load-bearing, and it was found by dogfooding rather than reasoning:
-      // this judgment fired on a run whose distance had gone 6→4→3→2 monotonically. The
-      // cycle detector reads the VERDICT sequence, which repeats naturally when a healthy
-      // run is re-grounded a few times, and a repeating verdict over falling distance is a
-      // rhythm, not a loop. Circling means coming back to the same place; a run measurably
-      // closer than it was has not come back anywhere.
-      verdict = 'wrong-problem'
-      because = `A repeating cycle was detected and the distance is not falling — you have returned to the same place after being told to return.`
-      counsel = 'Returning again will land you here a third time. Change the approach, not the position.'
-    } else if (now != null && now >= 6 && flat >= STALL_WINDOW) {
-      verdict = 'narrow'
-      because = `Distance has sat at ${dh.slice(-flat).join(', ')} for ${flat} checks without falling, and ${now} is still far from done.`
-      counsel = 'The goal is too large to close in one move. Name the smallest piece that would '
-        + 'genuinely reduce the distance, make that the goal, and reset_task to it.'
-    } else if (obs && obs.progress && obs.progress !== 'advancing' && pace <= 0) {
-      verdict = 'verify'
-      because = `The runtime trace reads ${obs.progress} over ${obs.steps} steps while distance has closed ${closed}.`
-      counsel = 'Your self-report and the observed trace disagree. Check something external — run it, '
-        + 'read the output — before reporting progress again.'
-    } else if (now != null && now <= 2 && closed > 0) {
-      verdict = 'finish'
-      because = `Distance is ${now}, down from ${started} over ${steps} checks.`
-      counsel = 'Close it out. Do not add scope, refactor, or polish — finish what was asked and stop.'
-    } else if (stalls > 0 && pace <= 0) {
-      verdict = 'narrow'
-      because = `${stalls} stall${stalls > 1 ? 's' : ''} recorded and net distance closed is ${closed} over ${steps} checks.`
-      counsel = 'Motion without progress. Pick one concrete sub-result you can actually finish, and make that the goal.'
-    } else {
-      verdict = 'continue'
-      because = `Distance ${started} → ${now} over ${steps} checks (${pace.toFixed(2)}/check), goal held at ${scores.goal}.`
-      counsel = pace > 0
-        ? 'Working. Keep the goal fixed and keep going.'
-        : 'Holding ground but not closing yet. If the next two checks do not move the distance, narrow the goal.'
-    }
-
-    return JSON.stringify({
-      verdict, scores, because, counsel,
-      context: ctx,
-      seen_before: priorRuns > 0
-        ? { sessions: priorRuns, best_distance: known?.best_distance ?? null, checks: known?.checks ?? 0 }
-        : null,
-    })
-  }
+  if (name === 'phronesis') return JSON.stringify(judgeWork())
   if (name === 'check_state') {
     const { goal, progress, distance, parent_goal } = args || {}
     const record = (drifting, reason, advice, phi = 0) => {
@@ -1103,8 +1115,28 @@ async function call(name, args) {
       // its bad moments cannot answer "did this ever work".
       const ctx = contextId(goal)
       rememberContext(ctx, goal, distance, reason, runId)
+      // laserbrain calls phronesis itself, rather than waiting to be asked.
+      //
+      // A tool the agent has to REMEMBER to call is a tool that does not run. Coverage on
+      // this machine sits near 24% with a gate interrupting every four steps, so a
+      // judgment available only on request would reach roughly a quarter of the moments it
+      // exists for — and never the ones that matter, because an agent deep in a loop is
+      // precisely the agent not thinking to ask whether it is in one.
+      //
+      // Attached only for the verdicts that change what to do next. `continue` and
+      // `finish` are the healthy majority (94% of the corpus after calibration) and a
+      // field that appears every step gets skimmed; one that appears when the work itself
+      // is in question is worth reading. Same reasoning as `contrast` above.
+      let judgment
+      try {
+        const j = judgeWork()
+        if (j && j.verdict && !['continue', 'finish', 'ungrounded'].includes(j.verdict)) {
+          judgment = { verdict: j.verdict, because: j.because, counsel: j.counsel }
+        }
+      } catch { /* judgment is an addition to the reading, never a precondition for it */ }
       return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
-        goal_score, context: ctx, anchored: anchored(), ...contrast, advice })
+        goal_score, context: ctx, anchored: anchored(), ...contrast,
+        ...(judgment ? { judgment } : {}), advice })
     }
     if (!goal || !String(goal).trim() || !PROGRESS.has(progress))
       return record(true, 'ungrammatical', 'You cannot spell a clear goal and a valid progress. Stop and return to ground.')
