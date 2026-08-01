@@ -58,6 +58,46 @@ const LINK_LOG = process.env.LASERBRAIN_LINK_LOG
   || (existsSync(join(LINK_DIR, 'tandem.jsonl')) && !existsSync(join(LINK_DIR, 'link.jsonl'))
         ? join(LINK_DIR, 'tandem.jsonl')
         : join(LINK_DIR, 'link.jsonl'))
+// ---- the label the corpus never had -----------------------------------------
+// drift-log.jsonl was built to answer "which are false alarms" — that is line 44 of
+// this file — and shipped without the one field that could answer it. 946 rows, 202
+// fires, no record of whether a single one was RIGHT. So every threshold in the
+// calibration has been set from how OFTEN a rule fires (a distribution) and never from
+// whether it fires on the right things (a detection rate). Bias without sensitivity.
+//
+// SEPARATE FILE, on purpose. drift-log.jsonl is append-only and a label arrives after
+// the row it describes; rewriting past rows to attach one would make the corpus mutable
+// and every historical analysis irreproducible. Joined on (run, step) instead.
+//
+// NEVER FED BACK. A label changes no live verdict, ever — same posture the grammar
+// already takes for `anchored` ("Reported, never folded into Φ"). The reason is sharper
+// here: an agent that could mark `abandon` false and carry on has moved its own ground
+// by another route. `by` records who said it, so a self-marked label stays
+// distinguishable from an independent one rather than both reading as truth.
+const OUTCOMES_LOG = process.env.LASERBRAIN_OUTCOMES_LOG
+  || join(homedir(), '.config', 'laserbrain', 'verdict-outcomes.jsonl')
+// Reading the corpus back, so a fire can be judged AFTER the run that produced it has
+// ended. Until this existed a verdict was scoreable only while its own run was still in
+// memory, which is close to never: the moment worth judging a fire is usually after you
+// find out whether the work it interrupted went anywhere. 950 fires had accumulated
+// against zero labels for exactly that reason.
+function _readJsonl(path) {
+  try {
+    return readFileSync(path, 'utf8').split('\n').filter(Boolean).map((l) => {
+      try { return JSON.parse(l) } catch { return null }
+    }).filter(Boolean)
+  } catch { return [] }   // no corpus yet is a state, not an error
+}
+const corpusFires = () => _readJsonl(DRIFT_LOG)
+const corpusLabels = () => _readJsonl(OUTCOMES_LOG)
+const _key = (r) => `${r.run}#${r.step}`
+
+function logOutcome(entry) {
+  return mkdir(dirname(OUTCOMES_LOG), { recursive: true })
+    .then(() => appendFile(OUTCOMES_LOG, JSON.stringify(entry) + '\n'))
+    .then(() => entry)
+    .catch((e) => ({ error: String(e.message || e), ...entry }))
+}
 let runId = null // groups a task's drift fires; set when ground is set
 function logDrift(entry) {
   mkdir(dirname(DRIFT_LOG), { recursive: true })
@@ -180,6 +220,48 @@ const PROGRESS = new Set(['advancing', 'stuck', 'circling'])
 // no policing.
 const _STOP = new Set(_ok(GRAMMAR.normalizer?.stopwords, _BUILTIN.stopwords))
 const _STEM = new RegExp(_ok(GRAMMAR.normalizer?.stem_pattern, _BUILTIN.stem_pattern))
+// ── the ceiling: was this step CLAIMED or REPORTED? ───────────────────────────
+//
+// The second reading of the same thing `anchored` reads. `anchored` asks whether observed
+// events back the claim; this asks whether the agent was claiming or reporting at all,
+// which is in the words and not the events. Nisbett & Wilson (1977) — people report causes
+// for their own behaviour confidently and wrongly — and the browser instrument at
+// /field/ceiling has been drawing the same line for people since before this existed.
+//
+// The lists come from the grammar, which is what makes this a SECOND implementation of one
+// list rather than a second list. Built-in floor for the same reason the stopwords have
+// one: this server must run with no grammar.json at all, and a fallback that degrades to
+// an empty pattern would match nothing while looking like it worked.
+const _BUILTIN_CEILING = {
+  cause: ['because', 'should work', 'should be', 'must be', 'the reason', 'probably',
+          'i think', 'clearly', 'so that', 'which means'],
+  observation: ['exit 0', 'tests passed', 'test failed', 'returned', 'i ran', 'i read',
+                'confirmed', 'verified', 'output was'],
+}
+const _CEIL_CAUSE = _ok(GRAMMAR.ceiling_patterns?.cause, _BUILTIN_CEILING.cause)
+const _CEIL_OBS = _ok(GRAMMAR.ceiling_patterns?.observation, _BUILTIN_CEILING.observation)
+const _CEIL_RE = new RegExp(
+  `\\b(?:(${_CEIL_CAUSE.join('|')})|(${_CEIL_OBS.join('|')}))\\b`, 'gi')
+
+// Pure. Same text in, same counts out — the Python twin is laserbrain/ceiling.py:mark.
+// `grounded` is null when nothing matched and 0 when everything matched was a claim.
+// Those are different findings and both are falsy, so nothing here may test it for
+// truthiness: null means the marker read nothing, and reporting 0 for that would be a
+// finding nobody measured.
+function markCeiling(...texts) {
+  const joined = texts.filter(Boolean).map(String).join(' ')
+  if (!joined.trim()) return null
+  let cause = 0, obs = 0
+  const hits = []
+  for (const m of joined.matchAll(_CEIL_RE)) {
+    if (m[1] !== undefined) { cause++; hits.push(['cause', m[0].toLowerCase()]) }
+    else { obs++; hits.push(['observation', m[0].toLowerCase()]) }
+  }
+  const total = cause + obs
+  if (!total) return null
+  return { cause, observation: obs, grounded: Number((obs / total).toFixed(2)), hits }
+}
+
 const toWords = (s) => {
   const out = new Set()
   for (const w of String(s || '').toLowerCase().match(/[a-z0-9']+/g) || []) {
@@ -451,6 +533,43 @@ const TOOLS = [
       'Which agent this MCP process is (claude|grok|…), which hub it shares, and where the link log lives. ' +
       'Claude and Grok share the same laserfield hub and the same link.jsonl on this machine.',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'review_verdicts',
+    description:
+      'What is in the drift corpus and what nobody has judged yet. Lists past fires with '
+      + 'their run id and step so mark_verdict can label them after the fact \u2014 which is '
+      + 'when a fire can actually be judged, since you usually learn whether an interruption '
+      + 'was worth it only after the work it interrupted went somewhere. Shows the unlabelled '
+      + 'by default; pass all:true to include the ones already judged.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'How many to return, newest first. Default 12.' },
+        reason: { type: 'string', description: 'Only this verdict, e.g. goal-drift, stalled, oscillating.' },
+        run: { type: 'string', description: 'Only this run.' },
+        all: { type: 'boolean', description: 'Include fires that already carry a label.' },
+      },
+    },
+  },
+  {
+    name: 'mark_verdict',
+    description:
+      'Say whether a drift verdict you were just given was RIGHT. This is the only way the ' +
+      'instrument learns it was wrong: a fire that nobody labels is indistinguishable from a ' +
+      'fire that caught something. outcome: useful (it caught something real) | false (the work ' +
+      'was fine) | unclear. Marks the latest reading unless you name a step. Recorded for ' +
+      'calibration only \u2014 it never changes a live verdict, and marking one false does not ' +
+      'lift a refusal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        outcome: { type: 'string', description: 'useful | false | unclear' },
+        why: { type: 'string', description: 'One line: what actually happened. This is the part a later reader needs.' },
+        step: { type: 'number', description: 'Which step to label. Defaults to the most recent reading in this run.' },
+      },
+      required: ['outcome'],
+    },
   },
   {
     name: 'link_write',
@@ -1059,6 +1178,139 @@ async function call(name, args) {
       shared: 'Claude and Grok both use this hub for weather and this link_log for handoffs on the same machine.',
     })
   }
+  if (name === 'review_verdicts') {
+    const fires = corpusFires()
+    const labelled = new Set(corpusLabels().map(_key))
+    const limit = Math.min(Math.max(Number(args?.limit) || 12, 1), 100)
+    const wantReason = String(args?.reason || '').trim()
+    const wantRun = String(args?.run || '').trim()
+    const includeAll = args?.all === true
+
+    // Only the FIRES are worth judging. Every step is logged now, and a label on a
+    // reading that never interrupted anything says nothing about whether the instrument
+    // was right to interrupt.
+    let rows = fires.filter((r) => r.drifting)
+    if (wantReason) rows = rows.filter((r) => r.reason === wantReason)
+    if (wantRun) rows = rows.filter((r) => r.run === wantRun)
+    const unlabelled = rows.filter((r) => !labelled.has(_key(r)))
+    const shown = (includeAll ? rows : unlabelled).slice(-limit).reverse()
+
+    const byReason = {}
+    for (const r of unlabelled) byReason[r.reason] = (byReason[r.reason] || 0) + 1
+
+    return JSON.stringify({
+      fires: rows.length,
+      unlabelled: unlabelled.length,
+      labelled: rows.length - unlabelled.length,
+      unlabelled_by_reason: byReason,
+      showing: shown.map((r) => ({
+        run: r.run, step: r.step, reason: r.reason, phi: r.phi,
+        agent: r.agent ?? null, ts: r.ts,
+        goal: typeof r.goal === 'string' ? r.goal.slice(0, 72) : null,
+        labelled: labelled.has(_key(r)),
+      })),
+      next: 'mark_verdict with run + step + outcome (useful | false | unclear) and a one-line why.',
+    })
+  }
+
+  if (name === 'mark_verdict') {
+    const ALLOWED = new Set(['useful', 'false', 'unclear'])
+    const outcome = String(args?.outcome || '').toLowerCase().trim()
+    if (!ALLOWED.has(outcome)) {
+      throw new Error(`mark_verdict outcome must be one of: ${[...ALLOWED].join(', ')}`)
+    }
+    // A run id names a PAST run in the corpus; without one this is the live trace, which
+    // is what it always did.
+    const askedRun = String(args?.run || '').trim()
+    let target                 // { run, step, reason, phi, agent, goal }
+
+    if (askedRun) {
+      const fires = corpusFires().filter((r) => r.run === askedRun)
+      if (!fires.length) {
+        const recent = [...new Set(corpusFires().slice(-200).map((r) => r.run))].slice(-6)
+        return JSON.stringify({
+          error: 'no such run',
+          detail: `nothing in the corpus for run ${askedRun}. Call review_verdicts to see what is there.`,
+          recent_runs: recent,
+        })
+      }
+      const step = Number.isFinite(Number(args?.step)) ? Number(args.step) : null
+      if (step === null) {
+        return JSON.stringify({
+          error: 'step required',
+          detail: `run ${askedRun} has ${fires.length} recorded step(s); naming a run without a step would label all or none of them.`,
+          steps: fires.map((r) => r.step),
+        })
+      }
+      const hit = fires.find((r) => Number(r.step) === step)
+      if (!hit) {
+        return JSON.stringify({
+          error: 'no such step',
+          detail: `run ${askedRun} has steps ${fires.map((r) => r.step).join(', ')}; ${step} is not one of them`,
+        })
+      }
+      // `agent` is whoever PRODUCED the fire, `by` is whoever is judging it. They were
+      // always the same value until now, which made the distinction look decorative. A
+      // label on someone else's run is the stronger evidence, and the analysis can only
+      // weight it that way if the two are recorded separately.
+      target = { run: hit.run, step, reason: hit.reason, phi: hit.phi,
+                 agent: hit.agent ?? null, goal: hit.goal ?? null }
+    } else {
+      const trace = drift.trace ?? []
+      if (!trace.length) {
+        return JSON.stringify({
+          error: 'nothing to mark',
+          detail: 'No reading has been taken in this run — call check_state first, or pass a run id to label a past one. A label with no verdict under it would join to nothing.',
+        })
+      }
+      const last = trace[trace.length - 1]
+      const step = Number.isFinite(Number(args?.step)) ? Number(args.step) : last.step
+      const marked = trace.find((t) => t.step === step)
+      if (!marked) {
+        return JSON.stringify({
+          error: 'no such step',
+          detail: `this run has steps 1-${last.step}; ${step} is not one of them`,
+        })
+      }
+      target = { run: runId, step, reason: marked.reason, phi: marked.phi,
+                 agent: AGENT, goal: null }
+    }
+
+    const already = corpusLabels().find((l) => _key(l) === _key(target))
+    const row = await logOutcome({
+      ts: new Date().toISOString(),
+      run: target.run,
+      agent: target.agent,
+      step: target.step,
+      reason: target.reason,
+      phi: target.phi,
+      outcome,
+      why: String(args?.why || '').trim() || null,
+      // WHO said so. A verdict marked false by the agent it was about is a weaker
+      // record than one marked by anything else, and the analysis has to be able to
+      // tell them apart rather than averaging them together.
+      by: AGENT,
+      // True when this fire is being judged after its run ended — the case the corpus
+      // was built for and could not record until now.
+      retroactive: Boolean(askedRun),
+    })
+    return JSON.stringify({
+      recorded: !row.error,
+      ...(row.error ? { error: row.error } : {}),
+      run: target.run,
+      step: target.step,
+      reason: target.reason,
+      outcome,
+      retroactive: Boolean(askedRun),
+      // Re-labelling is allowed — a later judgement is usually the better one — but it is
+      // never silent, because a changed label with no trace of the change is a corpus
+      // that quietly disagrees with its own history.
+      ...(already ? { replaces: { outcome: already.outcome, ts: already.ts } } : {}),
+      note: 'Recorded for calibration. This does not change the verdict or lift anything it blocked.',
+      log: OUTCOMES_LOG,
+    })
+  }
+
   if (name === 'link_write') {
     const kind = String(args?.kind || 'note').toLowerCase()
     const text = String(args?.text || '').trim()
@@ -1147,8 +1399,8 @@ async function call(name, args) {
   }
   if (name === 'phronesis') return JSON.stringify(judgeWork())
   if (name === 'check_state') {
-    const { goal, progress, distance, parent_goal } = args || {}
-    const record = (drifting, reason, advice, phi = 0) => {
+    const { goal, progress, distance, parent_goal, doing, next, blocked } = args || {}
+    const record = (drifting, reason, advice, phi = 0, extra = {}) => {
       const step = drift.trace.length + 1
       drift.trace.push({ step, reason, phi: Number(phi.toFixed(2)) })
       // The trace records the READING; the cycle is a fact about the sequence, so the
@@ -1198,9 +1450,27 @@ async function call(name, args) {
       // discarded. A verdict about a sequence cannot be validated against a log that keeps
       // only the interesting moments. `drifting` stays a field, so the old view is one
       // filter away and nothing that read this file has lost anything.
+      // WHICH INSTRUMENT WROTE THIS ROW.
+      //
+      // The corpus already spans two logging eras and could not say so. Until 2026-07-28
+      // only drift moments were logged, so every row was a fire and `drifting` did not
+      // exist as a field; afterwards every step is logged and the field carries the
+      // answer. Pooling the two is not a small error — a rate computed across them has a
+      // denominator from one policy and a numerator from the other, and nothing in the
+      // data says to stop. It produced three wrong statistics in one sitting: a fire rate
+      // of 22% that is really 24.8%, fifty rows read as "an interrupt verdict that did
+      // not interrupt" when the field simply had not been invented, and an agent
+      // comparison quoted at p=0.07 whose entire sample predates the era it was compared
+      // against.
+      //
+      // A version per row makes the seam visible. grammar_version because a schema change
+      // is what moves the meaning of a row, and sdk so a behaviour change with no schema
+      // change is still attributable.
       logDrift({ ts: new Date().toISOString(), run: runId, agent: AGENT, step, reason, drifting,
         phi: Number(phi.toFixed(2)), laserscore: score, goal, progress, distance: asDist(distance),
-        dist_recent: drift.distHist.slice(-4) })
+        dist_recent: drift.distHist.slice(-4),
+        grammar_version: GRAMMAR.laserbrain_grammar ?? null,
+        logged_by: 'lasermind/mcp-server.mjs', ...extra })
       const obs = observedProgress()
       // Reported only when it DISAGREES. A field that always appears gets skimmed; one
       // that appears when the trace contradicts the claim is worth reading.
@@ -1241,8 +1511,12 @@ async function call(name, args) {
           judgment = { verdict: j.verdict, because: j.because, counsel: j.counsel }
         }
       } catch { /* judgment is an addition to the reading, never a precondition for it */ }
+      // Present only when the agent actually spelled a carried field AND a phrase matched.
+      // An absent key means "not measured", which is different from a low score and must
+      // not be reported as one — the same rule `contrast` and `judgment` follow above.
+      const claims = markCeiling(doing, next, blocked)
       return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
-        goal_score, context: ctx,
+        goal_score, context: ctx, ...extra, ...(claims ? { claims } : {}),
         // Only once it means something. Writing a state once is the normal case and a 1
         // here would be noise on every healthy step.
         ...(repetition > 1 ? { repetition } : {}),
@@ -1300,6 +1574,7 @@ async function call(name, args) {
       //
       // Strictly additive: a call without parent_goal takes the identical path it took
       // before, so the frozen instrument stays frozen and the old corpus stays comparable.
+      let rejectedParent = null
       if (parent_goal && String(parent_goal).trim()) {
         const p = toWords(parent_goal)
         let pin = 0; for (const x of p) if (first.has(x)) pin++
@@ -1310,6 +1585,15 @@ async function call(name, args) {
             `(parent overlap ${panchor.toFixed(2)}). Not drift — but the parent is what you owe.`,
             phi)
         }
+        // A DECLARATION THAT FALLS SHORT MUST NOT VANISH. Below the floor this dropped
+        // straight through to goal-drift, whose advice then said "If this is a sub-task,
+        // pass parent_goal" — to an agent that had just passed one. All 3 parents ever
+        // declared in this corpus were rejected exactly here (0.03, 0.04, 0.17 against a
+        // 0.30 floor) and none was ever mentioned, which is why the field looks broken and
+        // adoption sits at 0.2%. The THRESHOLD is deliberately not touched: three rejected
+        // declarations cannot choose a replacement measure, and making the rejection
+        // legible is what generates the data to settle it.
+        rejectedParent = panchor
       }
       // Name the remedy, not just the fault. There are three ways a goal legitimately
       // stops matching ground, and the verdict used to describe none of them:
@@ -1320,6 +1604,15 @@ async function call(name, args) {
       // fifteen times between them and returned to ground each time, because the advice
       // said 'you are solving something else' and offered no other reading. A verdict
       // that names one cause teaches the agent that cause is the only one.
+      if (rejectedParent !== null) {
+        // Never tell an agent to do the thing it just did.
+        return record(true, 'goal-drift', `Your goal no longer matches the one you started with `
+          + `(overlap ${anchor.toFixed(2)}). You DID declare a parent, and it was measured at `
+          + `${rejectedParent.toFixed(2)} against your ground — below the ${GOAL_MIN.toFixed(2)} `
+          + `floor, so this reads as drift rather than an excursion. Either the parent is not the `
+          + `goal this serves, or it shares too little wording with it to be recognised. `
+          + `If the user redirected you, call reset_task.`, phi, { parent_overlap: Number(rejectedParent.toFixed(2)) })
+      }
       return record(true, 'goal-drift', `Your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). `
         + `If the user redirected you, call reset_task. If this is a sub-task, pass parent_goal. `
         + `Otherwise you are solving something else — return.`, phi)
