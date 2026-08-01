@@ -16,7 +16,7 @@
  * reflecting after the room is empty is worse than a blank one.
  *
  * Speaking back is deliberately constrained to the four-group vocabulary the
- * field accepts — the same list the laserbrainclaude skill uses. A tool that
+ * field accepts — the same list the field skill uses. A tool that
  * let any string through would let the model drift out of the field's language
  * without noticing.
  */
@@ -32,9 +32,9 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HUB = process.env.LASERBRAIN_HUB || 'https://phronesis.world/api/laserbrain'
-// Which mind is holding this MCP process. Claude and Grok both speak into the
+// Which mind is holding this MCP process. Every configured agent speaks into the
 // same field; the link log is how they share *data* about what they did there.
-// Set LASERBRAIN_AGENT=claude|grok in each client's MCP env.
+// Set LASERBRAIN_AGENT=<name> in each client's MCP env.
 const AGENT = String(process.env.LASERBRAIN_AGENT || 'unknown').toLowerCase()
 
 // ---- dogfood: a LOW-DATA drift log ------------------------------------------
@@ -45,7 +45,7 @@ const AGENT = String(process.env.LASERBRAIN_AGENT || 'unknown').toLowerCase()
 // capture as we learn. Path override: LASERBRAIN_DRIFT_LOG. Always local and
 // fire-and-forget, so it can never delay or alter the check itself.
 const DRIFT_LOG = process.env.LASERBRAIN_DRIFT_LOG || join(homedir(), '.config', 'laserbrain', 'drift-log.jsonl')
-// Shared Claude↔Grok data plane. Same file for every agent on this machine.
+// Shared cross-agent data plane. Same file for every agent on this machine.
 // Path override: LASERBRAIN_LINK_LOG.
 // Renamed from tandem 2026-07-27. Four files resolve this path independently — this one,
 // link.py, waves.py and lb_gate.py — and they must land on the same file. If they do not,
@@ -509,7 +509,7 @@ const TOOLS = [
     description:
       'Speak eight words into the shared live field and return its reply. Words must come from the ' +
       'Laserbrain vocabulary (call field_vocabulary to see it). Read the field first and ' +
-      'choose words that match its physical state. Claude and Grok share this field; the speak is ' +
+      'choose words that match its physical state. Every agent on this machine shares this field; the speak is ' +
       'also written to the link log so the other agent can see it.',
     inputSchema: {
       type: 'object',
@@ -530,8 +530,8 @@ const TOOLS = [
   {
     name: 'link_whoami',
     description:
-      'Which agent this MCP process is (claude|grok|…), which hub it shares, and where the link log lives. ' +
-      'Claude and Grok share the same laserfield hub and the same link.jsonl on this machine.',
+      'Which agent this MCP process is, which hub it shares, and where the link log lives. ' +
+      'Every agent configured on this machine shares the same laserfield hub and the same link.jsonl.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -600,7 +600,7 @@ const TOOLS = [
   {
     name: 'link_read',
     description:
-      'Read recent entries from the shared Claude↔Grok link log (field speaks + handoffs). ' +
+      'Read recent entries from the shared cross-agent link log (field speaks + handoffs). ' +
       'Call at session start and when picking up work from the other agent.',
     inputSchema: {
       type: 'object',
@@ -1175,7 +1175,7 @@ async function call(name, args) {
       hub: HUB,
       link_log: LINK_LOG,
       drift_log: DRIFT_LOG,
-      shared: 'Claude and Grok both use this hub for weather and this link_log for handoffs on the same machine.',
+      shared: 'Every agent on this machine uses this hub for weather and this link_log for handoffs.',
     })
   }
   if (name === 'review_verdicts') {
@@ -1432,7 +1432,7 @@ async function call(name, args) {
       // it was a true catch or a false alarm.
       //
       // `agent` added 2026-07-25. Without it the corpus was unattributable: 26 verdicts
-      // across 15 runs with no way to tell Claude's from Grok's, because the run uuids
+      // across 15 runs with no way to tell one agent's from another's, because the run uuids
       // matched no session file. "Do two agents drift differently under one instrument"
       // is the cheapest real study this project has and it was unanswerable for one
       // missing field. AGENT is already read from LASERBRAIN_AGENT at the top — it
