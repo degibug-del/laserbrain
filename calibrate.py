@@ -3,7 +3,7 @@
 
 WHY THIS CAN EXIST NOW. Until 2026-07-24 the instrument's numbers were six literals and
 there was no way to ask whether they were the right ones — no recorded sessions, and no
-object to vary. `Calibration` made them variable and the Claude Code hook started
+object to vary. `Calibration` made them variable and a host hook started
 recording real runs, including what each check was GIVEN. Together those make the
 question empirical for the first time.
 

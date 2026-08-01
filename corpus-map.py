@@ -62,11 +62,20 @@ vs = collections.Counter(r.get('grammar_version') for r in rows if r.get('gramma
 print(f'  version-stamped{sum(vs.values()):>5} readings   {dict(vs) or "none"}')
 
 print(f'\n{bar}\n  LABELS - who said so\n{bar}')
-STRENGTH = {'rule:': 'reproducible; wrong the same way every time',
-            'claude': 'SELF-MARKED - the agent grading the instrument that judged it',
-            'grok': 'self-marked'}
+# Strength is DERIVED, not looked up from a list of agent names. The list was
+# ['claude', 'grok'] — real values that had to match the corpus, so renaming them to
+# neutral fixtures silently reclassified every self-marked label as independent. The
+# distinction was never about which agent it was: a label is self-marked when `by` equals
+# the `agent` that produced the row, whoever they are.
+_self = {l.get('by') for l in labels
+         if l.get('by') and l.get('agent') and l['by'] == l['agent']}
 for src, n in collections.Counter(l.get('by') for l in labels).most_common():
-    note = next((v for k, v in STRENGTH.items() if str(src).startswith(k)), 'independent')
+    if str(src).startswith('rule:'):
+        note = 'reproducible; wrong the same way every time'
+    elif src in _self:
+        note = 'SELF-MARKED - the agent grading the instrument that judged it'
+    else:
+        note = 'independent'
     print(f'  {str(src):<30}{n:>5}   {note}')
 
 fire_lab = {k: v for k, v in lab.items() if k in firekeys}
@@ -96,9 +105,20 @@ if oc['unclear']:
     print('              the data separates working from wandering.')
 
 print(f'\n{bar}\n  WHAT IT CANNOT ANSWER\n{bar}')
-print('  d-prime     not computable, now or ever, from this corpus. Sensitivity needs')
-print('              labels on the steps that did NOT fire, and review_verdicts offers')
-print('              only fires. Half a detection matrix, said as half.')
+# This said "not computable, now or ever, from this corpus" until 2026-08-01. The claim was
+# right about the data and wrong about the word "ever": what blocked sensitivity was a
+# missing FIELD, not a property of the world. Catches lived in the session file, readings
+# in the drift log, and the two counted steps independently with no shared key, so a catch
+# could not name the reading that was live when it happened. check_state now returns
+# (run, step) and both sides record it — see sensitivity.py. Rows written before that date
+# still cannot be joined, which is why the split below is by era rather than a flat count.
+print(f'  d-prime     computable from 2026-08-01 forward, not before. The join (run, step)')
+print(f'              landed that day; catches recorded earlier carry no reading to attach')
+print(f'              to and are counted as unjoinable rather than as misses. Run')
+print(f'              sensitivity.py — it withholds the number until n supports it.')
+print('              Even then it measures agreement with a non-zero exit inside a window,')
+print('              which is a floor on the miss rate, not the true sensitivity: an agent')
+print('              confidently building the wrong thing produces no catch at all.')
 par = [r for r in rows if isinstance(r.get('laserscore'), str) and '⊂' in r['laserscore']]
 exc = sum(1 for r in rows if r.get('reason') == 'excursion')
 print(f'  excursions  parent_goal spelled in {len(par)} of {len(rows)} readings '

@@ -30,7 +30,9 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / 'laserbrain-sdk'))
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import laserbrain as lb                                              # noqa: E402
+from server_probe import Server                                      # noqa: E402
 
 SERVER = pathlib.Path(__file__).parent / 'mcp-server.mjs'
 ok = True
@@ -45,16 +47,27 @@ def show(name, passed, detail=''):
 src = SERVER.read_text()
 
 # ── the three numbers ───────────────────────────────────────────────────────
+#
+# Read from the RUNNING server, not from its source. This used to match
+# `^const GOAL_MIN = ([\d.]+)$`, which held until the constants moved from inline literals
+# to `_CAL.goal_min ?? 0.30` — config with a fallback. After that the regex found nothing
+# and the test reported "not found — is it still inline?" on all three, then stayed red.
+#
+# The failure mode that matters is the one it would have had if it HAD still matched: it
+# would have asserted the FALLBACK while the server ran a different number from
+# grammar.json, and reported parity that did not exist. Source is where a value is written;
+# the grammar the server publishes is the value it is using.
 cal = lb.PUBLISHED
-for const, attr in (('GOAL_MIN', 'goal_min'),
-                    ('SELF_REPORT_MIN', 'self_report_min'),
-                    ('STALL_WINDOW', 'stall_window')):
-    m = re.search(rf'^const {const} = ([\d.]+)$', src, re.M)
-    if not m:
-        show(f'server declares {const}', False, 'not found — is it still inline?')
+with Server() as srv:
+    server_cal = srv.calibration()
+for key, attr in (('goal_min', 'goal_min'),
+                  ('self_report_min', 'self_report_min'),
+                  ('stall_window', 'stall_window')):
+    if key not in server_cal:
+        show(f'server publishes {key}', False, f'absent from drift_grammar.calibration')
         continue
-    server_val, sdk_val = float(m.group(1)), float(getattr(cal, attr))
-    show(f'{const} agrees', server_val == sdk_val,
+    server_val, sdk_val = float(server_cal[key]), float(getattr(cal, attr))
+    show(f'{key} agrees', server_val == sdk_val,
          f'server {server_val} vs sdk {sdk_val}')
 
 # ── and that they are the numbers the site publishes ────────────────────────

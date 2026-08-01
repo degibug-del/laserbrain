@@ -23,7 +23,9 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / 'laserbrain-sdk'))
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from laserbrain import laserscore                                   # noqa: E402
+from server_probe import Server                                     # noqa: E402
 
 ok = True
 
@@ -53,33 +55,17 @@ CASES = [
     ('refactor the particle renderer', 'advancing', 0, '   '),  # blank parent = no parent
 ]
 
-SERVER = pathlib.Path(__file__).parent / 'mcp-server.mjs'
-js = f'''
-import {{ readFileSync }} from 'node:fs'
-const src = readFileSync({json.dumps(str(SERVER))}, 'utf8')
-const words = src.match(/const _STOP = new Set\\(\\[[\\s\\S]*?\\n\\}}/)
-const dist  = src.match(/const asDist = .*/)
-// The renderer enforces the grammar's precondition, so it needs the progress enum in
-// scope. Extracted rather than restated: a second copy of the enum in this test would be
-// one more thing that can drift from the server, which is what the test exists to stop.
-const prog  = src.match(/const PROGRESS = new Set\\(\\[.*?\\]\\)/)
-const score = src.match(/const laserscore = \\(s, parent\\) => \\{{[\\s\\S]*?\\n\\}}/)
-if (!words) {{ console.error('could not extract toWords'); process.exit(2) }}
-if (!dist)  {{ console.error('could not extract asDist');  process.exit(2) }}
-if (!prog)  {{ console.error('could not extract PROGRESS'); process.exit(2) }}
-if (!score) {{ console.error('could not extract laserscore'); process.exit(2) }}
-const fn = new Function(words[0] + '\\n' + dist[0] + '\\n' + prog[0] + '\\n' + score[0] + '; return laserscore;')()
-const cases = {json.dumps(CASES)}
-console.log(JSON.stringify(cases.map(([g, p, d, par]) =>
-  fn({{ goal: g, progress: p, distance: d }}, par))))
-'''
-res = subprocess.run(['node', '--input-type=module', '-e', js],
-                     capture_output=True, text=True)
-if res.returncode != 0:
-    print('  ✗ could not run the server renderer:', res.stderr.strip()[:300])
-    raise SystemExit(1)
-
-server_out = json.loads(res.stdout)
+# HOW THE SERVER SIDE IS READ (changed 2026-08-01)
+#
+# This used to extract four fragments — toWords, asDist, PROGRESS, laserscore — out of
+# mcp-server.mjs with regexes and eval them via `new Function`. Inserting a function
+# between `_STOP` and `toWords` broke the first match; the guard fired, the test exited 2,
+# and it stayed red for days without guarding anything. Four regexes is four things that
+# break when code moves around. The running server is one thing that does not, and it is
+# what agents actually talk to.
+with Server() as srv:
+    server_out = [srv.laserscore(g, p, d, par) for g, p, d, par in CASES]
+    check_required = (srv.tool_schema('check_state') or {}).get('required') or []
 
 for (goal, progress, d, parent), got in zip(CASES, server_out):
     want = laserscore(goal, progress, d, parent)
@@ -112,9 +98,13 @@ show('token order is canonical, not input order',
 # The SDK renders 'd?' when distance is unknown; the server coerces a missing distance to
 # 5 via asDist. Those would disagree — so the server must never see one. It doesn't: the
 # tool schema marks distance required. This asserts that guard rather than assuming it.
-server_src = SERVER.read_text()
+#
+# Read from tools/list, not from the source. The old form grepped the file for the literal
+# `required: ['goal', 'progress', 'distance']`, which passes on a commented-out line and
+# fails on a reformat that changes nothing. tools/list is what a host actually reads to
+# decide what it may send, so it is the only version of this claim worth making.
 show("the server's schema requires distance, so 'd?' cannot arise there",
-     "required: ['goal', 'progress', 'distance']" in server_src)
+     set(check_required) >= {'goal', 'progress', 'distance'}, str(check_required))
 
 # ── and the grammar has to document what it produces ────────────────────────
 grammar = json.loads((pathlib.Path(__file__).parent / 'grammar.json').read_text())

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""recover_corpus.py — rebuild the dogfood corpus from a Claude Code transcript.
+"""recover_corpus.py — rebuild the dogfood corpus from a host transcript.
 
 WHY THIS EXISTS. lb_coverage.py's reset_task branch wipes the session record instead of
 archiving it, and the design instructs an agent to reset on every genuinely new task. So a

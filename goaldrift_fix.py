@@ -3,7 +3,7 @@
 
 Diego, 2026-07-25: "fix goal-drift so it doesn't fire on user redirection."
 
-The detector lives in laserbrain-sdk/laserbrain/observe.py, which Grok holds in the open
+The detector lives in laserbrain-sdk/laserbrain/observe.py, which a host holds in the open
 wave, so this does not edit it. It does the part that has to happen first anyway: decide
 WHICH rule, on evidence, against the 24 real goal-drift fires recovered from the
 transcript — 22 of which landed on the first check after Diego spoke.
@@ -23,7 +23,7 @@ CANDIDATE A — "a clean jump from a healthy state is a re-ground."
 CANDIDATE B — "the first check after the user speaks is a re-ground."
     Suppress goal-drift on the first check_state following a UserPromptSubmit. Directly
     models the thing being fixed, but the SDK cannot see user turns; it needs the hook to
-    set a flag, which means a change in lb_coverage.py (also Grok's) and a wire between
+    set a flag, which means a change in lb_coverage.py (also one host's) and a wire between
     them. More plumbing, more exact.
 
 Both are measured here for suppression AND for what they would cost.

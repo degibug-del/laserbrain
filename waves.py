@@ -7,7 +7,7 @@ claim disjoint scope, check the disjointness BEFORE anyone edits, close.
 WHAT A WAVE IS FOR. Continuous concurrent editing has an N² conflict surface — every
 agent must hold every other in mind, always, and nobody can see what is in flight. Two
 agents nearly got away with it on 2026-07-25 and still produced two collisions: a merged
-session file, and a silent edit into /locus while Grok was building there. A wave makes it
+session file, and a silent edit into /locus while a host was building there. A wave makes it
 N: everyone declares up front, overlap is caught before work rather than discovered in a
 merge, and the interval has a boundary.
 
@@ -23,9 +23,9 @@ is not a mutex — both are lines in the shared log. Nothing is shared and mutab
 the one rule every failure so far has broken.
 
     python3 waves.py status
-    python3 waves.py open  "the wave's one goal" --surf claude
-    python3 waves.py claim --agent claude --paths lasermind/ laserbrain-sdk/
-    python3 waves.py close --agent claude --summary "what changed"
+    python3 waves.py open  "the wave's one goal" --surf agent-a
+    python3 waves.py claim --agent agent-a --paths lasermind/ laserbrain-sdk/
+    python3 waves.py close --agent agent-a --summary "what changed"
 """
 import sys, json, os, datetime, pathlib, fnmatch
 
@@ -118,9 +118,9 @@ def current_wave(rows=None):
     closes = [r for r in rows if r.get('kind') == 'wave_close' and r.get('payload', {}).get('wave') == wid]
     claimed = {c.get('from') for c in claims}
     # A forced close is made BY one agent ON BEHALF OF another, so crediting it to
-    # `from` credits the wrong party: on 2026-07-25 `waves.py force-close --for grok`
-    # printed "✓ force-closed ... recorded, not hidden" and the wave stayed OPEN with grok
-    # still outstanding, because the close was attributed to claude — who had already
+    # `from` credits the wrong party: on 2026-07-25 `waves.py force-close --for agent-b`
+    # printed "✓ force-closed ... recorded, not hidden" and the wave stayed OPEN with agent-b
+    # still outstanding, because the close was attributed to agent-a — who had already
     # closed. The record was right and the reader of it was wrong.
     #
     # open_wave's stale path masked this: it force-closes and then never re-checks

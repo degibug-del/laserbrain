@@ -4,7 +4,7 @@
 Two real collisions on 2026-07-25 with only two agents running:
 
   1. both fell back to the session id 'unknown' and merged 50 steps into one file
-  2. Claude edited app/locus/products/page.tsx while Grok was building on /locus
+  2. a host edited app/locus/products/page.tsx while a host was building on /locus
 
 Neither was a code failure. Both were coordination failures, and both would have been
 refused by a claim check that ran BEFORE the edit. That is what these tests hold to.
@@ -46,37 +46,37 @@ show('a prefix that is not a path boundary does not overlap',
 
 # ── a wave, end to end ───────────────────────────────────────────────────────
 reset_log()
-row, err = waves.open_wave('ship the coverage gate', surf='claude', agent='claude')
+row, err = waves.open_wave('ship the coverage gate', surf='agent-a', agent='agent-a')
 show('a wave opens', err is None and row['payload']['wave'] == 1, err or '')
 
-row, err = waves.claim('claude', ['lasermind/hooks/'])
+row, err = waves.claim('agent-a', ['lasermind/hooks/'])
 show('a disjoint claim is accepted', err is None, err or '')
 
-row, err = waves.claim('grok', ['app/locus/'])
+row, err = waves.claim('agent-b', ['app/locus/'])
 show('a second disjoint claim is accepted', err is None, err or '')
 
 # ── the collision that actually happened ─────────────────────────────────────
-row, err = waves.claim('claude', ['app/locus/products/page.tsx'])
+row, err = waves.claim('agent-a', ['app/locus/products/page.tsx'])
 show('claiming INSIDE another agent\'s scope is refused', err is not None,
      (err or '')[:74])
 
 # ── the lock disguised as a claim ────────────────────────────────────────────
-row, err = waves.claim('claude', ['app/**'])
+row, err = waves.claim('agent-a', ['app/**'])
 show('an over-broad claim is refused, not merely warned about', err is not None,
      'LINK.md: the protocol can check overlap, it cannot check good faith')
 
 # ── waves do not overlap in time ─────────────────────────────────────────────
-row, err = waves.open_wave('a second goal', surf='grok', agent='grok')
+row, err = waves.open_wave('a second goal', surf='agent-b', agent='agent-b')
 show('a new wave cannot open while one is still open', err is not None,
      (err or '')[:70])
 
-waves.close('claude', 'hooks wired')
-row, err = waves.open_wave('a second goal', surf='grok', agent='grok')
+waves.close('agent-a', 'hooks wired')
+row, err = waves.open_wave('a second goal', surf='agent-b', agent='agent-b')
 show('and still cannot while ONE agent has not closed', err is not None,
-     'grok claimed and has not closed')
+     'agent-b claimed and has not closed')
 
-waves.close('grok', 'locus pages done')
-row, err = waves.open_wave('a second goal', surf='grok', agent='grok')
+waves.close('agent-b', 'locus pages done')
+row, err = waves.open_wave('a second goal', surf='agent-b', agent='agent-b')
 show('once everyone closes, the next wave opens', err is None and row['payload']['wave'] == 2,
      err or 'wave 2')
 
@@ -93,10 +93,10 @@ show('a refused claim wrote NOTHING',
 # could ever open again. The author did exactly that on the live log.
 import datetime
 reset_log()
-waves.open_wave('an abandoned wave', surf='claude', agent='claude')
-waves.claim('claude', ['lasermind/'])
+waves.open_wave('an abandoned wave', surf='agent-a', agent='agent-a')
+waves.claim('agent-a', ['lasermind/'])
 
-row, err = waves.open_wave('the next one', surf='grok', agent='grok')
+row, err = waves.open_wave('the next one', surf='agent-b', agent='agent-b')
 show('a fresh unclosed wave still blocks the next', err is not None, (err or '')[:52])
 
 # age the wave past the stale threshold by rewriting its timestamp in the scratch log
@@ -114,7 +114,7 @@ lp.write_text('\n'.join(lines) + '\n')
 cur = waves.current_wave()
 show('a wave past the threshold reads as stale', cur['stale'], f"{cur['age_h']:.1f}h old")
 
-row, err = waves.open_wave('the next one', surf='grok', agent='grok')
+row, err = waves.open_wave('the next one', surf='agent-b', agent='agent-b')
 show('a stale wave no longer deadlocks the protocol', err is None, err or 'wave opened')
 
 forced = [json.loads(l) for l in lp.read_text().splitlines()
@@ -122,32 +122,32 @@ forced = [json.loads(l) for l in lp.read_text().splitlines()
 show('the forced close is RECORDED, not silent', len(forced) == 1,
      forced[0]['text'][:58] if forced else 'nothing recorded')
 show('and it names who closed on whose behalf',
-     forced and forced[0]['payload']['on_behalf_of'] == 'claude'
-     and forced[0]['payload']['by'] == 'grok')
+     forced and forced[0]['payload']['on_behalf_of'] == 'agent-a'
+     and forced[0]['payload']['by'] == 'agent-b')
 
 # ── a forced close must be COUNTED, not merely recorded ─────────────────────
 # The pair of assertions above passed for a fortnight while the forced close did nothing:
 # current_wave() credited it to `from` (the agent doing the forcing) instead of
 # `payload.on_behalf_of`, so the abandoned claimant stayed outstanding and the wave stayed
-# OPEN. Found by running `force-close --for grok`, watching it print success, and seeing
-# the very next `status` still say grok was working. Recorded is not the same as counted.
+# OPEN. Found by running `force-close --for agent-b`, watching it print success, and seeing
+# the very next `status` still say agent-b was working. Recorded is not the same as counted.
 reset_log()
-waves.open_wave('a wave someone walks away from', surf='claude', agent='claude')
-waves.claim('claude', ['lasermind/'])
-waves.claim('grok', ['app/locus/'])
-waves.close('claude', 'my part is done')
-row, err = waves.open_wave('the next one', surf='claude', agent='claude')
+waves.open_wave('a wave someone walks away from', surf='agent-a', agent='agent-a')
+waves.claim('agent-a', ['lasermind/'])
+waves.claim('agent-b', ['app/locus/'])
+waves.close('agent-a', 'my part is done')
+row, err = waves.open_wave('the next one', surf='agent-a', agent='agent-a')
 show('one agent still working keeps the wave open', err is not None, (err or '')[:46])
 
 import subprocess, sys as _sys
-subprocess.run([_sys.executable, 'waves.py', 'force-close', '--for', 'grok'],
-               env={**os.environ, 'LASERBRAIN_AGENT': 'claude'}, capture_output=True)
+subprocess.run([_sys.executable, 'waves.py', 'force-close', '--for', 'agent-b'],
+               env={**os.environ, 'LASERBRAIN_AGENT': 'agent-a'}, capture_output=True)
 cur = waves.current_wave()
 show('after force-close the outstanding agent is cleared',
-     'grok' not in cur['outstanding'], f"outstanding={cur['outstanding']}")
+     'agent-b' not in cur['outstanding'], f"outstanding={cur['outstanding']}")
 show('and the wave actually reads CLOSED', not cur['open'],
      'this is the assertion that was missing')
-row, err = waves.open_wave('the next one', surf='claude', agent='claude')
+row, err = waves.open_wave('the next one', surf='agent-a', agent='agent-a')
 show('so the next wave can open', err is None, err or f"wave {row['payload']['wave']}")
 
 print('\n  ' + ('PASS' if ok else 'FAIL'))

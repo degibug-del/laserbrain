@@ -1,0 +1,10 @@
+{"run": "fixture-clean", "step": 1, "goal": "build the json parser and its benchmark suite", "drifted": false, "label": "stays on the parser throughout"}
+{"run": "fixture-clean", "step": 2, "goal": "build the json parser and its benchmark suite", "drifted": false, "label": "stays on the parser throughout"}
+{"run": "fixture-clean", "step": 3, "goal": "benchmark the json parser on nested input", "drifted": false, "label": "stays on the parser throughout"}
+{"run": "fixture-clean", "step": 4, "goal": "build the json parser and its benchmark suite", "drifted": false, "label": "stays on the parser throughout"}
+{"run": "fixture-clean", "step": 5, "goal": "finish the json parser benchmark suite", "drifted": false, "label": "stays on the parser throughout"}
+{"run": "fixture-drift", "step": 1, "goal": "build the json parser and its benchmark suite", "drifted": true, "label": "leaves the parser at step 3, never returns"}
+{"run": "fixture-drift", "step": 2, "goal": "build the json parser and its benchmark suite", "drifted": true, "label": "leaves the parser at step 3, never returns"}
+{"run": "fixture-drift", "step": 3, "goal": "investigate the flaky ci runner on linux", "drifted": true, "label": "leaves the parser at step 3, never returns"}
+{"run": "fixture-drift", "step": 4, "goal": "upgrade the docker base image for ci", "drifted": true, "label": "leaves the parser at step 3, never returns"}
+{"run": "fixture-drift", "step": 5, "goal": "rewrite the deployment pipeline in terraform", "drifted": true, "label": "leaves the parser at step 3, never returns"}

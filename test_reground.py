@@ -156,23 +156,54 @@ clear()
 #
 # A test that supplies its own precondition can never discover that nothing supplies it in
 # production. This is the half that talks to the real hook.
-HOOK = pathlib.Path(__file__).parent / 'hooks' / 'lb_coverage.py'
+# The path moved on 2026-07-27: the instruction layer got its own home in lasergear, and
+# lasermind/hooks/lb_coverage.py became a fail-loud shim that exits with a message saying
+# so. This test kept pointing at the shim, which produced a failure worth studying:
+#
+#   · the three POSITIVE assertions went red — correct, the shim writes no flag;
+#   · the one NEGATIVE assertion ("but NOT on an ordinary tool call") stayed GREEN, because
+#     nothing ran, so no flag appeared, so "no flag" was satisfied for entirely the wrong
+#     reason.
+#
+# A negative assertion is satisfied by a missing subject. That is the same failure shape as
+# a test whose command never executes, and it is why `hook()` now returns the exit status
+# and demands the hook actually ran.
+HOOK = pathlib.Path(__file__).parent.parent / 'lasergear' / 'lb_coverage.py'
+if not HOOK.exists():
+    show('the live hook exists', False, f'not at {HOOK}')
+    print('\n  FAIL')
+    raise SystemExit(1)
+
 
 def hook(ev):
+    """Run the real hook. Returns (flag_written, ran_ok) — never just the flag.
+
+    `ran_ok` exists so a hook that refuses to start cannot satisfy a "did not write the
+    flag" assertion. The shim this test used to point at exits non-zero with an
+    explanation; it must fail the negative case, not pass it.
+    """
     clear()
-    subprocess.run([sys.executable, str(HOOK)], input=json.dumps(ev),
-                   capture_output=True, text=True)
-    return FLAG.exists()
+    r = subprocess.run([sys.executable, str(HOOK)], input=json.dumps(ev),
+                       capture_output=True, text=True)
+    return FLAG.exists(), r.returncode == 0
+
+
+def wrote(ev):
+    f, ran = hook(ev)
+    return f and ran
+
 
 show('the live hook writes the flag on a prompt',
-     hook({'session_id': 'probe', 'prompt': 'do the thing'}))
-show('and on the camelCase shape Grok sends',
-     hook({'sessionId': 'probe', 'userPrompt': 'do the thing'}))
+     wrote({'session_id': 'probe', 'prompt': 'do the thing'}))
+show('and on the camelCase shape a host sends',
+     wrote({'sessionId': 'probe', 'userPrompt': 'do the thing'}))
 show('and when only the event name says so',
-     hook({'session_id': 'probe', 'hook_event_name': 'UserPromptSubmit', 'prompt': 'x'}))
-show('but NOT on an ordinary tool call',
-     not hook({'session_id': 'probe', 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}),
-     'otherwise every step would be a free re-ground')
+     wrote({'session_id': 'probe', 'hook_event_name': 'UserPromptSubmit', 'prompt': 'x'}))
+_flag, _ran = hook({'session_id': 'probe', 'tool_name': 'Bash',
+                    'tool_input': {'command': 'ls'}})
+show('but NOT on an ordinary tool call', _ran and not _flag,
+     'otherwise every step would be a free re-ground'
+     if _ran else 'the hook did not run at all — this assertion proves nothing')
 clear()
 
 print('\n  ' + ('PASS' if ok else 'FAIL'))

@@ -1515,7 +1515,23 @@ async function call(name, args) {
       // An absent key means "not measured", which is different from a low score and must
       // not be reported as one — the same rule `contrast` and `judgment` follow above.
       const claims = markCeiling(doing, next, blocked)
+      // THE JOIN. Every drift row is keyed (run, step) and until now neither number left
+      // this function, so the only party who could name a row was the server that wrote
+      // it. The session file on the other side counts its own steps off the tool trace and
+      // identifies itself by session uuid — two independent counters, no shared key.
+      //
+      // The cost is one specific question, and it is the question the corpus exists for.
+      // `catches` — errors something INDEPENDENT found, a non-zero exit, a failing test —
+      // live in the session file. Fires live here. Sensitivity asks how many of the real
+      // errors the instrument caught, which means matching a catch to the reading that was
+      // current when it happened, and there was no field in either file that could do it.
+      // So precision was computable (fires are self-identifying) and d′ was not: half a
+      // detection matrix, and the half that says whether the instrument MISSES things.
+      //
+      // Returning them costs two fields. The hook writes them beside its own step number,
+      // and a catch at session step N joins to whichever reading was last before it.
       return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
+        run: runId, step,
         goal_score, context: ctx, ...extra, ...(claims ? { claims } : {}),
         // Only once it means something. Writing a state once is the normal case and a 1
         // here would be noise on every healthy step.

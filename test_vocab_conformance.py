@@ -18,15 +18,29 @@ swap it in both places.
 
 Requires node. Skips loudly rather than silently if node is missing — a conformance test
 that quietly does not run is how the divergence lasted this long.
+
+HOW THE SERVER SIDE IS READ (changed 2026-08-01)
+
+This used to pull `toWords` out of the server with a regex and eval it. The regex ran from
+`const _STOP = new Set([` to the next closing brace, non-greedily, and it covered `toWords`
+right up until a function was inserted between the two. After that it matched nothing, the
+test exited 2, and it stayed red — silently, for days, guarding nothing. A conformance test
+defeated by moving code around inside a file was never testing conformance; it was testing
+source layout.
+
+Now it asks the running server, through `server_probe`. The normalization is already
+published: `laserscore` is the canonical form `⟨tokens, sorted, |-joined⟩`, so nothing
+private needs extracting. This tests what agents actually receive, and cannot be broken by
+rearranging the file.
 """
-import json
 import pathlib
 import shutil
-import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / 'laserbrain-sdk'))
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from laserbrain import norm                                        # noqa: E402
+from server_probe import Server                                    # noqa: E402
 
 ok = True
 
@@ -57,28 +71,22 @@ CASES = [
     'deployment deploys deployed',
 ]
 
-# Ask the server's own normaliser, via the module it actually ships.
-SERVER = pathlib.Path(__file__).parent / 'mcp-server.mjs'
-js = f'''
-import {{ readFileSync }} from 'node:fs'
-const src = readFileSync({json.dumps(str(SERVER))}, 'utf8')
-const m = src.match(/const _STOP = new Set\\(\\[[\\s\\S]*?\\n\\}}/)
-if (!m) {{ console.error('could not extract toWords from the server'); process.exit(2) }}
-const toWords = new Function(m[0] + '; return toWords;')()
-const cases = {json.dumps(CASES)}
-console.log(JSON.stringify(cases.map(c => [...toWords(c)].sort())))
-'''
-res = subprocess.run(['node', '--input-type=module', '-e', js],
-                     capture_output=True, text=True)
-if res.returncode != 0:
-    print('  ✗ could not run the server normaliser:', res.stderr.strip()[:200])
-    raise SystemExit(1)
-
-server_out = json.loads(res.stdout)
+# Ask the running server, over the same wire an agent uses.
+with Server() as srv:
+    server_out = [srv.tokens(c) for c in CASES]
 
 for case, got in zip(CASES, server_out):
     want = sorted(norm(case))
     label = repr(case)[:44]
+    if got is None:
+        # No laserscore at all. Per the grammar that null is not a missing field — it is
+        # the first detection, and it happens before any arithmetic exists. The SDK's
+        # agreement here is that it also finds nothing to measure, which is a claim about
+        # grammaticality rather than about tokenisation, so it is asserted as its own case
+        # instead of being compared against a token list it does not have.
+        show(f'{label:<46} ungrammatical in both', want == [],
+             f'server: no laserscore · sdk: {want}')
+        continue
     show(f'{label:<46} agree', got == want,
          '' if got == want else f'server {got} vs sdk {want}')
 
