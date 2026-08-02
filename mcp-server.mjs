@@ -1626,10 +1626,18 @@ async function call(name, args) {
         let pin = 0; for (const x of p) if (first.has(x)) pin++
         const panchor = pin / (new Set([...p, ...first]).size || 1)
         if (panchor >= GOAL_MIN) {
+          // parent_overlap is recorded HERE as well as on the rejection below, and the
+          // asymmetry is why it had to be added. Until now only rejected declarations
+          // stored the number, so the corpus held 2 values, both failures, and the
+          // question the rejection comment defers to data — where should the floor sit —
+          // could never be answered from it: choosing a threshold needs the distribution
+          // of declarations that WORKED at least as much as the ones that did not.
+          //
+          // Additive. It is a field on the reading, consulted by nothing.
           return record(false, 'excursion',
             `On a sub-task (overlap ${anchor.toFixed(2)}) that still serves your ground goal ` +
             `(parent overlap ${panchor.toFixed(2)}). Not drift — but the parent is what you owe.`,
-            phi)
+            phi, { parent_overlap: Number(panchor.toFixed(2)) })
         }
         // A DECLARATION THAT FALLS SHORT MUST NOT VANISH. Below the floor this dropped
         // straight through to goal-drift, whose advice then said "If this is a sub-task,
