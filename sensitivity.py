@@ -19,7 +19,22 @@ could not name the reading that was live when it happened, so a miss was unobser
 
 The join landed 2026-08-01: `check_state` returns `run` and `step`, the session records
 them on every check, and every catch carries the reading that was live plus `since` — how
-many steps back that reading was. That is all sensitivity ever needed.
+many steps back that reading was.
+
+AND THE JOIN WAS NOT ENOUGH, which this file learned by being wrong first
+------------------------------------------------------------------------
+The paragraph above used to end "That is all sensitivity ever needed." Its first real run,
+2026-08-02, returned 0 hits and 8 misses — a 0.0% hit rate — and every one of the eight was
+the coverage gate blocking a call in the session that was running this analysis.
+
+The gate fires BECAUSE the instrument has been quiet; a lapse is defined as too many steps
+since check_state. So a gate-block catch lands on a quiet reading by construction, can never
+coincide with a fire, and produces a 0% hit rate before any data is collected. The join gave
+the two sides a shared key. It did not make the catches independent of the instrument, and
+sensitivity needs both.
+
+The gate is now excluded at the point of recording, and catches written before that are
+dropped whole — see collect(). The count restarts from clean data.
 
 WHAT THIS ACTUALLY MEASURES, AND WHAT IT DOES NOT
 -------------------------------------------------
@@ -109,7 +124,7 @@ def segments_of(s):
 
 def collect(sessions, window, exclude_intentional):
     """Join catches to the readings that were live, and count the four cells."""
-    hits, misses, unjoinable, far, dropped = [], [], 0, 0, 0
+    hits, misses, unjoinable, far, dropped, precontam = [], [], 0, 0, 0, 0
     fired_keys, seen_keys = set(), set()
 
     # Every reading the sessions recorded, keyed the way the drift log keys them.
@@ -128,6 +143,22 @@ def collect(sessions, window, exclude_intentional):
         for seg in segments_of(s):
             for cat in (seg.get('catches') or []):
                 what = str(cat.get('what') or '')
+                # THE CONTAMINATED ERA. Until 2026-08-02 a coverage-gate block counted as a
+                # catch. The gate fires BECAUSE the instrument was quiet, so those catches
+                # land on quiet readings by construction and can only ever score as misses:
+                # this file's first real run reported 0 hits / 8 misses, and all eight were
+                # the gate blocking the very session that was analysing it. 0.0% was an
+                # identity, not a result.
+                #
+                # They cannot be cleaned retroactively — a catch stores "failed call: Bash"
+                # and not the text that would identify it — so they are dropped whole rather
+                # than estimated around. `clean` is stamped by the code that knows to exclude
+                # the gate; its absence means "written before that was true". Dating them
+                # would not work either: the fix landed mid-session, so the contaminated
+                # catches share a date with the clean ones.
+                if not cat.get('clean'):
+                    precontam += 1
+                    continue
                 if exclude_intentional and INTENTIONAL.search(what):
                     dropped += 1
                     continue
@@ -148,7 +179,7 @@ def collect(sessions, window, exclude_intentional):
 
     caught_keys = {(h['run'], h['step']) for h in hits}
     return {'hits': hits, 'misses': misses, 'unjoinable': unjoinable, 'far': far,
-            'dropped': dropped, 'fired': fired_keys, 'seen': seen_keys,
+            'dropped': dropped, 'precontam': precontam, 'fired': fired_keys, 'seen': seen_keys,
             'caught': caught_keys}
 
 
@@ -193,10 +224,23 @@ def main():
         print(f'\n  NO JOINABLE CATCHES.')
         print(f'    unjoinable  {d["unjoinable"]:>4}  no run/run_step — recorded before the join')
         print(f'    out of window {d["far"]:>2}  a reading was too far back to have covered it')
-        print('\n  This is the expected reading on 2026-08-01: the fields landed today, so')
-        print('  every catch already in the corpus predates them. Nothing is wrong and')
-        print('  nothing is proven — the number becomes available as new sessions run.')
-        print('  Reporting it as 0% would be a fabrication, so it is not reported.\n')
+        print(f'    excluded    {d["precontam"]:>4}  written while a gate block still counted '
+              f'as a catch')
+        if d['precontam']:
+            # Printed HERE as well as in the main report, because this branch runs while the
+            # clean corpus is still empty — which is exactly when a silently dropped count
+            # would be misread as "there was never any data".
+            print('\n  Those excluded catches are why this says nothing yet. Until 2026-08-02')
+            print('  a coverage-gate block counted as a catch, and the gate fires precisely')
+            print('  when the instrument is quiet — so they could only ever score as misses.')
+            print('  The first run of this file reported 0 hits / 8 misses on exactly that,')
+            print('  which was an identity and not a measurement. They cannot be cleaned')
+            print('  after the fact, so sensitivity restarts from clean data.')
+        else:
+            print('\n  The join fields landed 2026-08-01, so every older catch predates')
+            print('  them. Nothing is wrong and nothing is proven.')
+        print('\n  The number becomes available as new sessions run. Reporting it as 0%')
+        print('  would be a fabrication, so it is not reported.\n')
         return 0
 
     # SIGNAL trials: a catch happened. NOISE trials: readings with no catch attributed.
@@ -208,6 +252,11 @@ def main():
     print(f'  misses  {n_miss:>4}   a catch landed on a reading that said nothing')
     print(f'  hit rate  {n_hit / total * 100:.1f}%  of {total} attributable catch(es)')
     print(f'  unjoinable {d["unjoinable"]:>3}   out of window {d["far"]:>3}   (neither counted)')
+    if d['precontam']:
+        print(f'\n  EXCLUDED {d["precontam"]:>3}   catches written before 2026-08-02, when a '
+              f'coverage-gate\n              block still counted as a catch. Not cleanable '
+              f'after the fact —\n              see collect(). Sensitivity restarts from '
+              f'clean data.')
 
     dp, why = dprime(n_hit, total, fa, max(n_noise, 0))
     print(f'\n{bar}\n  d-prime\n{bar}')

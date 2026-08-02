@@ -42,9 +42,20 @@ def chk(step, run, run_step, drifting, reason='advancing', phi=0.1):
             'reason': reason, 'phi': phi, 'goal': 'g', 'progress': 'advancing', 'distance': 5}
 
 
-def cat(step, run, run_step, since, what='non-zero exit: pytest'):
-    return {'step': step, 'by': 'build', 'what': what,
-            'run': run, 'run_step': run_step, 'since': since}
+def cat(step, run, run_step, since, what='non-zero exit: pytest', clean=True):
+    """A catch as the fixed recorder writes one.
+
+    `clean` defaults True because every case below is about the JOIN — which reading a
+    catch belongs to — and a catch without the stamp is dropped before the join is ever
+    attempted. Added 2026-08-02 with the gate-block exclusion: collect() now discards
+    unstamped catches as belonging to the era when a coverage-gate block still counted as
+    ground truth. Leaving the helper unstamped silently zeroed every count in this file.
+    """
+    c = {'step': step, 'by': 'build', 'what': what,
+         'run': run, 'run_step': run_step, 'since': since}
+    if clean:
+        c['clean'] = True
+    return c
 
 
 print('a catch under a firing reading is a HIT; under a quiet one, a MISS')
@@ -89,15 +100,30 @@ d3k = S.collect([s3], window=4, exclude_intentional=False)
 check('  --keep-intentional counts it', len(d3k['misses']) == 1, str(len(d3k['misses'])))
 
 print()
-print('a catch that predates the join is unjoinable, never a miss')
+print('a catch that cannot be trusted is set aside, never scored as a miss')
 
-# The corpus holds 39 of these. Scoring them as misses would invent a 0% hit rate out of
-# rows that simply lack the field, which is the fabrication sensitivity.py refuses to make.
+# Two distinct reasons a catch is unusable, and they are counted separately because they
+# retire on different days: the join fields arrived 2026-08-01, the gate exclusion
+# 2026-08-02. Scoring either as a miss would invent a 0% hit rate out of rows that simply
+# lack a field — the fabrication sensitivity.py exists to refuse.
 s4 = sess(checks=[chk(1, 'r4', 1, False)],
-          catches=[{'step': 2, 'by': 'build', 'what': 'non-zero exit: old'}])
+          catches=[cat(2, None, None, None, what='non-zero exit: old')])
 d4 = S.collect([s4], window=4, exclude_intentional=True)
-check('no run/run_step means unjoinable', d4['unjoinable'] == 1 and not d4['misses'],
+check('a stamped catch with no run/run_step is unjoinable',
+      d4['unjoinable'] == 1 and not d4['misses'],
       f"unjoinable {d4['unjoinable']} misses {len(d4['misses'])}")
+
+# The gate-block era. An unstamped catch is dropped before the join is attempted, because
+# the coverage gate fires exactly when the instrument is quiet — so these can only ever
+# land on quiet readings and score as misses, which is how 0 hits / 8 misses happened.
+s4b = sess(checks=[chk(1, 'r4b', 1, False)],
+           catches=[cat(2, 'r4b', 1, since=1, clean=False)])
+d4b = S.collect([s4b], window=4, exclude_intentional=True)
+check('  an unstamped catch is excluded, not counted',
+      d4b['precontam'] == 1 and not d4b['misses'] and not d4b['hits'],
+      f"precontam {d4b['precontam']} misses {len(d4b['misses'])}")
+check('  and it does not leak into unjoinable either', d4b['unjoinable'] == 0,
+      str(d4b['unjoinable']))
 
 print()
 print('segments are read — a reset must not hide a task')
