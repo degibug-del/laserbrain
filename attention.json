@@ -1,0 +1,104 @@
+{
+  "laserbrain_attention": 1,
+  "kind": "calibration",
+  "immutable": false,
+  "what": "Rate at which a reading is goal-drift, against how long the agent has run since the user last spoke. Measured, not decreed \u2014 recompute with calibrate_attention.py.",
+  "bands": [
+    {
+      "label": "under a minute",
+      "from_seconds": 0,
+      "to_seconds": 60,
+      "drift": 0,
+      "n": 29,
+      "rate": 0.0,
+      "underpowered": false
+    },
+    {
+      "label": "1-5 minutes",
+      "from_seconds": 60,
+      "to_seconds": 300,
+      "drift": 40,
+      "n": 207,
+      "rate": 0.1932,
+      "underpowered": false
+    },
+    {
+      "label": "5-30 minutes",
+      "from_seconds": 300,
+      "to_seconds": 1800,
+      "drift": 98,
+      "n": 253,
+      "rate": 0.3874,
+      "underpowered": false
+    },
+    {
+      "label": "over 30 minutes",
+      "from_seconds": 1800,
+      "to_seconds": null,
+      "drift": 19,
+      "n": 22,
+      "rate": 0.8636,
+      "underpowered": false
+    }
+  ],
+  "min_n": 20,
+  "z_between_best_powered": 4.52,
+  "best_powered_pair": [
+    "1-5 minutes",
+    "5-30 minutes"
+  ],
+  "best_powered_n": 460,
+  "fresh_ground": {
+    "what": "The same table over readings on a ground that was just set. Kept OUT of the schedule: a reading cannot drift from a ground reset one step ago, so including it would manufacture the low end. Recorded because redirect-driven fires live here and are worth watching.",
+    "bands": [
+      {
+        "label": "under a minute",
+        "from_seconds": 0,
+        "to_seconds": 60,
+        "drift": 8,
+        "n": 329,
+        "rate": 0.0243,
+        "underpowered": false
+      },
+      {
+        "label": "1-5 minutes",
+        "from_seconds": 60,
+        "to_seconds": 300,
+        "drift": 36,
+        "n": 267,
+        "rate": 0.1348,
+        "underpowered": false
+      },
+      {
+        "label": "5-30 minutes",
+        "from_seconds": 300,
+        "to_seconds": 1800,
+        "drift": 9,
+        "n": 96,
+        "rate": 0.0938,
+        "underpowered": false
+      },
+      {
+        "label": "over 30 minutes",
+        "from_seconds": 1800,
+        "to_seconds": null,
+        "drift": 0,
+        "n": 0,
+        "rate": null,
+        "underpowered": true
+      }
+    ]
+  },
+  "provenance": {
+    "written": "2026-08-02",
+    "corpus_from": "2026-07-28",
+    "corpus_to": "2026-08-02",
+    "readings_total": 1203,
+    "readings_settled": 511,
+    "readings_fresh_ground": 692,
+    "user_messages": 5036,
+    "dominant_agent": "claude",
+    "dominant_agent_share": 0.925,
+    "caveat": "One machine, and 93% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."
+  }
+}

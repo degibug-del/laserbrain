@@ -79,7 +79,32 @@ with tempfile.TemporaryDirectory() as td:
                                              'capabilities': {},
                                              'clientInfo': {'name': 't', 'version': '1'}}}) + '\n')
         p.stdin.flush()
-        p.stdout.readline()
+        # WAIT FOR THE HANDSHAKE, rather than assuming one readline() is it.
+        #
+        # This file went red once inside a suite run and passed alone every time after.
+        # The cause was here: a bare readline() that returns '' when the server has not
+        # answered yet — which happened when the run followed three calibrations scanning
+        # ~5,000 transcripts and the machine was loaded. Every later assertion then read
+        # `None` off an empty dict and reported five confident failures about
+        # parent_overlap, none of which were about parent_overlap.
+        #
+        # A flaky test is worse than no test: it teaches you to read red as noise. So the
+        # handshake is waited for explicitly, and a server that never comes up says so.
+        ready = False
+        for _ in range(200):
+            line = p.stdout.readline()
+            if not line:
+                break
+            try:
+                if json.loads(line).get('id') == 0:
+                    ready = True
+                    break
+            except ValueError:
+                continue
+        if not ready:
+            print('  FAIL  the MCP server never completed the handshake')
+            print(f'        (exit code {p.poll()}) — nothing below was measured')
+            sys.exit(1)
 
         GROUND = 'build the spectral parser and ship it to the site'
         call(p, 1, 'check_state', {'goal': GROUND, 'progress': 'advancing', 'distance': 6})
