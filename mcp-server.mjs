@@ -197,6 +197,30 @@ try {
 const _ok = (v, fallback) => (Array.isArray(v) ? v.length : v != null) ? v : fallback
 const GRAMMAR = _fromFile.laserbrain_grammar ? _fromFile : { ..._fromFile, offline: true }
 const PROGRESS = new Set(['advancing', 'stuck', 'circling'])
+
+// A goal written as a REPORT of what happened rather than a statement of what is pursued.
+// Mirrors reads_as_report in laserbrain-sdk/laserbrain/runtime.py — keep the two lists
+// together, and note that neither one is a normaliser: this touches no score, so it is
+// outside the parity fence check-normaliser-parity.mjs guards.
+//
+// ADVISORY ONLY. Measured across 1,191 readings, a narration-shaped goal separates fires
+// from quiet readings at 12.2% vs 2.2% (5.4x, z = 6.87) — so it predicts a FIRE. It does
+// not predict a WRONG fire: 19.5% of labelled-false against 14.3% of labelled-useful, on
+// seven useful labels, which cannot separate anything. Acting on it in a verdict would be
+// going past the evidence AND would make every earlier reading incomparable with every
+// later one, silently. So it rides along as a field and changes nothing.
+//
+// The closed list is deliberate. A generic /^\w+ed\b/ read "Speed up the build" and "Need
+// to fix the parser" as reports and swallowed the imperative "read auth.py".
+const REPORT_RE = new RegExp('^\\s*(?:' +
+  'confirmed|found|promoted|shipped|verified|discovered|learned|identified|determined|' +
+  'established|noted|observed|settled|decided|chose|approved|completed|finished|landed|' +
+  'merged|fixed|added|committed|created|validated|pushed|reviewed|replaced|updated|built|' +
+  'wrote|ran|removed|renamed|moved|deleted|refactored|implemented|deployed|published|' +
+  'tested|checked|design settled|build (?:blocked|failed)|blocked by' +
+  ')\\b', 'i')
+
+const readsAsReport = (t) => Boolean(t) && REPORT_RE.test(String(t))
 // ── the goal vocabulary, shared with the SDK ──────────────────────────────────
 //
 // This was a bare word split until 2026-07-26 while laserbrain-sdk normalised first, so
@@ -1537,6 +1561,12 @@ async function call(name, args) {
         // here would be noise on every healthy step.
         ...(repetition > 1 ? { repetition } : {}),
         anchored: anchored(), ...contrast,
+        // Additive, and never consulted by anything above. See REPORT_RE.
+        ...(readsAsReport(goal) ? { goal_shape:
+          'This ground reads as a report of what happened, not what you are pursuing. A ' +
+          'ground has to stay fixed while the work moves, and a sentence about what was ' +
+          'just finished cannot — by the next step something else has been. State it as ' +
+          'the thing you are trying to reach.' } : {}),
         ...(judgment ? { judgment } : {}), advice })
     }
     if (!goal || !String(goal).trim() || !PROGRESS.has(progress))
