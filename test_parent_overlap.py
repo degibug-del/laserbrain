@@ -37,6 +37,19 @@ SERVER = HERE / 'mcp-server.mjs'
 
 fails = []
 
+# Every raw response, kept so a failure can show what the server actually said.
+#
+# This file has failed twice inside a full suite run and passed every time it was run
+# alone or in a short loop — so the cause is load-dependent and could not be reproduced on
+# demand. Two rounds of guessing produced two fixes (wait for the handshake; never return
+# {} from a call) and neither was demonstrably the cause, because there was nothing to
+# demonstrate against: the failure printed five assertions about parent_overlap and not
+# one byte of what came back.
+#
+# So the next occurrence explains itself. A test that fails intermittently and says
+# nothing about why is a test that gets ignored, which is worse than not having it.
+transcript = []
+
 
 def check(label, cond, detail=''):
     print(f"  {'ok  ' if cond else 'FAIL'}  {label}" + (f'   {detail}' if detail else ''))
@@ -70,9 +83,11 @@ def call(p, i, name, args):
             continue
         if m.get('id') == i:
             try:
-                return json.loads(m['result']['content'][0]['text'])
+                out = json.loads(m['result']['content'][0]['text'])
             except Exception:
-                return m.get('result')
+                out = m.get('result')
+            transcript.append((name, args, out))
+            return out
     print(f'  FAIL  no response to {name!r} (id {i}); server exit={p.poll()}')
     print('        nothing below this point was measured')
     sys.exit(1)
@@ -186,5 +201,10 @@ with tempfile.TemporaryDirectory() as td:
 print()
 if fails:
     print(f'  FAIL — {len(fails)}: ' + '; '.join(fails[:4]))
+    print('\n  what the server actually returned:')
+    for nm, a, out in transcript:
+        goal = str(a.get('goal', ''))[:38]
+        par = ' +parent' if a.get('parent_goal') else ''
+        print(f'    {nm}({goal!r}{par}) -> {json.dumps(out)[:110] if out is not None else "None"}')
     sys.exit(1)
 print('  PASS — every declared parent leaves a number behind, accepted or not.')
