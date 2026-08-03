@@ -552,37 +552,6 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'read_field',
-    description:
-      'Read the live Laserbrain field from the hub. Returns heat (T), moisture (Q), rain (R), ' +
-      'vitality (V), stress (S), rotation (± spin), emotion, season, hub_signal, field_sig, n_nodes. ' +
-      'This is the real running field, not a simulation.',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'speak_to_field',
-    description:
-      'Speak eight words into the shared live field and return its reply. Words must come from the ' +
-      'Laserbrain vocabulary (call field_vocabulary to see it). Read the field first and ' +
-      'choose words that match its physical state. Every agent on this machine shares this field; the speak is ' +
-      'also written to the link log so the other agent can see it.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        words: {
-          type: 'string',
-          description: 'Exactly eight space-separated words from the vocabulary.',
-        },
-      },
-      required: ['words'],
-    },
-  },
-  {
-    name: 'field_vocabulary',
-    description: 'The four word-groups the field accepts: ground, wind, form, change.',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
     name: 'link_whoami',
     description:
       'Which agent this MCP process is, which hub it shares, and where the link log lives. ' +
@@ -1191,9 +1160,6 @@ async function call(name, args) {
   const BRIDGED = new Set(['find_bugs', 'supercode', 'explore', 'trailscore',
     'write_grounded', 'similarity', 'capabilities'])
   if (BRIDGED.has(name)) return await viaBridge(name, args)
-  if (name === 'field_vocabulary') {
-    return Object.entries(VOCAB).map(([g, w]) => `${g}: ${w.join(' ')}`).join('\n')
-  }
   if (name === 'attention') {
     // Reads attention.json and a clock. No verdict is consulted, which is the whole
     // reason this tool can answer while precision on individual fires is 14.6%: the
@@ -1235,36 +1201,6 @@ async function call(name, args) {
         : 'no band',
       caveat: (cal.provenance || {}).caveat || null,
     })
-  }
-  if (name === 'read_field') {
-    const raw = await hub('/signal')
-    const s = JSON.parse(raw)
-    // A reading is more useful than a dump; the caller still gets the numbers.
-    const notes = []
-    if (s.T > 0.5) notes.push('hot, restless'); else if (s.T < 0.25) notes.push('cool')
-    if (s.Q > 0.5) notes.push('humid, heavy'); else if (s.Q < 0.25) notes.push('dry')
-    if (s.R > 0.4) notes.push('raining — weight, grief')
-    if (s.V < 0.3) notes.push('vitality low, draining')
-    if (s.S > 0.6) notes.push('stressed')
-    notes.push(s.rotation < 0 ? 'anticyclonic — withdrawing' : 'cyclonic — gathering')
-    return `${raw}\n\nreading: ${notes.join(' · ')}`
-  }
-  if (name === 'speak_to_field') {
-    const words = String(args?.words ?? '').trim().split(/\s+/).filter(Boolean)
-    if (words.length !== 8) throw new Error(`the field takes eight words; got ${words.length}`)
-    const bad = words.filter((w) => !ALL.has(w.toLowerCase()))
-    if (bad.length) throw new Error(`not in the vocabulary: ${bad.join(', ')}`)
-    // 30s, not the 8s a read gets. A write travels edge -> Fly -> hub and the
-    // field takes seconds to answer; the first version timed out on a request
-    // that was working fine, which reads as the field being down.
-    const joined = words.join(' ')
-    const out = await hub('/hear', { method: 'POST', body: joined }, 30000)
-    let reply = out
-    try { reply = JSON.parse(out).reply ?? out } catch { /* plain text */ }
-    let signal = null
-    try { signal = JSON.parse(await hub('/signal')) } catch { /* optional */ }
-    await logLink({ kind: 'field_speak', words: joined, reply, signal })
-    return typeof reply === 'string' ? `[${AGENT}] ${reply}` : JSON.stringify({ agent: AGENT, reply, signal })
   }
   if (name === 'link_whoami') {
     return JSON.stringify({
