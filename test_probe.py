@@ -74,6 +74,7 @@ def run_gate(dirpath, sid, tool='Bash', env_extra=None):
 
 
 from lb_gate import probe_arm                                    # noqa: E402
+from lb_coverage import load as cov_load                         # noqa: E402
 
 # Find one session id in each arm, so the test does not depend on a particular string
 # hashing a particular way.
@@ -163,24 +164,47 @@ finally:
     _il.reload(_g2)
 
 print()
-print('THE ARM IS RECORDED, so the comparison survives a change to the share')
-sys.path.insert(0, str(GEAR))
-from lb_coverage import load as cov_load                         # noqa: E402
+print('THE ARM IS RECORDED — and NOT in the file two writers fight over')
+# THE BUG THIS REPLACED. The arm was stamped into the session JSON by lb_coverage.load().
+# It never survived: laserbrain/runtime.py's Session owns the same path, holds its dict in
+# memory across the hook's writes, and saves the whole thing back — so the last writer
+# drops the other's keys. Checked 2026-08-03, a day after the probe shipped: not one
+# session file carried an arm, including the live one. The gate was assigning arms and
+# recording none, and a week of probe data would have been uninterpretable.
+#
+# arms.jsonl is append-only with a single writer, which has neither failure.
+with tempfile.TemporaryDirectory() as d:
+    session(d, relaxed_id, 9, [0])
+    run_gate(d, relaxed_id)
+    log = pathlib.Path(d) / 'arms.jsonl'
+    check('the gate writes arms.jsonl', log.exists())
+    if log.exists():
+        rows = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
+        check('  one row for the session', len(rows) == 1, str(len(rows)))
+        check('  naming the arm the gate used', rows[0]['arm'] == probe_arm(relaxed_id),
+              f"{rows[0]['arm']} vs {probe_arm(relaxed_id)}")
+        check('  with the share it was assigned under', rows[0]['share'] == _g.probe_share()
+              if '_g' in dir() else rows[0]['share'] == 15, str(rows[0].get('share')))
+        check('  and the interval that arm actually ran', rows[0]['block_after'] == 12,
+              str(rows[0].get('block_after')))
+    run_gate(d, relaxed_id)
+    rows2 = [l for l in log.read_text().splitlines() if l.strip()]
+    check('  a second gated call does not append again', len(rows2) == 1, str(len(rows2)))
 
 with tempfile.TemporaryDirectory() as d:
-    p = pathlib.Path(d) / f'{relaxed_id}.json'
+    session(d, control_id, 9, [0])
+    run_gate(d, control_id)
+    rows = [json.loads(l) for l in (pathlib.Path(d) / 'arms.jsonl').read_text().splitlines() if l.strip()]
+    check('a control session records block_after 4', rows[0]['block_after'] == 4,
+          str(rows[0].get('block_after')))
+
+# And the session file must NOT carry it — writing there is what failed.
+with tempfile.TemporaryDirectory() as d:
+    p_ = pathlib.Path(d) / f'{relaxed_id}.json'
     session(d, relaxed_id, 3, [0])
-    got = cov_load(p)
-    check('load() stamps the arm onto the session', got.get('probe_arm') in
-          ('relaxed', 'control'), str(got.get('probe_arm')))
-    check('  and it matches the gate', got.get('probe_arm') == probe_arm(relaxed_id))
-    # Written once and never recomputed: if the share changes later, what actually happened
-    # must not be rewritten to match the present.
-    got['probe_arm'] = 'control'
-    p.write_text(json.dumps(got))
-    again = cov_load(p)
-    check('  an existing stamp is never overwritten', again['probe_arm'] == 'control',
-          str(again['probe_arm']))
+    got = cov_load(p_)
+    check('load() no longer stamps the contended file', 'probe_arm' not in got,
+          str(got.get('probe_arm')))
 
 print()
 if fails:
