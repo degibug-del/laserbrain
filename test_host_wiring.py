@@ -44,14 +44,36 @@ HOME = pathlib.Path.home()
 # point this at a broken fixture overrides GROK_ROOT; overriding HOME instead used to move
 # the canonical root too, which silently disabled the three hook comparisons — they
 # vanished from the output rather than failing, and only 2 of 4 known breakages fired.
-GROK = pathlib.Path(os.environ.get('LB_GROK_ROOT') or HOME / '.agent-b')
+# The real directory is ~/.grok. `.agent-b` is a de-branding rename that hit a PATH — the
+# same pass that rewrote live model IDs and a working file path elsewhere — and no such
+# directory has ever existed. So this file skipped on every run since, printing "not
+# installed; nothing to check" while the host it names sat there unchecked.
+#
+# It cost exactly what it was written to prevent: grok's hooks went stale again by
+# 2026-08-03 (678 lines against a canonical 771, missing the gate-block exclusion and the
+# arm recording), and its catches would have been dropped by sensitivity.py as
+# pre-contamination — from the one other agent whose data can speak to the single-agent
+# caveat at all.
+#
+# Both names are tried, the real one first, so this cannot go quiet again by rename.
+def _grok_root():
+    env = os.environ.get('LB_GROK_ROOT')
+    if env:
+        return pathlib.Path(env)
+    for name in ('.grok', '.agent-b'):
+        if (HOME / name).is_dir():
+            return HOME / name
+    return HOME / '.grok'
+
+
+GROK = _grok_root()
 ICLOUD = pathlib.Path(os.environ.get('LB_ICLOUD_ROOT')
                       or HOME / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis')
 LASERGEAR = ICLOUD / 'lasergear'
 CANONICAL_SERVER = ICLOUD / 'lasermind/mcp-server.mjs'
 
 if not GROK.exists():
-    print('  SKIP — ~/.agent-b not present; nothing to check')
+    print(f'  SKIP — {GROK} not present; nothing to check' )
     sys.exit(0)
 
 fails = []
