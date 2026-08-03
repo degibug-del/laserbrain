@@ -221,6 +221,21 @@ const REPORT_RE = new RegExp('^\\s*(?:' +
   ')\\b', 'i')
 
 const readsAsReport = (t) => Boolean(t) && REPORT_RE.test(String(t))
+
+// The measured check-in calibration, loaded once and cached. Absent is a real state, not
+// a crash: the `attention` tool says so rather than guessing, the same way attention.py
+// does on the Python side.
+let _attnCache
+function loadAttention() {
+  if (_attnCache !== undefined) return _attnCache
+  try {
+    const p = new URL('./attention.json', import.meta.url)
+    _attnCache = JSON.parse(readFileSync(p, 'utf8'))
+  } catch {
+    _attnCache = null
+  }
+  return _attnCache
+}
 // ── the goal vocabulary, shared with the SDK ──────────────────────────────────
 //
 // This was a bare word split until 2026-07-26 while laserbrain-sdk normalised first, so
@@ -509,6 +524,22 @@ const TOOLS = [
     name: 'reset_task',
     description: 'Clear the drift-fixer ground state and history to begin a new task.',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'attention',
+    description:
+      'When a person should look at this run, from how long it has gone unattended. ' +
+      'Measured, not judged: it reads a clock against a calibration and consults no ' +
+      'verdict, so it answers even when the detector is uncertain. Pass seconds since ' +
+      'the user last spoke.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        since_seconds: { type: 'number', description: 'seconds since the user last spoke' },
+        tolerance: { type: 'number', description: 'drift rate you accept (default 0.25)' },
+      },
+      required: ['since_seconds'],
+    },
   },
   {
     name: 'get_history',
@@ -1162,6 +1193,48 @@ async function call(name, args) {
   if (BRIDGED.has(name)) return await viaBridge(name, args)
   if (name === 'field_vocabulary') {
     return Object.entries(VOCAB).map(([g, w]) => `${g}: ${w.join(' ')}`).join('\n')
+  }
+  if (name === 'attention') {
+    // Reads attention.json and a clock. No verdict is consulted, which is the whole
+    // reason this tool can answer while precision on individual fires is 14.6%: the
+    // question "how long has it been" needs no judgement about any step.
+    const cal = loadAttention()
+    if (!cal || !(cal.bands || []).length) {
+      return JSON.stringify({ known: false,
+        advice: 'No calibration installed. Run lasermind/calibrate_attention.py.' })
+    }
+    const s = Math.max(0, Number(args.since_seconds) || 0)
+    const tol = typeof args.tolerance === 'number' ? args.tolerance : 0.25
+    const band = cal.bands.find(b => (b.from_seconds ?? 0) <= s &&
+      (b.to_seconds === null || b.to_seconds === undefined || s < b.to_seconds))
+    const known = Boolean(band && band.rate !== null && band.rate !== undefined)
+    let next = null
+    if (!(known && band.rate > tol)) {
+      for (const b of cal.bands) {
+        if (b.rate === null || b.rate === undefined) continue
+        const start = b.from_seconds ?? 0
+        if (start <= s) continue
+        if (b.rate > tol) { next = start - s; break }
+      }
+    } else next = 0
+    return JSON.stringify({
+      band: band ? band.label : null,
+      rate: known ? band.rate : null,
+      n: band ? band.n : 0, drift: band ? band.drift : 0, known,
+      look_now: known && band.rate > tol,
+      next_check_in_seconds: next,
+      // The agent's own clock is returned alongside, WITH its censoring, so a caller
+      // cannot pick up the strong external number without meeting the weak internal one.
+      agent_clock: cal.agent_clock ? {
+        z: cal.agent_clock.z_between_best_powered,
+        censored_beyond_steps: cal.agent_clock.censored_beyond_steps,
+        note: cal.agent_clock.censoring,
+      } : null,
+      basis: band
+        ? `${band.drift} of ${band.n} readings in "${band.label}" were goal-drift`
+        : 'no band',
+      caveat: (cal.provenance || {}).caveat || null,
+    })
   }
   if (name === 'read_field') {
     const raw = await hub('/signal')

@@ -159,6 +159,89 @@ def two_proportion_z(a, b):
     return round((b['drift'] / b['n'] - a['drift'] / a['n']) / se, 3) if se else None
 
 
+SESSIONS = pathlib.Path(os.environ.get('LASERBRAIN_STATE_DIR')
+                        or pathlib.Path.home() / '.claude' / 'laserbrain')
+
+# Step-gaps between one spelled check and the next.
+AGENT_BANDS = [(1, 1, '1 step'), (2, 3, '2-3 steps'), (4, 7, '4-7 steps'),
+               (8, 15, '8-15 steps'), (16, 60, '16+ steps')]
+
+
+def agent_clock():
+    """Drift against the AGENT's own clock — steps since it last spelled its state.
+
+    THE HUMAN CLOCK AND THE AGENT CLOCK ARE NOT THE SAME MEASUREMENT, and only one of them
+    survives contact with this corpus.
+
+    Time since the user last spoke is an external clock. Nothing in laserbrain controls it,
+    so the bands are free to be whatever they are, and they turn out to be strong.
+
+    Steps since the agent's own last check is an INTERNAL clock, and the coverage gate
+    forces a check at 4 steps whenever coverage is under floor. So the gate manufactures
+    the distribution it would be tuned against: 85% of all gaps land in 4-7 steps, and
+    gaps of 8 or more are 0.3% of the sample — five readings. Whether an agent left for
+    twelve steps drifts more than one left for four is not a hard question here, it is an
+    unaskable one, because the instrument prevents the twelve from happening.
+
+    Inside the range the gate does permit, the effect is small and not significant. That is
+    reported rather than buried: a flat result from a censored sample is not evidence that
+    the interval does not matter, only that this corpus cannot see it.
+
+    `censored_beyond` records where the sample stops being the world and starts being the
+    policy, so nobody reads the tail as a measurement.
+    """
+    gaps = collections.Counter()
+    drift = collections.Counter()
+    pairs = 0
+    for f in glob.glob(str(SESSIONS / '*.json')):
+        try:
+            d = json.load(open(f))
+        except (OSError, ValueError):
+            continue
+        for seg in [d] + (d.get('segments') or []):
+            checks = sorted((c for c in (seg.get('checks') or []) if c.get('step') is not None),
+                            key=lambda c: c['step'])
+            for prev, cur in zip(checks, checks[1:]):
+                gap = cur['step'] - prev['step']
+                if not 1 <= gap <= 60:
+                    continue            # a reset between them, or a corrupt pair
+                pairs += 1
+                gaps[gap] += 1
+                drift[gap] += cur.get('reason') == 'goal-drift'
+    if not pairs:
+        return None
+
+    bands = []
+    for lo, hi, label in AGENT_BANDS:
+        n = sum(gaps[g] for g in range(lo, hi + 1))
+        dd = sum(drift[g] for g in range(lo, hi + 1))
+        bands.append({'label': label, 'from_steps': lo, 'to_steps': hi,
+                      'drift': dd, 'n': n,
+                      'rate': round(dd / n, 4) if n >= MIN_N else None,
+                      'underpowered': n < MIN_N})
+    long_gaps = sum(gaps[g] for g in range(8, 61))
+    return {
+        'what': ('Drift against steps since the agent last spelled its own state. Reported '
+                 'with its censoring, not as a schedule.'),
+        'bands': bands,
+        'pairs': pairs,
+        # Same key names as the human table. A first version prefixed these with 'agent_'
+        # to avoid a collision that cannot happen — the block is already nested under
+        # agent_clock — and the only effect was that every reader looking for
+        # z_between_best_powered found nothing and printed None.
+        **_best_powered(bands),
+        'censored_beyond_steps': 8,
+        'censored_share': round(long_gaps / pairs, 4),
+        'censoring': (
+            'The coverage gate forces a check at 4 steps when coverage is under floor, so '
+            'gaps of 8+ are %.2f%% of the sample (%d of %d). The distribution is the '
+            "gate's policy, not the agent's behaviour, and the interval cannot be "
+            'evaluated against data the interval produced. To settle it the gate would '
+            'have to let a random share of runs go long on purpose.'
+            % (long_gaps / pairs * 100, long_gaps, pairs)),
+    }
+
+
 def _best_powered(bands):
     """The strongest adjacent comparison the table can support, named as such.
 
@@ -212,6 +295,11 @@ def build():
         # comparison. The honest one is 1-5 vs 5-30, which together hold most of the
         # corpus. The extreme bands are small, and the claim must not rest on them.
         **_best_powered(bands),
+        # The agent's own clock, reported beside the human one so the contrast is legible:
+        # the external clock is strong, the internal clock is flat AND censored by the gate
+        # that produced it. Kept in the same file because a reader comparing them is the
+        # whole point; split across two files, only the flattering one gets quoted.
+        'agent_clock': agent_clock(),
         'fresh_ground': {
             'what': ('The same table over readings on a ground that was just set. Kept '
                      'OUT of the schedule: a reading cannot drift from a ground reset one '

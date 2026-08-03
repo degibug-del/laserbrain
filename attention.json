@@ -18,17 +18,17 @@
       "from_seconds": 60,
       "to_seconds": 300,
       "drift": 40,
-      "n": 207,
-      "rate": 0.1932,
+      "n": 209,
+      "rate": 0.1914,
       "underpowered": false
     },
     {
       "label": "5-30 minutes",
       "from_seconds": 300,
       "to_seconds": 1800,
-      "drift": 98,
-      "n": 253,
-      "rate": 0.3874,
+      "drift": 99,
+      "n": 257,
+      "rate": 0.3852,
       "underpowered": false
     },
     {
@@ -42,12 +42,72 @@
     }
   ],
   "min_n": 20,
-  "z_between_best_powered": 4.52,
+  "z_between_best_powered": 4.548,
   "best_powered_pair": [
     "1-5 minutes",
     "5-30 minutes"
   ],
-  "best_powered_n": 460,
+  "best_powered_n": 466,
+  "agent_clock": {
+    "what": "Drift against steps since the agent last spelled its own state. Reported with its censoring, not as a schedule.",
+    "bands": [
+      {
+        "label": "1 step",
+        "from_steps": 1,
+        "to_steps": 1,
+        "drift": 2,
+        "n": 13,
+        "rate": null,
+        "underpowered": true
+      },
+      {
+        "label": "2-3 steps",
+        "from_steps": 2,
+        "to_steps": 3,
+        "drift": 18,
+        "n": 224,
+        "rate": 0.0804,
+        "underpowered": false
+      },
+      {
+        "label": "4-7 steps",
+        "from_steps": 4,
+        "to_steps": 7,
+        "drift": 154,
+        "n": 1397,
+        "rate": 0.1102,
+        "underpowered": false
+      },
+      {
+        "label": "8-15 steps",
+        "from_steps": 8,
+        "to_steps": 15,
+        "drift": 0,
+        "n": 5,
+        "rate": null,
+        "underpowered": true
+      },
+      {
+        "label": "16+ steps",
+        "from_steps": 16,
+        "to_steps": 60,
+        "drift": 0,
+        "n": 0,
+        "rate": null,
+        "underpowered": true
+      }
+    ],
+    "pairs": 1639,
+    "z_between_best_powered": 1.348,
+    "best_powered_pair": [
+      "2-3 steps",
+      "4-7 steps"
+    ],
+    "best_powered_n": 1621,
+    "censored_beyond_steps": 8,
+    "censored_share": 0.0031,
+    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 0.31% of the sample (5 of 1639). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
+  },
   "fresh_ground": {
     "what": "The same table over readings on a ground that was just set. Kept OUT of the schedule: a reading cannot drift from a ground reset one step ago, so including it would manufacture the low end. Recorded because redirect-driven fires live here and are worth watching.",
     "bands": [
@@ -56,8 +116,8 @@
         "from_seconds": 0,
         "to_seconds": 60,
         "drift": 8,
-        "n": 329,
-        "rate": 0.0243,
+        "n": 332,
+        "rate": 0.0241,
         "underpowered": false
       },
       {
@@ -65,8 +125,8 @@
         "from_seconds": 60,
         "to_seconds": 300,
         "drift": 36,
-        "n": 267,
-        "rate": 0.1348,
+        "n": 268,
+        "rate": 0.1343,
         "underpowered": false
       },
       {
@@ -92,13 +152,13 @@
   "provenance": {
     "written": "2026-08-02",
     "corpus_from": "2026-07-28",
-    "corpus_to": "2026-08-02",
-    "readings_total": 1203,
-    "readings_settled": 511,
-    "readings_fresh_ground": 692,
-    "user_messages": 5036,
+    "corpus_to": "2026-08-03",
+    "readings_total": 1213,
+    "readings_settled": 517,
+    "readings_fresh_ground": 696,
+    "user_messages": 5040,
     "dominant_agent": "claude",
-    "dominant_agent_share": 0.925,
+    "dominant_agent_share": 0.926,
     "caveat": "One machine, and 93% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."
   }
 }

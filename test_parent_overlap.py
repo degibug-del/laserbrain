@@ -45,13 +45,25 @@ def check(label, cond, detail=''):
 
 
 def call(p, i, name, args):
+    """One tool call, or a loud death.
+
+    THE SILENT-{} VERSION COST TWO DEBUGGING PASSES. When the server was slow — this file
+    runs after three calibrations that each scan thousands of transcripts — readline()
+    returned '' and this handed back an empty dict. Every assertion below then read None
+    off it and reported five confident failures about parent_overlap, none of which were
+    about parent_overlap. Hardening the handshake fixed the first symptom and left this
+    one, because the same hole exists per-call.
+
+    A test that cannot get an answer must say THAT, not invent one. Nothing here returns a
+    value it did not receive.
+    """
     p.stdin.write(json.dumps({'jsonrpc': '2.0', 'id': i, 'method': 'tools/call',
                               'params': {'name': name, 'arguments': args}}) + '\n')
     p.stdin.flush()
-    while True:
+    for _ in range(500):
         line = p.stdout.readline()
         if not line:
-            return None
+            break
         try:
             m = json.loads(line)
         except ValueError:
@@ -61,6 +73,9 @@ def call(p, i, name, args):
                 return json.loads(m['result']['content'][0]['text'])
             except Exception:
                 return m.get('result')
+    print(f'  FAIL  no response to {name!r} (id {i}); server exit={p.poll()}')
+    print('        nothing below this point was measured')
+    sys.exit(1)
 
 
 if not SERVER.exists():

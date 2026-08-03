@@ -161,6 +161,34 @@ else:
           real.get('immutable') is False)
 
 print()
+print("THE AGENT'S OWN CLOCK — measured, and reported with its censoring")
+# The contrast is the finding. The external clock (time since a person spoke) is strong;
+# the internal one (steps since the agent's own check) is flat AND censored by the gate
+# that produced it, because the gate forces a check at 4 steps. A flat line through a
+# censored sample is a fact about the censoring, not about the interval.
+ag = A.AGENT
+if not ag.get('bands'):
+    check('an agent_clock block is present', False, 'missing from attention.json')
+else:
+    cut = ag.get('censored_beyond_steps')
+    check('it names where the sample stops being about agents', isinstance(cut, int), str(cut))
+    check('  and says why in words', 'gate' in str(ag.get('censoring', '')).lower())
+    check('  and reports the share it lost', isinstance(ag.get('censored_share'), float),
+          str(ag.get('censored_share')))
+    inside = A.agent_risk(max(1, cut - 2))
+    beyond = A.agent_risk(cut + 4)
+    check('inside the permitted range it answers', inside['known'] is True,
+          f"{inside['band']} {inside['rate']}")
+    check('  and is not marked censored', inside['censored'] is False)
+    check('past the gate it refuses', beyond['known'] is False, str(beyond))
+    check('  and says it is censored, not merely thin', beyond['censored'] is True)
+    check('  quoting no rate there', beyond['rate'] is None, str(beyond['rate']))
+    # The absent function is deliberate: there is no agent_next_check_in, because a
+    # schedule built on a censored sample would dress a policy as a measurement.
+    check('there is no agent schedule to mistake for a measurement',
+          not hasattr(A, 'agent_next_check_in'))
+
+print()
 print('the calibrator refuses to go stale silently')
 cal = HERE / 'calibrate_attention.py'
 src_json = HERE / 'attention.json'
