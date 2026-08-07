@@ -139,9 +139,25 @@ waves.close('agent-a', 'my part is done')
 row, err = waves.open_wave('the next one', surf='agent-a', agent='agent-a')
 show('one agent still working keeps the wave open', err is not None, (err or '')[:46])
 
+import pathlib as _pl
 import subprocess, sys as _sys
-subprocess.run([_sys.executable, 'waves.py', 'force-close', '--for', 'agent-b'],
-               env={**os.environ, 'LASERBRAIN_AGENT': 'agent-a'}, capture_output=True)
+# ABSOLUTE PATH, EXPLICIT CWD, AND THE EXIT CODE IS CHECKED.
+#
+# This read `'waves.py'` relative with no cwd, and capture_output swallowed the resulting
+# "no such file". Run from lasermind/ it passed; run from the repo root — which is how the
+# suite is invoked — the force-close silently never happened and the two assertions below
+# failed. The failure looked exactly like the product bug they were written to catch, and
+# on 2026-08-04 it was reported as one.
+#
+# A subprocess whose exit code nobody reads is not a step in a test, it is a wish.
+_WAVES = str(_pl.Path(__file__).resolve().parent / 'waves.py')
+_forced = subprocess.run([_sys.executable, _WAVES, 'force-close', '--for', 'agent-b'],
+                         cwd=_pl.Path(__file__).resolve().parent,
+                         env={**os.environ, 'LASERBRAIN_AGENT': 'agent-a'},
+                         capture_output=True, text=True)
+show('the force-close subprocess actually ran', _forced.returncode == 0,
+     (_forced.stderr or _forced.stdout or '').strip().splitlines()[-1][:60]
+     if (_forced.stderr or _forced.stdout).strip() else f'exit {_forced.returncode}')
 cur = waves.current_wave()
 show('after force-close the outstanding agent is cleared',
      'agent-b' not in cur['outstanding'], f"outstanding={cur['outstanding']}")

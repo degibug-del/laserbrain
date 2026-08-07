@@ -50,10 +50,14 @@ import pathlib
 import sys
 from collections import defaultdict
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+import _root                                                       # noqa: E402
+
 DRIFT = pathlib.Path(os.environ.get('LASERBRAIN_DRIFT_LOG')
-                     or pathlib.Path.home() / '.config/laserbrain/drift-log.jsonl')
+                     or _root.config('drift-log.jsonl'))
 OUT = pathlib.Path(os.environ.get('LASERBRAIN_OUTCOMES_LOG')
-                   or pathlib.Path.home() / '.config/laserbrain/verdict-outcomes.jsonl')
+                   or _root.config('verdict-outcomes.jsonl'))
 GOAL_MIN = 0.30
 RULE = 'rule:returned-or-closed@1'
 

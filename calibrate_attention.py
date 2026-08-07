@@ -62,16 +62,52 @@ import collections
 import datetime
 import glob
 import json
+import statistics
 import math
 import os
 import pathlib
 import sys
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+import _root                                                       # noqa: E402
+
 DRIFT = pathlib.Path(os.environ.get('LASERBRAIN_DRIFT_LOG')
-                     or pathlib.Path.home() / '.config/laserbrain/drift-log.jsonl')
+                     or _root.config('drift-log.jsonl'))
 TRANSCRIPTS = pathlib.Path(os.environ.get('LASERBRAIN_TRANSCRIPTS')
                            or pathlib.Path.home() / '.claude/projects')
 OUT = pathlib.Path(__file__).resolve().parent / 'attention.json'
+
+# THE SECOND COPY, and the reason it is named here rather than left to a human.
+#
+# laserbrain-sdk/laserbrain/attention.json is PACKAGE DATA: it goes out inside the wheel,
+# so it is the table every pip-installed agent actually schedules against. This script
+# wrote OUT only. On 2026-08-04 a recalibration moved the rates, OUT changed, and the
+# shipped copy did not — the two had been byte-identical five minutes earlier and nothing
+# would have reported the split. The next release would have carried a table its own
+# corpus had already outgrown, and the failure is silent by construction: a stale data
+# file raises no error, it just answers an old question confidently.
+#
+# Byte-identical is the right assertion, not "within tolerance". These are not two
+# measurements that ought to agree; they are one artifact stored twice.
+SHIPPED = (pathlib.Path(__file__).resolve().parent.parent
+           / 'laserbrain-sdk' / 'laserbrain' / 'attention.json')
+
+
+def _shipped_state(text):
+    """(status, detail) for the packaged copy. `text` is what OUT holds or will hold.
+
+    Missing SDK directory is a skip: this script runs on machines that have the corpus and
+    not the package, and failing there would train people to ignore it. A missing FILE
+    inside an SDK that IS present is a real fault — the package would ship without the
+    table it reads.
+    """
+    if not SHIPPED.parent.exists():
+        return 'skip', 'no SDK checkout on this machine'
+    if not SHIPPED.exists():
+        return 'fail', f'{SHIPPED} is missing — the wheel would ship without its table'
+    return ('ok', '') if SHIPPED.read_text() == text else (
+        'fail', f'{SHIPPED.name} in the SDK differs from lasermind/{OUT.name}')
 
 # Edges in seconds. Finer at the short end because that is where a scheduler has to make
 # its decision, and there is no point resolving beyond half an hour -- past that the advice
@@ -159,8 +195,7 @@ def two_proportion_z(a, b):
     return round((b['drift'] / b['n'] - a['drift'] / a['n']) / se, 3) if se else None
 
 
-SESSIONS = pathlib.Path(os.environ.get('LASERBRAIN_STATE_DIR')
-                        or pathlib.Path.home() / '.claude' / 'laserbrain')
+SESSIONS = _root.sessions_dir()
 
 # Step-gaps between one spelled check and the next.
 AGENT_BANDS = [(1, 1, '1 step'), (2, 3, '2-3 steps'), (4, 7, '4-7 steps'),
@@ -260,6 +295,56 @@ def _best_powered(bands):
             'best_powered_n': a['n'] + b['n']}
 
 
+def overhead():
+    """What fraction of an agent's tool calls ARE laserbrain.
+
+    THE OTHER HALF OF THE LEDGER. The bands above say what the instrument catches. This
+    says what it costs, and nothing on the site said it until 2026-08-05 — a page that
+    prints its own nulls beside its proofs had a one-sided ledger on the one number a
+    reader is actually spending.
+
+    It is a check_state count over a tool-call count, per run: no A/B, no control arm, no
+    inference. Measured across 198 runs it sits at a median 22.2% with an IQR of
+    20.9-24.0%, which is tight enough to publish as a constant rather than a mood.
+
+    It is also, unsurprisingly, 1/BLOCK_AFTER. The gate forces a check every four steps to
+    hold the coverage floor, so the overhead is not emergent — it is the threshold, and
+    changing one changes the other. That is worth a reader knowing before they weigh any
+    claim about saved tokens: a benefit has to clear this before it is a benefit at all.
+
+    Runs under ten steps are excluded. A three-step run with one check reads as 33% and
+    says nothing about sustained cost.
+    """
+    ratios = []
+    # SESSIONS, not DRIFT. The drift log is one line per reading; the session files
+    # carry `steps`, and steps is the denominator — it counts tool calls the log
+    # never sees. Globbing the log as a directory silently yielded nothing, and the
+    # overhead came out None rather than wrong, which is the quieter failure.
+    for path in sorted(SESSIONS.glob('*.json')) if SESSIONS.is_dir() else []:
+        try:
+            d = json.loads(path.read_text())
+        except Exception:
+            continue
+        for seg in [d] + (d.get('segments') or []):
+            checks, steps = seg.get('checks') or [], seg.get('steps') or 0
+            if steps >= 10 and checks:
+                ratios.append(len(checks) / steps)
+    if not ratios:
+        return None
+    ratios.sort()
+    n = len(ratios)
+    return {
+        'what': ('Share of an agent\'s tool calls that are laserbrain itself. A cost, not '
+                 'a benefit — measured so a claim about saved tokens has something to clear.'),
+        'runs': n,
+        'median': round(statistics.median(ratios), 4),
+        'iqr': [round(ratios[n // 4], 4), round(ratios[3 * n // 4], 4)],
+        'note': ('Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by '
+                 'construction: the gate forces a check every four steps to hold the '
+                 'coverage floor, so this is the threshold, not an emergent property.'),
+    }
+
+
 def build():
     rows = readings()
     if not rows:
@@ -300,6 +385,7 @@ def build():
         # that produced it. Kept in the same file because a reader comparing them is the
         # whole point; split across two files, only the flattering one gets quoted.
         'agent_clock': agent_clock(),
+        'overhead': overhead(),
         'fresh_ground': {
             'what': ('The same table over readings on a ground that was just set. Kept '
                      'OUT of the schedule: a reading cannot drift from a ground reset one '
@@ -388,10 +474,25 @@ def main():
             return 1
         print(f'  {OUT.name} still describes the corpus (rates within '
               f'{a.tolerance:.0%}).')
+        status, detail = _shipped_state(OUT.read_text())
+        if status == 'fail':
+            print(f'  DIVERGED — {detail}')
+            print(f'  Run: python3 {pathlib.Path(__file__).name}')
+            return 1
+        print(f'  the packaged copy is identical.' if status == 'ok'
+              else f'  packaged copy unchecked — {detail}.')
         return 0
 
-    OUT.write_text(json.dumps(fresh, indent=2) + '\n')
+    text = json.dumps(fresh, indent=2) + '\n'
+    OUT.write_text(text)
     print(f'  wrote {OUT}')
+    # Both, always. Writing one and trusting someone to copy the other is the arrangement
+    # that already failed once, on the same day this line was added.
+    if SHIPPED.parent.exists():
+        SHIPPED.write_text(text)
+        print(f'  wrote {SHIPPED}  (package data — ships in the wheel)')
+    else:
+        print('  no SDK checkout here, packaged copy not written')
     for b in fresh['bands']:
         rate = 'underpowered' if b['rate'] is None else f"{b['rate'] * 100:.1f}%"
         print(f"    {b['label']:<16} {b['drift']:>4}/{b['n']:<5} {rate}")

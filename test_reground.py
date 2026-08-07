@@ -11,8 +11,14 @@ exemption for an agent that then wanders.
 """
 import json, subprocess, pathlib, os, sys
 
-SERVER = pathlib.Path.home() / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis/lasermind/mcp-server.mjs'
-FLAG = pathlib.Path.home() / '.config/laserbrain/user-turn'
+# FIRST, above anything that resolves a path: this suite SETS user-turn, and user-turn is
+# what turns an excursion into a reground. Shared, it was testing whichever suite ran next.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import _testhome                                                   # noqa: E402
+_testhome.isolate()
+
+SERVER = pathlib.Path(__file__).resolve().parent / 'mcp-server.mjs'
+FLAG = _testhome.config('user-turn')
 
 ok = True
 

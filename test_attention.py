@@ -20,6 +20,7 @@ measurement and is a guess. Every function propagates the null instead.
 """
 import json
 import pathlib
+import os
 import subprocess
 import sys
 
@@ -190,13 +191,23 @@ else:
 
 print()
 print('the calibrator refuses to go stale silently')
+# THE LIVE CORPUS, on purpose — the same exemption test_corpus_clean takes and for the same
+# reason. attention.json is calibrated FROM the accumulated drift log, so "does the table
+# still describe the corpus" is a question about the real file. run-tests.sh exports
+# LASERBRAIN_HOME so no suite can write to it; honouring that here would point --check at an
+# empty temp directory, where it reports "no corpus" and the assertion means nothing.
+#
+# Reading it is safe in a way writing never was: --check computes and compares, it does not
+# append.
+_LIVE_ENV = {k: v for k, v in os.environ.items()
+             if k not in ('LASERBRAIN_HOME', 'LASERBRAIN_STATE_DIR', 'LASERBRAIN_DRIFT_LOG')}
 cal = HERE / 'calibrate_attention.py'
 src_json = HERE / 'attention.json'
 if not (cal.exists() and src_json.exists()):
     check('calibrate_attention.py and attention.json present', False)
 else:
     p = subprocess.run([sys.executable, str(cal), '--check'], cwd=HERE,
-                       capture_output=True, text=True, timeout=900)
+                       env=_LIVE_ENV, capture_output=True, text=True, timeout=900)
     check('--check passes against the live corpus', p.returncode == 0,
           (p.stdout + p.stderr).strip()[:70])
     saved = src_json.read_text()
@@ -207,15 +218,81 @@ else:
         doctored['bands'][1]['rate'] = 0.90
         src_json.write_text(json.dumps(doctored, indent=2) + '\n')
         q = subprocess.run([sys.executable, str(cal), '--check'], cwd=HERE,
-                           capture_output=True, text=True, timeout=900)
+                           env=_LIVE_ENV, capture_output=True, text=True, timeout=900)
         check('  and fails on a doctored table', q.returncode == 1, f'rc={q.returncode}')
         check('  saying which command fixes it', 'calibrate_attention.py' in q.stdout,
               q.stdout.strip()[:60])
     finally:
         src_json.write_text(saved)
     r = subprocess.run([sys.executable, str(cal), '--check'], cwd=HERE,
-                       capture_output=True, text=True, timeout=900)
+                       env=_LIVE_ENV, capture_output=True, text=True, timeout=900)
     check('  and the file is restored', r.returncode == 0, r.stdout.strip()[:50])
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# THE PACKAGED COPY MUST NOT DRIFT FROM THE CALIBRATED ONE
+#
+# attention.json exists twice: lasermind/ holds the calibrated table, and
+# laserbrain-sdk/laserbrain/ holds package data that ships inside the wheel — the table
+# every pip-installed agent actually schedules against.
+#
+# calibrate_attention.py wrote only the first. On 2026-08-04 a recalibration moved the
+# rates, the two had been byte-identical minutes earlier, and the split was noticed by
+# hand. Nothing would have reported it: a stale data file raises no error, it answers an
+# old question confidently. The next release would have shipped a table its own corpus had
+# already outgrown.
+#
+# Byte-identical, not "within tolerance" — these are not two measurements that ought to
+# agree, they are one artifact stored twice.
+# ══════════════════════════════════════════════════════════════════════════════════════
+import json as _json                                             # noqa: E402
+import pathlib as _pl                                            # noqa: E402
+import shutil as _sh                                             # noqa: E402
+import subprocess as _sp                                         # noqa: E402
+import sys as _sys                                               # noqa: E402
+
+_HERE = _pl.Path(__file__).resolve().parent
+_CAL = _HERE / 'calibrate_attention.py'
+_OUT = _HERE / 'attention.json'
+_SHIPPED = _HERE.parent / 'laserbrain-sdk' / 'laserbrain' / 'attention.json'
+
+print()
+print('the packaged copy is held to the calibrated one')
+
+if not _SHIPPED.parent.exists():
+    print('  skip  no SDK checkout on this machine')
+else:
+    # BOTH files are backed up, not just the shipped one. This block invokes the REAL
+    # calibrator, which writes attention.json as well — so a first version of this test
+    # rewrote the calibrated table as a side effect and the suite failed on its second run
+    # with three assertions from the section ABOVE it. A test that mutates the artifact it
+    # is testing is not a test, it is a migration with assertions attached.
+    _bak = _SHIPPED.read_text()
+    _bak_out = _OUT.read_text()
+    try:
+        check('the two copies are identical to begin with', _OUT.read_text() == _bak)
+
+        # Doctor the SHIPPED copy only — the precise failure that occurred.
+        _d = _json.loads(_bak)
+        _d['bands'][1]['rate'] = 0.999
+        _SHIPPED.write_text(_json.dumps(_d, indent=2) + '\n')
+        _rc = _sp.run([_sys.executable, str(_CAL), '--check'],
+                      env=_LIVE_ENV, capture_output=True, text=True, cwd=_HERE)
+        check('a diverged package copy FAILS the check', _rc.returncode != 0,
+             f'exit {_rc.returncode}')
+        check('  and the message names the divergence', 'DIVERGED' in _rc.stdout,
+             _rc.stdout.strip().splitlines()[-1][:60] if _rc.stdout.strip() else '(no output)')
+
+        # And a plain run repairs it, rather than leaving a human to copy the file.
+        _sp.run([_sys.executable, str(_CAL)], env=_LIVE_ENV, capture_output=True,
+                text=True, cwd=_HERE)
+        check('a plain run rewrites BOTH copies', _SHIPPED.read_text() == _OUT.read_text())
+        _rc2 = _sp.run([_sys.executable, str(_CAL), '--check'],
+                       env=_LIVE_ENV, capture_output=True, text=True, cwd=_HERE)
+        check('  and the check passes again', _rc2.returncode == 0, f'exit {_rc2.returncode}')
+    finally:
+        _SHIPPED.write_text(_bak)
+        _OUT.write_text(_bak_out)
 
 print()
 if fails:

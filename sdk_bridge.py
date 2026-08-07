@@ -196,6 +196,20 @@ def op_write_grounded(a):
     return {'text': text, 'ground': ground, 'grounding': round(w.grounding(text, ground), 3)}
 
 
+def op_read_text(a):
+    """Read the shape of a text — the companion to op_write_grounded.
+
+    write_grounded holds GENERATION to a ground; this asks what shape writing is already
+    in. Both go through the package rather than being reimplemented here, which is the
+    whole reason this bridge exists.
+    """
+    try:
+        conn = float(a.get('connectivity') or 0.0)
+    except (TypeError, ValueError):
+        conn = 0.0
+    return lb.read_text(a.get('text') or '', connectivity=conn)
+
+
 def op_similarity(a):
     sim = lb.embedding_similarity(a['model']) if a.get('model') else lb.embedding_similarity()
     return {'similarity': round(float(sim(a.get('a', ''), a.get('b', ''))), 4)}
@@ -208,6 +222,7 @@ OPS = {
     'trailscore': op_trailscore,
     'supercode': op_supercode,
     'write_grounded': op_write_grounded,
+    'read_text': op_read_text,
     'similarity': op_similarity,
 }
 

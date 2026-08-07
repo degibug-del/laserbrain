@@ -16,8 +16,9 @@
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { config as lbConfig } from './lb_paths.mjs'
 
-const LOG = process.env.LASERBRAIN_DRIFT_LOG || join(homedir(), '.config', 'laserbrain', 'drift-log.jsonl')
+const LOG = process.env.LASERBRAIN_DRIFT_LOG || lbConfig('drift-log.jsonl')
 const tailN = (() => { const i = process.argv.indexOf('--tail'); return i >= 0 ? Number(process.argv[i + 1]) || 20 : 0 })()
 
 let rows = []
@@ -100,7 +101,7 @@ console.log('')
 // A signal firing 40% of the time is not a fault and not a virtue — it depends entirely on
 // whether those fires were catching anything, which is precisely what nothing recorded.
 const OUTCOMES = process.env.LASERBRAIN_OUTCOMES_LOG
-  || join(homedir(), '.config', 'laserbrain', 'verdict-outcomes.jsonl')
+  || lbConfig('verdict-outcomes.jsonl')
 let labels = []
 try {
   labels = readFileSync(OUTCOMES, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))

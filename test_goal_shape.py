@@ -29,6 +29,18 @@ import pathlib
 import sys
 import tempfile
 
+# ONE STATE ROOT — a private tree, so this suite cannot write into the live corpus.
+#
+# It could, and it did. On 2026-08-05 the live drift log held 2,644 rows of which 1,058 —
+# 40% — were written by suites spawning the server against the real ~/.config/laserbrain.
+# Synthetic runs are pathological ON PURPOSE (flat distance, repeated goals, abandon bait),
+# so they do not dilute the corpus evenly: `stalled` is 39.7% of the test rows against 3.2%
+# of the real ones, which makes the whole-log rate 5.6x the truth. Every threshold ever read
+# off this log was read off that mixture.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import _testhome                                                   # noqa: E402
+_testhome.isolate()
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'laserbrain-sdk'))
 
 from laserbrain.runtime import (Session, is_groundable,           # noqa: E402

@@ -28,9 +28,39 @@ answering it early from the same thin sample would repeat the mistake it documen
 import json
 import os
 import pathlib
+import sys
+
+# Above every resolver, because they read the environment at import time. This suite used
+# to clear the REAL ~/.config/laserbrain/user-turn — the running agent's own flag — on
+# every run, and read a user-turn any other suite could have set. That is the two-day
+# flake this file's own header describes.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import _testhome                                                   # noqa: E402
+_testhome.isolate()
+
+# THE USER-TURN FLAG IS GLOBAL, AND THIS SUITE ASSUMES IT IS CLEAR.
+#
+# ~/.config/laserbrain/user-turn is a single file at a hardcoded path, shared by every
+# suite and by the server itself. When it is set, a goal that leaves ground reads as
+# `reground` — the user changed the subject — instead of `excursion`. So a predecessor
+# that sets it and does not clean up turns this suite's first three assertions red, and
+# the failure looks exactly like a broken excursion rule.
+#
+# That is the whole of the "parent_overlap flake" chased since 2026-08-04: intermittent,
+# never reproducible alone, and healed by the rerun that destroyed the evidence. Caught on
+# 2026-08-05 only once the runner started keeping failing output — the log read "the
+# verdict is excursion, not drift   reground", which names the cause outright.
+#
+# Cleared here rather than fixed upstream: the path is hardcoded in four places across two
+# languages, so isolation is a larger change than this suite should make. A suite that
+# depends on global state should assert that state, not hope for it.
+_testhome.config('user-turn').unlink(missing_ok=True)
+import os
+import pathlib
 import subprocess
 import sys
 import tempfile
+
 
 HERE = pathlib.Path(__file__).resolve().parent
 SERVER = HERE / 'mcp-server.mjs'

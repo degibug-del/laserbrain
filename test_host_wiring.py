@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
-"""Can agent-b actually REACH the instrument? Not: does the gate behave once it does.
+"""Can the client actually REACH the instrument? Not: does the gate behave once it does.
 
-test_gate_grok.py covers the gate's logic and passes. It passed every day from
-2026-07-27 to 2026-08-01 while agent-b could not connect to laserbrain at all, because
-nothing checked the wiring — only the behaviour on the far side of it.
+laserbrain is served from lasermind/mcp-server.mjs and agents connect to it as CLIENTS.
+Neither is a host, and nothing here should read as one vendor's product with a guest — this
+file used to call grok "agent-b", a de-branding placeholder that then leaked into a real
+path and cost six days of silence. See the note above the parity block.
+
+test_gate_grok.py covers the gate's logic and passes. It passed every day from 2026-07-27 to
+2026-08-01 while grok could not connect to laserbrain at all, because nothing checked the
+wiring — only the behaviour on the far side of it.
 
 WHAT BROKE, AND WHY NOTHING CAUGHT IT
 
 The instruction layer was named `lasergear` on 2026-07-27 and the MCP server settled in
-`lasermind`. One rename, four breakages in agent-b's setup, none of them visible from any
-existing gate:
+`lasermind`. One rename, four breakages in the client's setup, none visible from any gate:
 
-  · ~/.agent-b/config.toml launched phronesis/laserbrain/mcp-server.mjs — a directory that
-    does not exist. The server never started, so check_state never existed for agent-b.
+  · config.toml launched phronesis/laserbrain/mcp-server.mjs — a directory that does not
+    exist. The server never started, so check_state never existed for that client.
   · the groklaserbrain skill called tandem_whoami / tandem_read / tandem_write. Those were
     renamed to link_* and zero tandem_* tools remain.
-  · ~/.agent-b/hooks/lib/*.py were 2026-07-25 copies; lb_coverage.py was 353 lines against a
+  · hooks/lib/*.py were 2026-07-25 copies; lb_coverage.py was 353 lines against a
     canonical 671.
   · sync_from_icloud.sh pulled from lasermind/hooks, which now holds 20-line fail-loud
     shims. Running it would have overwritten working hooks with shims.
@@ -24,12 +28,17 @@ The symptom was a deadlock that looked like a hook bug: lb_gate.py denies tool c
 check_state is spelled, and with no server there was no check_state to spell. The hook was
 working correctly on an agent with no way to comply.
 
-This repo gates every a host-facing surface — check-laserbrain-parity, check-worker-deployed,
-sync-grammar --check. It gated none of agent-b's. That asymmetry is the whole reason six days
-of silence read as "agent-b does not drift" rather than "agent-b is not connected".
+This repo gates every host-facing surface — check-laserbrain-parity, check-worker-deployed,
+sync-grammar --check. It gated none of the client's. That asymmetry is the whole reason six
+days of silence read as "this agent does not drift" rather than "this agent is not connected".
 
-SKIPS CLEANLY when agent-b is not installed. The SDK ships to people who do not have it, and
-a gate that fails on a missing sibling install teaches people to ignore gates.
+WHAT IS AND IS NOT LIVE HERE, stated because green must not be read as more than it is: the
+MCP wiring below is real and exercised — the server is launched and its tools are listed. The
+hook copies are checked for currency but CANNOT EXECUTE for a client running hooks = false,
+which this prints rather than implies.
+
+SKIPS CLEANLY when the client is not installed. The SDK ships to people who do not have it,
+and a gate that fails on a missing sibling install teaches people to ignore gates.
 """
 import json
 import os
@@ -38,6 +47,19 @@ import re
 import shutil
 import subprocess
 import sys
+
+# ONE STATE ROOT — a private tree, so this suite cannot write into the live corpus.
+#
+# It could, and it did. On 2026-08-05 the live drift log held 2,644 rows of which 1,058 —
+# 40% — were written by suites spawning the server against the real ~/.config/laserbrain.
+# Synthetic runs are pathological ON PURPOSE (flat distance, repeated goals, abandon bait),
+# so they do not dilute the corpus evenly: `stalled` is 39.7% of the test rows against 3.2%
+# of the real ones, which makes the whole-log rate 5.6x the truth. Every threshold ever read
+# off this log was read off that mixture.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import _testhome                                                   # noqa: E402
+_testhome.isolate()
+
 
 HOME = pathlib.Path.home()
 # Both roots are injectable, and they are SEPARATE on purpose. A harness that wants to
@@ -67,6 +89,7 @@ def _grok_root():
 
 
 GROK = _grok_root()
+CLIENT = GROK.name.lstrip('.')          # the client's own name — never "the host", never "agent-b"
 ICLOUD = pathlib.Path(os.environ.get('LB_ICLOUD_ROOT')
                       or HOME / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis')
 LASERGEAR = ICLOUD / 'lasergear'
@@ -93,15 +116,15 @@ def skip(label, why):
     skipped.append(label)
 
 
-# ── 1 · the MCP server agent-b is configured to launch must exist ────────────────
+# ── 1 · the MCP server the client is configured to launch must exist ────────────
 cfg = GROK / 'config.toml'
 if not cfg.exists():
-    print('  SKIP — no ~/.agent-b/config.toml')
+    print(f'  SKIP — no {cfg}')
     sys.exit(0)
 
 raw = cfg.read_text()
 m = re.search(r'\[mcp_servers\.laserbrain\](.*?)(?=\n\[|\Z)', raw, re.S)
-check('agent-b has a laserbrain MCP server configured', m is not None)
+check(f'{CLIENT} has a laserbrain MCP server configured', m is not None)
 server_path = None
 if m:
     am = re.search(r'args\s*=\s*\[\s*"([^"]+)"', m.group(1))
@@ -136,7 +159,7 @@ else:
     try:
         out = subprocess.run(['node', str(server_path)], input=probe, capture_output=True,
                              text=True, timeout=60,
-                             env={**os.environ, 'LASERBRAIN_AGENT': 'agent-b'})
+                             env={**os.environ, 'LASERBRAIN_AGENT': CLIENT})
         names = set()
         for line in out.stdout.splitlines():
             try:
@@ -166,22 +189,56 @@ else:
     except Exception as e:
         check('  the server starts and lists tools', False, f'{type(e).__name__}: {e}')
 
-# ── 4 · agent-b's hook copies must match canonical lasergear ─────────────────────
+# ── 4 · the client's hook copies must match canonical lasergear ──────────────────
+#
+# CAN THESE FILES EVEN RUN? Asked out loud, because for this client the answer is no.
+#
+# ~/.grok/config.toml carries `[compat.claude] hooks = false`. The MCP wiring above is
+# live — the server is launched, the tools are served, check_state is reachable — but
+# nothing in hooks/lib executes. Four green lines saying the copies match canonical
+# therefore assure nobody of anything about a running system; they assure you a disabled
+# file is a current disabled file.
+#
+# That is still worth checking, and the parity checks stay: the day hooks are switched on,
+# stale copies are exactly the failure this file was written after. What changes is that
+# the status is printed rather than implied, so green is never read as "the gate is
+# protecting this client". A check whose subject cannot execute is the same species of
+# false assurance as a check that silently vanished — this file has already been bitten by
+# the second kind and should not ship the first.
+#
+# NAMING: this is a CLIENT, not a host. laserbrain is served from lasermind/mcp-server.mjs
+# and agents connect to it; describing one client as a host makes a shared instrument sound
+# like one vendor's product with a guest. The old `agent-b` labels are gone for the same
+# reason — a de-branding placeholder that also cost this file six days of silence when it
+# leaked into a real path.
+hooks_live = None
+if cfg.exists():
+    _t = cfg.read_text()
+    _m = re.search(r'^\s*hooks\s*=\s*(true|false)\s*$', _t, re.M)
+    hooks_live = (_m.group(1) == 'true') if _m else None
+print()
+if hooks_live is False:
+    print(f'  note  {CLIENT} runs with hooks = false — nothing in hooks/lib executes for it.')
+    print('        The parity checks below keep the copies current for the day that changes;')
+    print('        they say nothing about a running gate.')
+elif hooks_live is None:
+    print(f'  note  no hooks setting found in {cfg.name} — parity checked, execution unknown.')
+
 lib = GROK / 'hooks/lib'
 if not lib.exists():
-    skip("agent-b's hook copies match lasergear", f'{lib} not present')
+    skip(f"{CLIENT}'s hook copies match lasergear", f'{lib} not present')
 elif not LASERGEAR.exists():
-    skip("agent-b's hook copies match lasergear", f'{LASERGEAR} not present')
+    skip(f"{CLIENT}'s hook copies match lasergear", f'{LASERGEAR} not present')
 else:
-    for f in ('lb_gate.py', 'lb_coverage.py', 'lb_safety.py'):
+    for f in ('lb_paths.py', 'lb_gate.py', 'lb_coverage.py', 'lb_safety.py'):
         mine, canon = lib / f, LASERGEAR / f
         if not canon.exists():
             continue
         if not mine.exists():
-            check(f'agent-b has {f}', False, 'missing')
+            check(f'{CLIENT} has {f}', False, 'missing')
             continue
         same = mine.read_bytes() == canon.read_bytes()
-        check(f'agent-b\'s {f} matches lasergear', same,
+        check(f'{CLIENT}\'s {f} matches lasergear', same,
               '' if same else f'{len(mine.read_text().splitlines())} vs '
                               f'{len(canon.read_text().splitlines())} lines — run sync_from_icloud.sh')
 
@@ -206,5 +263,5 @@ if skipped:
 if fails:
     print(f'  FAIL — {len(fails)}: ' + '; '.join(f.strip() for f in fails))
     sys.exit(1)
-print('  PASS — agent-b can reach the instrument, and its copies agree with canonical.'
+print(f'  PASS — {CLIENT} can reach the instrument, and its copies agree with canonical.'
       + (' (with skips above)' if skipped else ''))

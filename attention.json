@@ -9,7 +9,7 @@
       "from_seconds": 0,
       "to_seconds": 60,
       "drift": 0,
-      "n": 29,
+      "n": 54,
       "rate": 0.0,
       "underpowered": false
     },
@@ -17,18 +17,18 @@
       "label": "1-5 minutes",
       "from_seconds": 60,
       "to_seconds": 300,
-      "drift": 40,
-      "n": 209,
-      "rate": 0.1914,
+      "drift": 49,
+      "n": 316,
+      "rate": 0.1551,
       "underpowered": false
     },
     {
       "label": "5-30 minutes",
       "from_seconds": 300,
       "to_seconds": 1800,
-      "drift": 99,
-      "n": 257,
-      "rate": 0.3852,
+      "drift": 111,
+      "n": 396,
+      "rate": 0.2803,
       "underpowered": false
     },
     {
@@ -36,18 +36,18 @@
       "from_seconds": 1800,
       "to_seconds": null,
       "drift": 19,
-      "n": 22,
-      "rate": 0.8636,
+      "n": 28,
+      "rate": 0.6786,
       "underpowered": false
     }
   ],
   "min_n": 20,
-  "z_between_best_powered": 4.548,
+  "z_between_best_powered": 3.978,
   "best_powered_pair": [
     "1-5 minutes",
     "5-30 minutes"
   ],
-  "best_powered_n": 466,
+  "best_powered_n": 712,
   "agent_clock": {
     "what": "Drift against steps since the agent last spelled its own state. Reported with its censoring, not as a schedule.",
     "bands": [
@@ -56,26 +56,26 @@
         "from_steps": 1,
         "to_steps": 1,
         "drift": 2,
-        "n": 13,
-        "rate": null,
-        "underpowered": true
+        "n": 47,
+        "rate": 0.0426,
+        "underpowered": false
       },
       {
         "label": "2-3 steps",
         "from_steps": 2,
         "to_steps": 3,
-        "drift": 18,
-        "n": 224,
-        "rate": 0.0804,
+        "drift": 19,
+        "n": 285,
+        "rate": 0.0667,
         "underpowered": false
       },
       {
         "label": "4-7 steps",
         "from_steps": 4,
         "to_steps": 7,
-        "drift": 154,
-        "n": 1397,
-        "rate": 0.1102,
+        "drift": 162,
+        "n": 1742,
+        "rate": 0.093,
         "underpowered": false
       },
       {
@@ -83,9 +83,9 @@
         "from_steps": 8,
         "to_steps": 15,
         "drift": 0,
-        "n": 5,
-        "rate": null,
-        "underpowered": true
+        "n": 65,
+        "rate": 0.0,
+        "underpowered": false
       },
       {
         "label": "16+ steps",
@@ -97,16 +97,26 @@
         "underpowered": true
       }
     ],
-    "pairs": 1639,
-    "z_between_best_powered": 1.348,
+    "pairs": 2139,
+    "z_between_best_powered": 1.445,
     "best_powered_pair": [
       "2-3 steps",
       "4-7 steps"
     ],
-    "best_powered_n": 1621,
+    "best_powered_n": 2027,
     "censored_beyond_steps": 8,
-    "censored_share": 0.0031,
-    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 0.31% of the sample (5 of 1639). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
+    "censored_share": 0.0304,
+    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 3.04% of the sample (65 of 2139). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
+  },
+  "overhead": {
+    "what": "Share of an agent's tool calls that are laserbrain itself. A cost, not a benefit \u2014 measured so a claim about saved tokens has something to clear.",
+    "runs": 221,
+    "median": 0.2188,
+    "iqr": [
+      0.2057,
+      0.2368
+    ],
+    "note": "Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by construction: the gate forces a check every four steps to hold the coverage floor, so this is the threshold, not an emergent property."
   },
   "fresh_ground": {
     "what": "The same table over readings on a ground that was just set. Kept OUT of the schedule: a reading cannot drift from a ground reset one step ago, so including it would manufacture the low end. Recorded because redirect-driven fires live here and are worth watching.",
@@ -115,50 +125,50 @@
         "label": "under a minute",
         "from_seconds": 0,
         "to_seconds": 60,
-        "drift": 8,
-        "n": 332,
-        "rate": 0.0241,
+        "drift": 9,
+        "n": 435,
+        "rate": 0.0207,
         "underpowered": false
       },
       {
         "label": "1-5 minutes",
         "from_seconds": 60,
         "to_seconds": 300,
-        "drift": 36,
-        "n": 268,
-        "rate": 0.1343,
+        "drift": 38,
+        "n": 372,
+        "rate": 0.1022,
         "underpowered": false
       },
       {
         "label": "5-30 minutes",
         "from_seconds": 300,
         "to_seconds": 1800,
-        "drift": 9,
-        "n": 96,
-        "rate": 0.0938,
+        "drift": 11,
+        "n": 68,
+        "rate": 0.1618,
         "underpowered": false
       },
       {
         "label": "over 30 minutes",
         "from_seconds": 1800,
         "to_seconds": null,
-        "drift": 0,
-        "n": 0,
+        "drift": 1,
+        "n": 3,
         "rate": null,
         "underpowered": true
       }
     ]
   },
   "provenance": {
-    "written": "2026-08-02",
+    "written": "2026-08-07",
     "corpus_from": "2026-07-28",
-    "corpus_to": "2026-08-03",
-    "readings_total": 1213,
-    "readings_settled": 517,
-    "readings_fresh_ground": 696,
-    "user_messages": 5040,
+    "corpus_to": "2026-08-07",
+    "readings_total": 1672,
+    "readings_settled": 794,
+    "readings_fresh_ground": 878,
+    "user_messages": 4076,
     "dominant_agent": "claude",
-    "dominant_agent_share": 0.926,
-    "caveat": "One machine, and 93% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."
+    "dominant_agent_share": 0.999,
+    "caveat": "One machine, and 100% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."
   }
 }

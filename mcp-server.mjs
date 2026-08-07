@@ -29,6 +29,7 @@ import { appendFile, mkdir } from 'node:fs/promises'
 import { existsSync, unlinkSync, readFileSync, writeFileSync, openSync, closeSync, statSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
+import { configDir as lbConfigDir } from './lb_paths.mjs'
 import { fileURLToPath } from 'node:url'
 
 const HUB = process.env.LASERBRAIN_HUB || 'https://phronesis.world/api/laserbrain'
@@ -44,7 +45,12 @@ const AGENT = String(process.env.LASERBRAIN_AGENT || 'unknown').toLowerCase()
 // which are false alarms. No key, no network, no retention limit; refine what we
 // capture as we learn. Path override: LASERBRAIN_DRIFT_LOG. Always local and
 // fire-and-forget, so it can never delay or alter the check itself.
-const DRIFT_LOG = process.env.LASERBRAIN_DRIFT_LOG || join(homedir(), '.config', 'laserbrain', 'drift-log.jsonl')
+/* ONE STATE ROOT — see ./lb_paths.mjs, which dogfood-stats.mjs imports too.
+ * LASERBRAIN_HOME relocates both trees at once; the specific overrides that predate it
+ * still win; unset leaves the historical paths exactly as they were. */
+const LB_CONFIG = lbConfigDir()
+
+const DRIFT_LOG = process.env.LASERBRAIN_DRIFT_LOG || join(LB_CONFIG, 'drift-log.jsonl')
 // Shared cross-agent data plane. Same file for every agent on this machine.
 // Path override: LASERBRAIN_LINK_LOG.
 // Renamed from tandem 2026-07-27. Four files resolve this path independently — this one,
@@ -52,7 +58,7 @@ const DRIFT_LOG = process.env.LASERBRAIN_DRIFT_LOG || join(homedir(), '.config',
 // two agents "sharing" a channel each write to a different log and each reads an empty one,
 // which presents exactly as the other agent having said nothing. The legacy name and path
 // are honoured so an un-migrated machine keeps its history rather than starting over.
-const LINK_DIR = join(homedir(), '.config', 'laserbrain')
+const LINK_DIR = LB_CONFIG
 const LINK_LOG = process.env.LASERBRAIN_LINK_LOG
   || process.env.LASERBRAIN_TANDEM_LOG
   || (existsSync(join(LINK_DIR, 'tandem.jsonl')) && !existsSync(join(LINK_DIR, 'link.jsonl'))
@@ -75,7 +81,7 @@ const LINK_LOG = process.env.LASERBRAIN_LINK_LOG
 // by another route. `by` records who said it, so a self-marked label stays
 // distinguishable from an independent one rather than both reading as truth.
 const OUTCOMES_LOG = process.env.LASERBRAIN_OUTCOMES_LOG
-  || join(homedir(), '.config', 'laserbrain', 'verdict-outcomes.jsonl')
+  || join(LB_CONFIG, 'verdict-outcomes.jsonl')
 // Reading the corpus back, so a fire can be judged AFTER the run that produced it has
 // ended. Until this existed a verdict was scoreable only while its own run was still in
 // memory, which is close to never: the moment worth judging a fire is usually after you
@@ -315,7 +321,7 @@ const toWords = (s) => {
 // writes when the user speaks. Consumed — deleted — so it grants exactly one re-ground.
 // Synchronous on purpose: check_state must decide inside a single call, and the whole
 // point of the harness is that its verdict never depends on timing.
-const USER_TURN_FLAG = join(homedir(), '.config', 'laserbrain', 'user-turn')
+const USER_TURN_FLAG = join(LB_CONFIG, 'user-turn')
 const consumeUserTurn = () => {
   try {
     if (!existsSync(USER_TURN_FLAG)) return false
@@ -383,6 +389,23 @@ const laserscore = (s, parent) => {
 // roughly one true catch for thirty false alarms on this corpus, against an instrument
 // whose overall precision is 9%. Worth stating plainly: at window 4 the stall rule is
 // close to inert here, and that is a finding, not a fix.
+//
+// RE-DERIVED 2026-08-05 on the observed corpus, once 1,058 synthetic rows came out of
+// drift-log.jsonl. Longest flat-distance streak per run, across 209 observed runs:
+//
+//     >= 2   39.7%        >= 4    4.3%
+//     >= 3   11.0%        >= 5    1.9%
+//
+// "Close to inert" is no longer the right description — 4.3% of runs is rare, not absent.
+// That wording came from a corpus whose test rows were 39.7% `stalled` and drowned it.
+//
+// THE WINDOW STAYS AT 4, and the reason deserves to be exact, because selectivity alone
+// argues the other way: the biggest drop is 2 -> 3 (28.7 points) and 3 -> 4 buys only 6.7
+// more. But the case for 4 was never selectivity. It was PRECISION — window 3 fired on any
+// three flat checks, which is what ordinary sub-work looks like, and all 36 of its recorded
+// fires graded false. Precision needs graded fires and the clean corpus has no labels yet.
+// Moving a threshold on the one axis that did not decide it would be reading the corpus for
+// permission rather than for evidence.
 // Read from the grammar, not retyped. These were three literals here, three more in
 // drift.ts and three more in the SDK — nine hand-kept copies of numbers the grammar
 // already publishes under `calibration`. grammar.json is loaded above for the
@@ -391,10 +414,42 @@ const _CAL = { ..._BUILTIN.calibration, ...(GRAMMAR.calibration ?? {}) }
 const GOAL_MIN = _CAL.goal_min ?? 0.30
 const SELF_REPORT_MIN = _CAL.self_report_min ?? 0.15
 const STALL_WINDOW = _CAL.stall_window ?? 4
+// A COUNT, NOT A JUDGMENT. null means no budget — the published instrument. Read from
+// grammar.json's calibration block like the three above, so the SDK and this file arm
+// from one document rather than two hand-kept numbers.
+const MAX_CHECKS = _CAL.max_checks ?? null
 
 const displacement = (s, g) =>
   0.5 * jac(toWords(s.goal), toWords(g.goal)) + 0.3 * Math.abs(asDist(s.distance) - g.distance) / 10 + 0.2 * (s.progress === g.progress ? 0 : 1)
-let drift = { ground: null, firstGoal: [], distHist: [], trace: [], trail: [] }
+/* ONE LANE PER CALLER, and the reason it did not exist until now.
+ *
+ * `drift` was a single module-level object. One server process serves one stdio connection,
+ * and that looked like one agent — until subagents arrived. They run inside the same client
+ * process and share its MCP connection, so every one of them lands here, on this object.
+ *
+ * Measured 2026-08-05: a subagent's hook called reset_task and check_state on the parent's
+ * server. The drift log carries run ccdb41cb with 39 rows under the goal "Play the
+ * tr87-cd924810 grid puzzle" — the child's task, written into the parent's ground. The
+ * parent's next check scored its own BYTE-IDENTICAL goal at 0.03 and read goal-drift.
+ *
+ * THE PROBLEM IS THAT NOTHING IDENTIFIES A CALLER. A tools/call carries a name and
+ * arguments; there is no session, no client id, nothing per-connection that differs between
+ * a parent and its children. So this cannot be fixed by partitioning what is already here —
+ * a key has to be supplied by the caller, and `session` is that key.
+ *
+ * ADDITIVE ON PURPOSE. Omit it and you get the shared lane, byte-identical to the old
+ * behaviour, so nothing that works today changes. Pass one and you get your own ground,
+ * your own history, and a reset_task that wipes only yours.
+ */
+const LANES = new Map()
+const SHARED = '__shared__'
+const freshDrift = () => ({ ground: null, firstGoal: [], distHist: [], trace: [], trail: [] })
+function lane(session) {
+  const k = String(session || SHARED)
+  if (!LANES.has(k)) LANES.set(k, { drift: freshDrift(), runId: null, seenOk: null })
+  return LANES.get(k)
+}
+let drift = lane(SHARED).drift
 
 
 // ── the hosted tools, proxied ────────────────────────────────────────────────
@@ -486,6 +541,7 @@ const TOOLS = [
         progress: { type: 'string', description: 'advancing | stuck | circling' },
         distance: { type: 'number', description: '0-10, how far from done (0 = done).' },
         doing: { type: 'string' }, next: { type: 'string' }, blocked: { type: 'string' },
+        session: { type: 'string', description: 'Optional. A stable id for THIS agent. Subagents share their parent\'s server connection, so without it a child\'s ground overwrites the parent\'s. Omit and you share one lane, exactly as before.' },
       },
       required: ['goal', 'progress', 'distance'],
     },
@@ -778,6 +834,24 @@ const TOOLS = [
     },
   },
   {
+    name: 'read_text',
+    description:
+      'Read the shape of a text — circling, connected, loose, or too short to say. The companion ' +
+      'to write_grounded: that one holds generation to a ground, this one asks what shape writing ' +
+      'is already in. Offline, no model, no key. Repetition RAISES a spectral coherence score, so ' +
+      'variety is the term that catches someone circling one thought.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'The text to read.' },
+        connectivity: { type: 'number',
+          description: 'Spectral connectivity 0-1 from the analyzer, if you have it. Optional — ' +
+            'variety alone catches circling.' },
+      },
+      required: ['text'],
+    },
+  },
+  {
     name: 'similarity',
     description:
       'Embedding similarity between two strings, 0-1. Loads a sentence-transformer model on first ' +
@@ -816,10 +890,41 @@ const TOOLS = [
    Thresholds come from grammar.json, not from literals here. This is the fourth
    implementation of laserbrain, and the day it was written is the day three others were
    found disagreeing about a constant they had each hardcoded. */
-const EVIDENCE = join(homedir(), '.config', 'laserbrain', 'evidence.json')
+const EVIDENCE = join(LB_CONFIG, 'evidence.json')
 const _ANCH = GRAMMAR.calibration?.anchored ?? {}
 let _seenOk = null
+/* Has observed work advanced since the last check — asked WITHOUT consuming the marker.
+ *
+ * anchored() answers the same question and moves `_seenOk` as it goes, so it can only be
+ * called once per check. The stall branch decides BEFORE record() runs, so it needs the same
+ * evidence a moment earlier. This reads and does not write; record() still owns the update. */
+function evidenceAdvanced() {
+  let ok = 0
+  try { ok = JSON.parse(readFileSync(EVIDENCE, 'utf8')).ok ?? 0 } catch { return false }
+  return _seenOk !== null && ok > _seenOk
+}
+
+/* ONCE PER CALL, and this is the bug that made the whole field useless.
+ *
+ * anchored() is SIDE-EFFECTING: it advances `_seenOk` to the current count so the next
+ * check measures the next interval. It was being called TWICE on every check_state — once
+ * for `scores.evidence` and once for the `anchored` field — and the second call therefore
+ * saw the marker the first call had just moved:
+ *
+ *     ok=11 seen=10  advanced=true    <- first call, correct
+ *     ok=11 seen=11  advanced=false   <- second call, returns unanchored
+ *
+ * The response carries the second value. So `anchored` could never report 1.0 in live use,
+ * whatever the agent did — measured 0 corroborated across 106 recorded checks, and the
+ * `unbacked` judgment that reads it fired on runs that WERE backed.
+ *
+ * The memo is cleared once per tool call (see call()), which is exactly the scope of one
+ * reading. Two consumers in one response now share one measurement, which is what they
+ * always meant to do.
+ */
+let _anchorMemo = null
 function anchored() {
+  if (_anchorMemo !== null) return _anchorMemo
   const unanchored = _ANCH.unanchored ?? 0.5
   let ok = 0
   try { ok = JSON.parse(readFileSync(EVIDENCE, 'utf8')).ok ?? 0 } catch { return unanchored }
@@ -827,7 +932,8 @@ function anchored() {
   // history would credit work done for some other goal entirely.
   const advanced = _seenOk !== null && ok > _seenOk
   _seenOk = ok
-  return advanced ? (_ANCH.corroborated ?? 1.0) : unanchored
+  _anchorMemo = advanced ? (_ANCH.corroborated ?? 1.0) : unanchored
+  return _anchorMemo
 }
 
 /* ── context identifiers ────────────────────────────────────────────────────────
@@ -840,7 +946,7 @@ function anchored() {
    Storing it turns a per-session reading into a record across sessions. That is what
    judgment needs and measurement does not: Φ can say you are 0.3 from ground, but only
    history can say you have opened this same context four times and never closed it. */
-const CONTEXTS = join(homedir(), '.config', 'laserbrain', 'contexts.json')
+const CONTEXTS = join(LB_CONFIG, 'contexts.json')
 
 // FNV-1a over the canonical token string. Short enough to quote in a sentence, and
 // stable across machines and sessions — the id is a function of the words alone, with no
@@ -1002,6 +1108,87 @@ function observedProgress() {
      Several scores rather than one, because a single number hides which thing went wrong:
      a goal held faithfully through hard work and a goal quietly swapped for an easier one
      can both sit at the same Φ, and the difference is the only thing worth knowing. */
+/* ── THE SPLIT: control, decided on nothing the agent can author ──────────────────────
+   Mirrors _Run._control in the SDK. Two decisions were being made by one rule, and they
+   have opposite tolerances for being wrong:
+
+     LEARNING   what is happening, what to try next — narrow, finish, continue. Wrong costs
+                a suggestion nobody had to take, and self-report is the right input because
+                it is the only thing that knows intent.
+     CONTROL    should this run continue at all — stop, verify. Wrong kills a run that was
+                working, or lets a dead one run on. The agent's own account is the worst
+                available input, because the agent is the subject of the decision.
+
+   `verdict` in judgeWork is the learning decision and is UNCHANGED. This is additive.
+
+   THE TEST FOR ADMISSION, applied to every input: can the agent silence this rule by
+   typing different numbers, without doing different work?
+
+     here, MAX_CHECKS         no  — the harness counts calls
+     sawAny, corroborated     no  — tool outcomes, counted into evidence.json by a hook
+     priorRuns                no  — how many earlier SESSIONS opened this context
+     goalDrifts, regrounds    no  — overlap against a ground frozen at first call
+
+     everything downstream of the typed number — closed, pace, now, flat, stalls, and the
+     store's repetition and ceiling, which are counted over typed spellings — YES, and all
+     of it is barred here. That is the whole change: today `abandon` requires closed <= 0,
+     so an agent typing a falling number is never told to stop however little it does.
+
+   Two rules therefore drop a condition their verdict twins carry — `unbacked` loses
+   `closed > 0`, the recurrence arm of `abandon` loses `closed <= 0` — so control is
+   strictly louder than the matching verdict. Where they disagree is exactly where
+   self-report was carrying the decision.
+
+   The body below is kept free of the word `dist` on purpose, and
+   test_control_is_evidence_only asserts that against this file: the executable text is the
+   claim, and a comment cannot smuggle a typed input past a substring check. */
+function control(here, priorRuns, goalDrifts, regrounds, sawAny, corroborated) {
+  const reads = { checks: here, budget: MAX_CHECKS, observed_any: Boolean(sawAny),
+                  corroborated, prior_sessions: priorRuns,
+                  goal_drifts: goalDrifts, regrounds }
+  let decision, because
+  if (MAX_CHECKS != null && here >= MAX_CHECKS) {
+    decision = 'stop'
+    because = `${here} checks against a budget of ${MAX_CHECKS}. A count, not an assessment.`
+  } else if (priorRuns >= 3) {
+    decision = 'stop'
+    because = `This context has been opened in ${priorRuns} earlier sessions and finished in `
+      + `none. The current run's own account of itself was not consulted.`
+  } else if (goalDrifts >= 3 && goalDrifts > regrounds) {
+    // `reground`, NOT `stop` — decided on the corpus, not on taste. Replaying 231 runs
+    // through both decisions, every one of the 134 rows where control was louder than the
+    // verdict came from THIS arm; the recurrence arm produced none. A caller wiring
+    // `if (decision === 'stop') halt()` would have killed all twelve of those runs, and they
+    // were working. What was wrong was that the goal kept moving unannounced — the heaviest
+    // ran 40 steps under 37 separate goals. The answer to that is to re-establish the
+    // ground, which is a different act from stopping. See the SDK twin for the full note.
+    //
+    // "separate", not the obvious synonym, because test_control_is_evidence_only asserts
+    // that this function body contains no reference to the typed number — by substring,
+    // against this file. The obvious synonym tripped it, and so did the first attempt to
+    // explain why, which named the forbidden string outright. The gate is right both times:
+    // a comment must not be able to smuggle a typed input past a substring check, and the
+    // price is that the comment cannot spell it either.
+    decision = 'reground'
+    because = `The goal failed its overlap check ${goalDrifts} times against ${regrounds} `
+      + `declared re-grounds, measured against the frozen ground. This is not a judgement `
+      + `that the work is worthless — it is that nobody has said what the work now is.`
+  } else if (sawAny && corroborated === 0 && here >= 5) {
+    decision = 'verify'
+    because = `${here} checks, work was observed, and not one check was corroborated by it.`
+  } else if (!sawAny) {
+    decision = 'proceed'
+    because = `${here} checks and no reason to stop — but nothing has been recorded through `
+      + `saw(), so this read the count and nothing else. Treat it as the absence of a `
+      + `signal, not as an all-clear.`
+  } else {
+    decision = 'proceed'
+    because = `${here} checks, ${corroborated} corroborated by observed work. No count or `
+      + `record says stop.`
+  }
+  return { decision, because, observed: Boolean(sawAny), reads }
+}
+
 function judgeWork() {
     const trace = drift.trace ?? []
     const dh = drift.distHist ?? []
@@ -1016,9 +1203,24 @@ function judgeWork() {
 
     const started = dh[0] ?? null, now = dh[dh.length - 1] ?? null
     const closed = (started != null && now != null) ? started - now : 0
-    const pace = steps ? closed / steps : 0
+    // THE SPLIT. `steps` is the whole run and stays that way for the rules whose subject
+    // IS the whole run. `here` is the current setpoint's own accumulator, and every rule
+    // asking "is this work going anywhere" reads that — because `closed` and `pace` come
+    // from a distHist the reground already re-zeroed. Pairing a never-reset counter with a
+    // reset distance made `abandon` fire on the FIRST check of a fresh task: observed live
+    // 2026-08-04, reproduced in lasermind/test_windup.py. Integrator windup across a
+    // setpoint change; groundAt is the anti-windup reset.
+    const groundAt = drift.groundAt ?? 0
+    const here = Math.max(1, steps - groundAt)
+    const since = trace.slice(groundAt)
+    const pace = closed / here
     const count = (r) => trace.filter(t => t.reason === r).length
-    const stalls = count('stalled'), goalDrifts = count('goal-drift')
+    // A stall on a goal the user replaced is not evidence about its replacement.
+    const stalls = since.filter(t => t.reason === 'stalled').length
+    // These keep the whole trace deliberately: `oscillating` exists to catch a return to
+    // grounds already held, and drifts-against-regrounds is a claim about the SEQUENCE of
+    // grounds. Scoping either to the current ground would delete its subject.
+    const goalDrifts = count('goal-drift')
     const regrounds = count('reground'), oscillations = count('oscillating')
 
     // Length of the trailing run in which distance never improved on its own best.
@@ -1065,21 +1267,65 @@ function judgeWork() {
     // Three checks before any hard verdict. Replaying the 141-run corpus, several
     // two-check runs were handed 'narrow' and 'wrong-problem' on a trace with almost
     // nothing in it. Judgment needs evidence; two readings is a rumour.
-    const judged = steps >= 3
+    const judged = here >= 3
 
     let verdict, because, counsel
-    if (judged && steps >= 12 && closed <= 0) {
+    // A BUDGET IS NOT A JUDGMENT, and it is checked before every one of them.
+    //
+    // Everything below reasons about the WORK and can be wrong — published precision on
+    // individual fires is 9-14.6%. A budget cannot be wrong that way: it is a count against a
+    // number the caller chose, needing no evidence, no three-check warm-up, no interpretation.
+    //
+    // Mirrors the SDK, added the same hour, because a judgment that exists on one surface and
+    // not the other is the `unbacked` mistake — shipped to the package alone and unable to
+    // fire for the agent that wrote it. test_judgment_parity asserts this file can reach every
+    // verdict the SDK can.
+    //
+    // DEFAULT OFF: arming it would silently change the published instrument for every caller.
+    // Set `max_checks` in grammar.json's calibration block.
+    if (MAX_CHECKS !== null && here >= MAX_CHECKS) {
+      verdict = 'over-budget'
+      because = `${here} checks against a budget of ${MAX_CHECKS}. This is a count, not an `
+        + `assessment of the work.`
+      counsel = 'The budget you set is spent. Stop, or raise it deliberately — but decide that '
+        + 'rather than drifting past it.'
+    } else if (judged && here >= 12 && closed <= 0) {
       verdict = 'abandon'
-      because = `${steps} checks. Distance began at ${started} and stands at ${now} — it has never once improved. `
+      because = `${here} checks. Distance began at ${started} and stands at ${now} — it has never once improved. `
         + `Nothing tried so far has moved this.`
       counsel = 'Stop. Either the approach is wrong or the goal is not reachable as stated. '
         + 'Say plainly what is blocking it rather than taking a thirteenth run at it.'
-    } else if (priorRuns >= 2 && closed <= 0) {
+    // `judged &&` restored 2026-08-04. The SDK has always had it here; this copy did not,
+    // and the divergence only became visible once a test drove the SERVER rather than the
+    // package. Without it the rule reduces to `closed <= 0`, which is trivially true on the
+    // first check of any new setpoint — so a context you had opened before and not closed
+    // was told to abandon the instant a user redirected you to it, before it had been
+    // touched. Same windup as the branch above, reached by a different route.
+    } else if (judged && priorRuns >= 2 && closed <= 0) {
       verdict = 'abandon'
       because = `This context (${ctx}) has been opened in ${priorRuns} earlier sessions and closed in none. `
         + `Best distance ever reached is ${known?.best_distance}; this run has closed ${closed}.`
       counsel = 'A problem that resists three separate attempts is usually the wrong problem. '
         + 'Change the approach or hand it back before spending another session.'
+    } else if (judged && drift.sawAny && (drift.corroborated ?? 0) === 0
+               && here >= 5 && closed > 0) {
+      // A CLAIM WITH NOTHING UNDER IT. Ported from the SDK 2026-08-05, the day a parity
+      // check found it existed on one surface only — this one is what agents actually talk
+      // to, so the verdict could not fire for anybody who was not importing the package.
+      //
+      // Half of Φ is the agent's own account of itself. An agent that simply reports its
+      // distance falling keeps Φ low while doing no work, and collects `advancing`
+      // throughout. This fires when work WAS observed, not one check was backed by it, and
+      // the agent still claims to have closed distance.
+      //
+      // Silent when nothing was ever observed: uninstrumented is not the same as unbacked.
+      // Neighbour to `verify` below, which fires when the observed trace DISAGREES; this
+      // fires when there is nothing to agree with.
+      verdict = 'unbacked'
+      because = `Distance is reported down ${closed} over ${here} checks, and not one of them `
+        + `was backed by observed work — ${drift.corroborated ?? 0} corroborated of ${here}.`
+      counsel = 'Run something and read the output before reporting progress again. Half of '
+        + 'this score is your own account of yourself, and nothing has agreed with it yet.'
     } else if (judged && goalDrifts >= 3 && goalDrifts > regrounds && pace <= 0) {
       verdict = 'wrong-problem'
       because = `The goal has failed its overlap check ${goalDrifts} times against only ${regrounds} legitimate re-grounds. `
@@ -1097,11 +1343,25 @@ function judgeWork() {
       because = `A repeating cycle was detected and the distance is not falling — you have returned to the same place after being told to return.`
       counsel = 'Returning again will land you here a third time. Change the approach, not the position.'
     } else if (judged && repetition >= 3 && pace <= 0) {
-      // THRESHOLD FROM THE CORPUS, not from taste. Across 382 contexts in drift-log.jsonl
-      // the maximum identical-spelling repeat distributes: >=2 fires on 9.7% (noise —
-      // ordinary work restates itself once), >=3 on 2.6% (ten contexts), >=4 on 1.0%.
-      // Three is selective without being inert, which is the failure mode this repo
-      // already names for stall window 4: "close to inert here, and that is a finding".
+      // THRESHOLD FROM THE CORPUS, not from taste. Re-derived 2026-08-05 on the OBSERVED
+      // corpus, after 248 of 680 contexts turned out to be test fixtures — sweeps like a
+      // conformance probe with 14,508 checks, which land on exactly the repeat tail this
+      // threshold reads. Across 432 observed contexts the maximum identical-spelling
+      // repeat distributes:
+      //
+      //     >= 2   12.0%   noise — ordinary work restates itself once
+      //     >= 3    7.2%   buys 4.9 points over 2
+      //     >= 4    6.0%   buys 1.2
+      //     >= 5    5.8%   buys 0.2
+      //
+      // THE CONSTANT DOES NOT MOVE. The elbow is still between 2 and 3, and past 3 the
+      // curve is flat — a context repeating four times usually repeats many more, so
+      // raising the bar excludes almost nothing while missing the three-repeat cases.
+      //
+      // The figures it used to quote (382 contexts: 9.7% / 2.6% / 1.0%) were measured on
+      // the mixed corpus. Stale, not wrong in kind: the >= 2 rate barely moved, which is
+      // the check that the method still matches. What moved was the tail, and the tail
+      // was fixtures.
       //
       // A stronger claim than `stalled`, and deliberately placed above `narrow`. Stalled
       // reads the distance alone, and distance sits flat through legitimate sub-work; an
@@ -1124,7 +1384,7 @@ function judgeWork() {
         + 'read the output — before reporting progress again.'
     } else if (now != null && now <= 2 && closed > 0) {
       verdict = 'finish'
-      because = `Distance is ${now}, down from ${started} over ${steps} checks.`
+      because = `Distance is ${now}, down from ${started} over ${here} checks.`
       counsel = 'Close it out. Do not add scope, refactor, or polish — finish what was asked and stop.'
     } else if (judged && stalls > 0 && pace <= 0 && now != null && now >= 4) {
       // `now >= 4` came out of the corpus: this branch was telling runs sitting at distance
@@ -1133,11 +1393,11 @@ function judgeWork() {
       // progress. Splitting is for work too large to close, which is a statement about the
       // distance remaining, not about the stall.
       verdict = 'narrow'
-      because = `${stalls} stall${stalls > 1 ? 's' : ''} recorded and net distance closed is ${closed} over ${steps} checks, still at ${now}.`
+      because = `${stalls} stall${stalls > 1 ? 's' : ''} recorded and net distance closed is ${closed} over ${here} checks, still at ${now}.`
       counsel = 'Motion without progress. Pick one concrete sub-result you can actually finish, and make that the goal.'
     } else {
       verdict = 'continue'
-      because = `Distance ${started} → ${now} over ${steps} checks (${pace.toFixed(2)}/check), goal held at ${scores.goal}.`
+      because = `Distance ${started} → ${now} over ${here} checks (${pace.toFixed(2)}/check), goal held at ${scores.goal}.`
       counsel = pace > 0
         ? 'Working. Keep the goal fixed and keep going.'
         : 'Holding ground but not closing yet. If the next two checks do not move the distance, narrow the goal.'
@@ -1145,6 +1405,8 @@ function judgeWork() {
 
     return ({
       verdict, scores, because, counsel,
+      control: control(here, priorRuns, goalDrifts, regrounds,
+                       drift.sawAny, drift.corroborated ?? 0),
       context: ctx,
       seen_before: priorRuns > 0
         ? { sessions: priorRuns, best_distance: known?.best_distance ?? null, checks: known?.checks ?? 0 }
@@ -1153,12 +1415,38 @@ function judgeWork() {
 }
 
 async function call(name, args) {
+  // SELECT THE LANE FIRST. `drift` is an object, so mutations to it stick through the
+  // reference; runId and _seenOk are primitives and must be copied in and written back.
+  // Everything below is the original body, untouched — the partition is a rebinding, not a
+  // rewrite of 46 call sites, which is the version of this change least likely to be subtly
+  // wrong.
+  const _L = lane(args?.session)
+  _anchorMemo = null            // one anchored() reading per call — see anchored()
+  drift = _L.drift
+  runId = _L.runId
+  _seenOk = _L.seenOk
+  try {
+    return await _call(name, args)
+  } finally {
+    _L.drift = drift
+    _L.runId = runId
+    _L.seenOk = _seenOk
+  }
+}
+
+async function _call(name, args) {
   // Proxied to the Worker: reached, not reimplemented.
   const PROXIED = new Set(['check_dialogue', 'reset_dialogue', 'remember_self', 'resume_self',
     'forget_self', 'analyze_language', 'compare_phrasings', 'ask_alice'])
   if (PROXIED.has(name)) return await remote(name, args || {})
+  // read_text joins write_grounded here for the reason it exists at all: the two are one
+  // capability seen from both ends. write_grounded holds GENERATION to a ground; read_text
+  // asks what shape writing is already in. Both live in the package, so both are bridged
+  // rather than reimplemented — a second copy of the reading rule in JS is exactly what
+  // check-reading-parity.mjs exists to prevent, and creating one here while adding that
+  // gate would be perverse.
   const BRIDGED = new Set(['find_bugs', 'supercode', 'explore', 'trailscore',
-    'write_grounded', 'similarity', 'capabilities'])
+    'write_grounded', 'read_text', 'similarity', 'capabilities'])
   if (BRIDGED.has(name)) return await viaBridge(name, args)
   if (name === 'attention') {
     // Reads attention.json and a clock. No verdict is consulted, which is the whole
@@ -1389,7 +1677,9 @@ async function call(name, args) {
     return JSON.stringify({ agent: AGENT, hub: HUB, path: LINK_LOG, n: entries.length, entries })
   }
   if (name === 'drift_grammar') return JSON.stringify(GRAMMAR)
-  if (name === 'reset_task') { drift = { ground: null, firstGoal: [], distHist: [], trace: [], trail: [] }; runId = null; _seenOk = null; return 'reset — ground and history cleared. Your next check_state sets a new ground.' }
+  // Clears THIS lane only. It used to wipe the single global object, so a subagent's
+  // reset landed on its parent's ground — the defect this partition exists for.
+  if (name === 'reset_task') { drift = freshDrift(); runId = null; _seenOk = null; return 'reset — ground and history cleared. Your next check_state sets a new ground.' }
   if (name === 'get_history') return JSON.stringify({ steps: drift.trace.length, trace: drift.trace })
   if (name === 'modulate') {
     // POLICY, not detection. The verdict comes from the same check_state below and is not
@@ -1448,8 +1738,15 @@ async function call(name, args) {
       // real pattern, just a different one.
       drift.trail = [...(drift.trail ?? []), goal ? [...toWords(goal)].sort().join('|') : '']
       let period = cyclePeriod(drift.trail)
-      let of = 'ground'
-      if (!period) { period = cyclePeriod(drift.trace.map(t => t.reason)); of = 'reading' }
+      // THE READING FALLBACK IS RETIRED, 2026-08-04, on the corpus. It fired 16 times in
+      // 1,823 recorded readings and was wrong all 16 — not one had a cycle in the GOALS.
+      // Every window looked like A A A B: one goal worked, then another handed over, with
+      // only the VERDICT sequence repeating. That is the ordinary rhythm of a session, so
+      // the arm detected task switching and nothing else. Precision 0.00, and untunable —
+      // the period it finds is a property of how often a user speaks.
+      //
+      // The GROUND arm stays: a cycle in x, which is what this verdict was built to name.
+      const of = 'ground'
       if (period && !drift.osc) {
         drift.osc = true
         drifting = true
@@ -1537,11 +1834,21 @@ async function call(name, args) {
       // `finish` are the healthy majority (94% of the corpus after calibration) and a
       // field that appears every step gets skimmed; one that appears when the work itself
       // is in question is worth reading. Same reasoning as `contrast` above.
+      //
+      // CONTROL CAN SPEAK ON ITS OWN, and this is the case the whole split exists for.
+      // The filter above is about the LEARNING verdict, and a run whose verdict is
+      // `continue` while control says `stop` — a context four sessions deep, typing a
+      // flawless descent — would have been filtered out entirely: nothing surfaced,
+      // nothing logged, the one reading worth having discarded for being unremarkable on
+      // the self-report side. So an unquiet control attaches the judgment by itself.
       let judgment
       try {
         const j = judgeWork()
-        if (j && j.verdict && !['continue', 'finish', 'ungrounded'].includes(j.verdict)) {
-          judgment = { verdict: j.verdict, because: j.because, counsel: j.counsel }
+        const notable = j && j.verdict && !['continue', 'finish', 'ungrounded'].includes(j.verdict)
+        const controlSpeaks = j && j.control && j.control.decision !== 'proceed'
+        if (notable || controlSpeaks) {
+          judgment = { verdict: j.verdict, because: j.because, counsel: j.counsel,
+                       control: j.control }
         }
       } catch { /* judgment is an addition to the reading, never a precondition for it */ }
       // Present only when the agent actually spelled a carried field AND a phrase matched.
@@ -1563,13 +1870,94 @@ async function call(name, args) {
       //
       // Returning them costs two fields. The hook writes them beside its own step number,
       // and a catch at session step N joins to whichever reading was last before it.
+      // THE JUDGMENT GOES IN THE LOG TOO, and this fixes a silence that lasted the whole
+      // corpus: 0 of 2,555 drift rows and 0 of 2,157 session rows ever carried one.
+      //
+      // The reading is logged at the top of this handler, deliberately early, so a crash
+      // further down still leaves a row. `judgment` is computed here, long after — so the
+      // strongest thing the instrument says was answered to the agent and written nowhere.
+      // The hook was supposed to catch it off the response and could not: laserbrain
+      // appends its own honesty note, which made the response stop being valid JSON. Both
+      // extractors now salvage the prefix, but a parser is the wrong thing to depend on —
+      // the server KNOWS the judgment and should not have to read it back out of its own
+      // answer.
+      //
+      // A second row keyed to the same run and step, so the append-only log stays
+      // append-only and the join is exact. Only when there IS a judgment: a row on every
+      // check would double the log to say "nothing to report".
+      //
+      // ABOVE THE RETURN, and that is the whole note. The first version of this sat after
+      // `return JSON.stringify(...)` — unreachable. It was caught within a minute by
+      // test_judgment_lands, which drives the real server and reads the real log: 12
+      // judgments spoken, 0 logged. A gate that reads the artifact catches dead code; one
+      // that reads a constructed dict cannot.
+      if (judgment) {
+        // BOTH DECISIONS ON THE ROW, so the split can be measured rather than believed.
+        //
+        // `anchored` has been reported on every verdict since the day it was added and
+        // written to the log never once — which is why it could sit structurally broken
+        // for its whole life, returning 0.5 forever, and be found only by instrumenting
+        // from scratch. A mechanism nobody can count is a mechanism nobody can check.
+        //
+        // With judgment and control side by side and keyed to the same step, the question
+        // this change exists to answer becomes a grep: how often does the evidence-only
+        // decision disagree with the self-report-driven one, and who is right afterwards.
+        // If they never disagree, control is ceremony and should be said so plainly.
+        logDrift({ ts: new Date().toISOString(), run: runId, agent: AGENT, step,
+          kind: 'judgment', judgment: judgment.verdict, because: judgment.because,
+          control: judgment.control?.decision ?? null,
+          observed: judgment.control?.observed ?? null,
+          // ANY non-proceed counts as control speaking, not only `stop`. Written as
+          // `=== 'stop'` first, which quietly stopped counting the moment `reground` split
+          // off — and reground is where every disagreement in the corpus actually came
+          // from, so the measurement would have gone to zero and read as "control is
+          // ceremony" at exactly the moment it stopped being one.
+          agrees: judgment.control
+            ? (judgment.control.decision !== 'proceed') ===
+              ['abandon', 'over-budget', 'wrong-problem'].includes(judgment.verdict)
+            : null,
+          logged_by: 'lasermind/mcp-server.mjs' })
+      }
       return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
         run: runId, step,
         goal_score, context: ctx, ...extra, ...(claims ? { claims } : {}),
         // Only once it means something. Writing a state once is the normal case and a 1
         // here would be noise on every healthy step.
         ...(repetition > 1 ? { repetition } : {}),
-        anchored: anchored(), ...contrast,
+        anchored: (() => {
+          // ACCUMULATE, do not just report. anchored() answers per check; `unbacked` asks
+          // about the whole run — "has ANY check been backed" — which needs a counter. It
+          // lives on the drift state so it survives with the rest of the run.
+          const a = anchored()
+          const un = _ANCH.unanchored ?? 0.5
+          if (a > un) drift.corroborated = (drift.corroborated ?? 0) + 1
+          // The per-check history the stall veto reads. The counter above answers
+          // "has ANY check been backed", for `unbacked`; this answers "was EVERY check
+          // in the last window backed", which separates execution from a stall.
+          ;(drift.backed ??= []).push(a > un)
+
+          // WORK OBSERVED IN THIS RUN, which is ok + fail, not ok alone.
+          //
+          // The first version of this read `ok > 0` and set the flag from a file that has
+          // been accumulating on this machine for weeks. That is a fact about the laptop,
+          // not about the run — so a fresh server saw "machinery live, nothing
+          // corroborated, distance closing" and returned `unbacked` on the HEALTHIEST
+          // runs. test_judgment_parity caught it within minutes of existing, on three of
+          // four scenarios, which is the entire argument for having written it.
+          //
+          // The `fail` counter is what makes the verdict expressible here at all: work
+          // that ran and failed advances `fail` and not `ok`, so it is observed and
+          // uncorroborated — precisely the state `unbacked` names. Without that field the
+          // server could not tell a failing run from an unwatched one and the honest move
+          // would have been to leave the verdict out.
+          try {
+            const e = JSON.parse(readFileSync(EVIDENCE, 'utf8'))
+            const total = (e.ok ?? 0) + (e.fail ?? 0)
+            if (drift.seenTotal == null) drift.seenTotal = total     // baseline, not history
+            else if (total > drift.seenTotal) { drift.sawAny = true; drift.seenTotal = total }
+          } catch { /* no evidence file: machinery not live, stay silent */ }
+          return a
+        })(), ...contrast,
         // Additive, and never consulted by anything above. See REPORT_RE.
         ...(readsAsReport(goal) ? { goal_shape:
           'This ground reads as a report of what happened, not what you are pursuing. A ' +
@@ -1607,6 +1995,12 @@ async function call(name, args) {
         drift.ground = { goal, progress, distance: asDist(distance) }
         drift.firstGoal = [...g]
         drift.distHist = [asDist(distance)]
+        // The setpoint moved, so the progress accumulator starts here. Everything earlier
+        // in the trace belongs to a goal the user has replaced — see groundAt in judgeWork.
+        // The initial grounding needs no such line: the trace is empty there, so the `?? 0`
+        // default is already the right answer, and it is also what an old persisted session
+        // without the field degrades to.
+        drift.groundAt = (drift.trace ?? []).length
         return record(false, 'reground', 'New instruction — ground reset to the goal you just stated.')
       }
 
@@ -1682,8 +2076,29 @@ async function call(name, args) {
     }
     drift.distHist.push(asDist(distance))
     const dh = drift.distHist
-    if (dh.length > STALL_WINDOW && Math.min(...dh.slice(-STALL_WINDOW)) >= dh[dh.length - STALL_WINDOW - 1])
+    if (dh.length > STALL_WINDOW && Math.min(...dh.slice(-STALL_WINDOW)) >= dh[dh.length - STALL_WINDOW - 1]) {
+      // A FLAT DISTANCE IS NOT A STALL WHEN THE WORLD IS RESPONDING.
+      //
+      // Ported from the SDK the same day it was written there, deliberately not left to
+      // diverge: `unbacked` shipped to the package alone that morning and could not fire for
+      // the agent that wrote it. This is the identical shape of mistake.
+      //
+      // Measured on ARC-AGI-3 across five agent runs: `stalled` fired on 35 of 133 steps and
+      // ALL 35 reached a state the run had never seen. Three agents, none told what
+      // laserbrain was, independently called those fires "purposeful walking rather than
+      // confusion" and "pure execution toward a target I'd already verified". Distance is
+      // flat during execution by nature — carrying a thing across a room closes nothing on
+      // any single step.
+      //
+      // The history holds the PREVIOUS checks; the current one is not in it yet, because
+      // record() pushes it, so it is read here without consuming the marker.
+      const hist = [...(drift.backed ?? []).slice(-(STALL_WINDOW - 1)), evidenceAdvanced()]
+      if (hist.length >= STALL_WINDOW && hist.every(Boolean))
+        return record(false, 'advancing',
+          `Distance is flat, but every check in the window is backed by observed work — `
+          + `this reads as execution, not a stall. (Φ=${phi.toFixed(2)})`, phi)
       return record(true, 'stalled', `Distance stopped falling (${dh.slice(-4).join(', ')}). Motion without progress is a loop — return.`, phi)
+    }
     return record(false, 'advancing', `On track (Φ=${phi.toFixed(2)}). Continue.`, phi)
   }
   throw new Error(`no such tool: ${name}`)

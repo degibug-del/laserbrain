@@ -77,10 +77,13 @@ import pathlib
 import re
 import statistics
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+import _root                                                       # noqa: E402
+
 DRIFT = pathlib.Path(os.environ.get('LASERBRAIN_DRIFT_LOG')
-                     or pathlib.Path.home() / '.config/laserbrain/drift-log.jsonl')
-SESSIONS = pathlib.Path(os.environ.get('LASERBRAIN_STATE_DIR')
-                        or pathlib.Path.home() / '.claude/laserbrain')
+                     or _root.config('drift-log.jsonl'))
+SESSIONS = _root.sessions_dir()
 
 # Commands whose failure is the POINT. The mutation gate flips an operator and demands the
 # suite go red; a red there is the tool working. Counting it as an error the instrument
