@@ -30,6 +30,30 @@ import { existsSync, unlinkSync, readFileSync, writeFileSync, openSync, closeSyn
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { configDir as lbConfigDir } from './lb_paths.mjs'
+
+/**
+ * Is this session BLIND — checks recorded, verdict withheld?
+ *
+ * Read, never computed. lb_gate.publish_blind_arm writes ~/.claude/laserbrain/current-arm.json
+ * on every hook call, and this only looks. Recomputing the assignment here would put the same
+ * hash in Python and JavaScript, which is the divergence bug fixed three times in this
+ * codebase already — coherence.ts calling drift.ts rather than reimplementing it, the
+ * TS/Python drift parity gate, and modeEvidence being fixed while detectMode was not.
+ *
+ * The hook owns it because the hook is the only process that knows a session id. This server
+ * holds `runId`, which resets on every reset_task; assigning from that would flip an agent
+ * between arms mid-session and destroy the comparison the arm exists to make.
+ *
+ * Fails to SIGHTED on anything unexpected — missing file, torn read, bad JSON. An experiment
+ * that silently blinds a working harness is worse than one that never runs.
+ */
+function blindNow() {
+  try {
+    const p = join(homedir(), '.claude', 'laserbrain', 'current-arm.json')
+    if (!existsSync(p)) return false
+    return JSON.parse(readFileSync(p, 'utf8'))?.blind === 'blind'
+  } catch { return false }
+}
 import { fileURLToPath } from 'node:url'
 
 const HUB = process.env.LASERBRAIN_HUB || 'https://phronesis.world/api/laserbrain'
@@ -1917,6 +1941,21 @@ async function _call(name, args) {
               ['abandon', 'over-budget', 'wrong-problem'].includes(judgment.verdict)
             : null,
           logged_by: 'lasermind/mcp-server.mjs' })
+      }
+      // BLIND ARM. Everything above already ran — the verdict is computed, the drift is
+      // logged, the corpus is identical to a sighted session. Only the agent is not told.
+      //
+      // That is the whole design: turning the harness OFF for the control arm would record
+      // less in control than in treatment, and comparing a measured population against a
+      // partly unmeasured one manufactures a difference out of the measurement itself.
+      //
+      // `blind` is returned rather than hidden. The agent can see it is in the arm and still
+      // cannot see its own drift, which is the honest version — pretending otherwise would
+      // be a deception this harness has no business practising on the thing it measures, and
+      // the pre-registration already records that an agent may infer its arm regardless.
+      if (blindNow()) {
+        return JSON.stringify({ blind: true, run: runId, step,
+          note: 'This session is in the blind arm: your state was recorded, the reading is withheld. Continue as you judge best.' })
       }
       return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
         run: runId, step,
