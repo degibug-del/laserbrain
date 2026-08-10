@@ -185,7 +185,7 @@ print('THE ARM IS RECORDED — and NOT in the file two writers fight over')
 # session file carried an arm, including the live one. The gate was assigning arms and
 # recording none, and a week of probe data would have been uninterpretable.
 #
-# arms.jsonl is append-only with a single writer, which has neither failure.
+# probe-arms.jsonl is append-only with a single writer, which has neither failure.
 with tempfile.TemporaryDirectory() as d:
     session(d, relaxed_id, 9, [0])
     run_gate(d, relaxed_id)
