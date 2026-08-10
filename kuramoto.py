@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""kuramoto.py — laserbeast's limbs, coupled as phase oscillators.
+"""kuramoto.py — laserbot's limbs, coupled as phase oscillators.
 
 Diego, 2026-07-25: "use kuramoto coupling for the shoulders, knees, ankles, neck, elbows,
-and wrists of laserbeast."
+and wrists of laserbot."
 
 WHAT THIS IS. Eleven joints, each an oscillator carrying a phase. They are not driven by a
 common clock and they are not scripted from a keyframe table. Each runs at its own natural
@@ -34,7 +34,7 @@ A limb that jams, slips, or loses pressure falls out of lock, r drops, and the d
 visible before the pose is visibly wrong. That is the same early-warning the harness gives
 an agent, on a leg.
 
-WHAT THIS IS NOT. No hardware is driven from here. laserbeast has no limbs yet — ROBOTICS.md
+WHAT THIS IS NOT. No hardware is driven from here. laserbot has no limbs yet — ROBOTICS.md
 describes a suction-mount placement robot, and this is the limbed direction it points at
 under "soft fluidic actuation". This module is the controller and its test, honest about
 being ahead of the body, per CLAIM.md's rule: say only what is true.

@@ -114,8 +114,8 @@ capability. On the site as a "why only laserbrain" point.
 ## The limbed direction — Kuramoto coupling (2026-07-25)
 
 *Diego: "use kuramoto coupling for the shoulders, knees, ankles, neck, elbows, and
-wrists of laserbeast." Built and tested in `kuramoto.py` / `test_kuramoto.py`.
-**No hardware. laserbeast has no limbs — this is the controller, ahead of the body.***
+wrists of laserbot." Built and tested in `kuramoto.py` / `test_kuramoto.py`.
+**No hardware. laserbot has no limbs — this is the controller, ahead of the body.***
 
 Eleven joints — neck, both shoulders, elbows, wrists, knees and ankles — each a phase
 oscillator running at its own natural frequency and pulled toward its neighbours:

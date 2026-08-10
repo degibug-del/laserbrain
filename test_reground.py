@@ -96,7 +96,7 @@ def clear():
 
 
 A = 'fix the mobile layout bugs on the laserbrain billboard at 375px'
-B = 'write the kuramoto coupling controller for laserbeast joints'
+B = 'write the kuramoto coupling controller for laserbot joints'
 C = 'score the dogfood corpus and report precision honestly'
 
 # ── 1. the false alarm this exists to kill ──────────────────────────────────

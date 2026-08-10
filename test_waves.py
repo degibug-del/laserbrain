@@ -39,7 +39,7 @@ show('a parent contains a child', waves.overlaps('app/locus', 'app/locus/product
      'this is the /locus collision, caught')
 show('a child is contained by a parent', waves.overlaps('app/locus/products/page.tsx', 'app/locus'))
 show('a glob matches beneath it', waves.overlaps('app/**', 'app/locus/page.tsx'))
-show('siblings do NOT overlap', not waves.overlaps('app/locus', 'app/laserbeast'))
+show('siblings do NOT overlap', not waves.overlaps('app/locus', 'app/laserbot'))
 show('a prefix that is not a path boundary does not overlap',
      not waves.overlaps('app/locus', 'app/locusts'),
      'naive startswith would call these a collision')

@@ -9,7 +9,7 @@
       "from_seconds": 0,
       "to_seconds": 60,
       "drift": 0,
-      "n": 54,
+      "n": 57,
       "rate": 0.0,
       "underpowered": false
     },
@@ -17,18 +17,18 @@
       "label": "1-5 minutes",
       "from_seconds": 60,
       "to_seconds": 300,
-      "drift": 49,
-      "n": 316,
-      "rate": 0.1551,
+      "drift": 53,
+      "n": 332,
+      "rate": 0.1596,
       "underpowered": false
     },
     {
       "label": "5-30 minutes",
       "from_seconds": 300,
       "to_seconds": 1800,
-      "drift": 111,
-      "n": 396,
-      "rate": 0.2803,
+      "drift": 123,
+      "n": 425,
+      "rate": 0.2894,
       "underpowered": false
     },
     {
@@ -42,12 +42,12 @@
     }
   ],
   "min_n": 20,
-  "z_between_best_powered": 3.978,
+  "z_between_best_powered": 4.194,
   "best_powered_pair": [
     "1-5 minutes",
     "5-30 minutes"
   ],
-  "best_powered_n": 712,
+  "best_powered_n": 757,
   "agent_clock": {
     "what": "Drift against steps since the agent last spelled its own state. Reported with its censoring, not as a schedule.",
     "bands": [
@@ -56,8 +56,8 @@
         "from_steps": 1,
         "to_steps": 1,
         "drift": 2,
-        "n": 47,
-        "rate": 0.0426,
+        "n": 48,
+        "rate": 0.0417,
         "underpowered": false
       },
       {
@@ -65,26 +65,26 @@
         "from_steps": 2,
         "to_steps": 3,
         "drift": 19,
-        "n": 285,
-        "rate": 0.0667,
+        "n": 293,
+        "rate": 0.0648,
         "underpowered": false
       },
       {
         "label": "4-7 steps",
         "from_steps": 4,
         "to_steps": 7,
-        "drift": 162,
-        "n": 1742,
-        "rate": 0.093,
+        "drift": 166,
+        "n": 1830,
+        "rate": 0.0907,
         "underpowered": false
       },
       {
         "label": "8-15 steps",
         "from_steps": 8,
         "to_steps": 15,
-        "drift": 0,
-        "n": 65,
-        "rate": 0.0,
+        "drift": 8,
+        "n": 180,
+        "rate": 0.0444,
         "underpowered": false
       },
       {
@@ -97,24 +97,24 @@
         "underpowered": true
       }
     ],
-    "pairs": 2139,
-    "z_between_best_powered": 1.445,
+    "pairs": 2351,
+    "z_between_best_powered": 1.457,
     "best_powered_pair": [
       "2-3 steps",
       "4-7 steps"
     ],
-    "best_powered_n": 2027,
+    "best_powered_n": 2123,
     "censored_beyond_steps": 8,
-    "censored_share": 0.0304,
-    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 3.04% of the sample (65 of 2139). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
+    "censored_share": 0.0766,
+    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 7.66% of the sample (180 of 2351). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
   },
   "overhead": {
     "what": "Share of an agent's tool calls that are laserbrain itself. A cost, not a benefit \u2014 measured so a claim about saved tokens has something to clear.",
-    "runs": 221,
-    "median": 0.2188,
+    "runs": 268,
+    "median": 0.2143,
     "iqr": [
-      0.2057,
-      0.2368
+      0.1875,
+      0.2333
     ],
     "note": "Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by construction: the gate forces a check every four steps to hold the coverage floor, so this is the threshold, not an emergent property."
   },
@@ -126,26 +126,26 @@
         "from_seconds": 0,
         "to_seconds": 60,
         "drift": 9,
-        "n": 435,
-        "rate": 0.0207,
+        "n": 543,
+        "rate": 0.0166,
         "underpowered": false
       },
       {
         "label": "1-5 minutes",
         "from_seconds": 60,
         "to_seconds": 300,
-        "drift": 38,
-        "n": 372,
-        "rate": 0.1022,
+        "drift": 44,
+        "n": 460,
+        "rate": 0.0957,
         "underpowered": false
       },
       {
         "label": "5-30 minutes",
         "from_seconds": 300,
         "to_seconds": 1800,
-        "drift": 11,
-        "n": 68,
-        "rate": 0.1618,
+        "drift": 17,
+        "n": 90,
+        "rate": 0.1889,
         "underpowered": false
       },
       {
@@ -153,20 +153,20 @@
         "from_seconds": 1800,
         "to_seconds": null,
         "drift": 1,
-        "n": 3,
+        "n": 5,
         "rate": null,
         "underpowered": true
       }
     ]
   },
   "provenance": {
-    "written": "2026-08-07",
+    "written": "2026-08-10",
     "corpus_from": "2026-07-28",
-    "corpus_to": "2026-08-07",
-    "readings_total": 1672,
-    "readings_settled": 794,
-    "readings_fresh_ground": 878,
-    "user_messages": 4076,
+    "corpus_to": "2026-08-10",
+    "readings_total": 1940,
+    "readings_settled": 842,
+    "readings_fresh_ground": 1098,
+    "user_messages": 4357,
     "dominant_agent": "claude",
     "dominant_agent_share": 0.999,
     "caveat": "One machine, and 100% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."

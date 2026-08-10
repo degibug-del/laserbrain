@@ -48,6 +48,23 @@ import { configDir as lbConfigDir } from './lb_paths.mjs'
  * that silently blinds a working harness is worse than one that never runs.
  */
 function blindNow() {
+  /**
+   * THE ARM IS MACHINE-GLOBAL, AND A TEST IS NOT A SESSION.
+   *
+   * current-arm.json lives in ~/.claude and is read by every process on the box, so a
+   * conformance run that spawns this server inherits whichever arm the human's live agent
+   * happens to be in. On 2026-08-10 that blocked a release: test_ceiling_conformance drives
+   * the real server and compares its `claims` against the SDK's, the machine was in the
+   * blind arm, check_state returned {blind:true} with no `claims` at all, and 94 of 124
+   * inputs "differed" — Python read something, JS read nothing. The parity was fine. The
+   * experiment had leaked into the instrument that checks it.
+   *
+   * LASERBRAIN_ARM=open opts a NON-SESSION out. It is deliberately not a way to leave the
+   * arm: a real agent session never sets it, nothing reads it from config, and setting it
+   * by hand mid-session would corrupt the comparison the arm exists to make. It says "this
+   * process is a test harness", and only a test harness should ever say it.
+   */
+  if (process.env.LASERBRAIN_ARM === 'open') return false
   try {
     const p = join(homedir(), '.claude', 'laserbrain', 'current-arm.json')
     if (!existsSync(p)) return false
@@ -1954,10 +1971,16 @@ async function _call(name, args) {
       // be a deception this harness has no business practising on the thing it measures, and
       // the pre-registration already records that an agent may infer its arm regardless.
       if (blindNow()) {
-        return JSON.stringify({ blind: true, run: runId, step,
+        // `arm` is stated on BOTH branches so the hook can record which one this check
+        // belonged to. Without it the two identifier systems never meet: a check names its
+        // run by UUID, an assignment names its unit by segment index, and nothing maps one
+        // to the other — so the arms were separable in the assignment log and unjoinable to
+        // any outcome. Measured 2026-08-10, after the stopping rule had already been
+        // pre-registered against a comparison that could not have been computed.
+        return JSON.stringify({ blind: true, arm: 'blind', run: runId, step,
           note: 'This session is in the blind arm: your state was recorded, the reading is withheld. Continue as you judge best.' })
       }
-      return JSON.stringify({ drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
+      return JSON.stringify({ arm: 'sighted', drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
         run: runId, step,
         goal_score, context: ctx, ...extra, ...(claims ? { claims } : {}),
         // Only once it means something. Writing a state once is the normal case and a 1

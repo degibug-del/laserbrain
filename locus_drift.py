@@ -18,7 +18,7 @@ And a resonance harvester is the rare case where every term is MEASURED:
     progress  read from the detuning series itself, not self-reported
 
 In software, distance has no honest signal and must be spelled or left None, which makes
-Φ a lower bound and disables the stall detector. laserbeast gets distance in metres. Locus
+Φ a lower bound and disables the stall detector. laserbot gets distance in metres. Locus
 gets it in hertz. Both are cases where the instrument runs COMPLETE.
 
 WHAT LOCUS FOUND IN THE INSTRUMENT.
