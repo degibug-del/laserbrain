@@ -455,7 +455,13 @@ def main():
     ap.add_argument('--tolerance', type=float, default=0.05,
                     help='how far a band rate may move before the table counts as stale '
                          '(default 0.05, i.e. five percentage points)')
+    ap.add_argument('--ship', action='store_true',
+                    help='also write the packaged copy that goes inside the wheel. Off by '
+                         'default: a site build must not mutate published package data as '
+                         'a side effect. Run this at publish time, after reading the corpus '
+                         'composition printed below it.')
     a = ap.parse_args()
+    ship = a.ship
     fresh = build()
     if fresh is None:
         return 1
@@ -483,12 +489,62 @@ def main():
               else f'  packaged copy unchecked — {detail}.')
         return 0
 
+    # WHAT THE CORPUS IS MADE OF, printed before what was concluded from it.
+    #
+    # On 2026-08-16 a routine site build recalibrated this table and the numbers moved a
+    # lot — one band went n=333 -> 495. The cause was one session that had spawned 75
+    # workflow subagents: 436 rows in a day against a previous daily high of 180, 17% of the
+    # whole corpus, across 59 distinct runs. Its most frequent goals were "Adversarially
+    # verify ..." and "Sweep .../workers/ ...", which are not agent sessions at all.
+    #
+    # That matters here specifically, not just aesthetically. Every row is bucketed by time
+    # since the nearest user message, and user_messages() is a GLOBAL timeline. A subagent
+    # has no user turns of its own, so its readings borrow a user turn from a different
+    # session — the x-axis is undefined for them and they are assigned a bucket anyway.
+    #
+    # This does not try to identify those rows. From in here there is no sound way: a drift
+    # row carries run, agent and goal, `agent` is the same string for parent and child, and
+    # guessing from run-density would be inventing a discriminator — the same guess the SDK
+    # refuses in session_id_of, for the same reason. Excluding the wrong rows is worse than
+    # including them, because the exclusion is invisible afterwards.
+    #
+    # So it REPORTS. A recalibration skewed by one day is now something you see at the
+    # moment you run it, rather than something discovered later inside a published wheel.
+    # No threshold, nothing refused: this project does not assert numbers it has not
+    # measured, and "how skewed is too skewed" has not been measured.
+    _rows = readings()
+    _by_day = collections.Counter(str(r.get('ts') or '')[:10] for r in _rows)
+    _runs_by_day = collections.defaultdict(set)
+    for _r in _rows:
+        _runs_by_day[str(_r.get('ts') or '')[:10]].add(_r.get('run'))
+    print(f'  corpus: {len(_rows)} rows over {len(_by_day)} days, '
+          f'{len(set(r.get("run") for r in _rows))} runs')
+    for _d, _n in sorted(_by_day.items())[-5:]:
+        _share = _n / max(len(_rows), 1)
+        print(f'    {_d}  {_n:>5} rows  {len(_runs_by_day[_d]):>3} runs  {_share * 100:4.1f}% of corpus'
+              + ('   <- dominates; check it is not one session with subagents' if _share > 0.15 else ''))
+
     text = json.dumps(fresh, indent=2) + '\n'
     OUT.write_text(text)
     print(f'  wrote {OUT}')
-    # Both, always. Writing one and trusting someone to copy the other is the arrangement
-    # that already failed once, on the same day this line was added.
-    if SHIPPED.parent.exists():
+    # THE PACKAGED COPY IS NOW OPT-IN, and it took two blocked releases in one afternoon to
+    # earn that. "Both, always" was written to stop the two diverging, and it did — at the
+    # cost of making every ordinary `npm run build` rewrite a file that ships inside the
+    # wheel. On 2026-08-16 that fired twice within an hour: a release was prepared, the
+    # provenance gate refused it because attention.json was modified-but-uncommitted, the
+    # file was restored, and the next site build dirtied it again immediately.
+    #
+    # Worse than the inconvenience, the numbers it was writing were skewed — 16% of the
+    # corpus was a single session that had spawned 75 workflow subagents, which have no user
+    # turns and so cannot be bucketed by time-since-user-turn at all. A build has no idea
+    # any of that is true, and package data should not change as a side effect of something
+    # that never set out to change it.
+    #
+    # So the wheel's copy changes at PUBLISH time, deliberately, where the composition report
+    # above is read by somebody. Divergence is still guarded: --check compares both.
+    if not ship:
+        print(f'  packaged copy NOT written (pass --ship). {SHIPPED} unchanged.')
+    elif SHIPPED.parent.exists():
         SHIPPED.write_text(text)
         print(f'  wrote {SHIPPED}  (package data — ships in the wheel)')
     else:

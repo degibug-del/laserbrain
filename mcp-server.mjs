@@ -492,6 +492,69 @@ function lane(session) {
 }
 let drift = lane(SHARED).drift
 
+/* THE LANES ABOVE ARE OPT-IN, AND NOTHING OPTS IN. That is why the 2026-08-05 partition
+ * did not stop the defect it was written for: it happened again on 2026-08-16, same shape,
+ * same session, byte-identical goal scoring 0.02 and escalating to `wrong-problem` —
+ * telling an agent that was working correctly to stop.
+ *
+ * Re-reading the note above explains it exactly. "Omit it and you get the shared lane,
+ * byte-identical to the old behaviour." Every caller omits it: `session` is an argument an
+ * agent has to know to pass, no agent is told to, and a subagent least of all — it does not
+ * know it is a subagent. So every caller lands in `__shared__` and gets the original bug.
+ *
+ * A safety that must be requested is not a default. The lane partition is right and stays;
+ * what changes is that the SHARED lane stops being destructive, so the common path is safe
+ * without anyone having to know anything.
+ *
+ * HOW. reset_task on the shared lane SUSPENDS the ground instead of discarding it, and a
+ * later check_state whose goal is closer to a suspended ground than to the live one RESUMES
+ * it. No identity is required, which matters because the note above is right that there is
+ * none to be had: a tools/call carries a name and arguments and nothing else. A ground is
+ * found by what it is ABOUT — which is what "findable" means in PROOF's three adjectives,
+ * the same three that "unchangeable" comes from.
+ *
+ * No threshold. Resume is a comparison — is this goal nearer a ground we already hold than
+ * the one that is live — so there is no number here to tune or to justify. And a reset
+ * always hands the very next check a fresh ground, because a reset declares new work; drop
+ * that rule and a child could never open a ground of its own.
+ *
+ * Explicit sessions are untouched: they never suspend and never resume, so a caller that
+ * does pass one keeps exactly the isolation it asked for.
+ */
+const SUSPENDED = []
+const MAX_SUSPENDED = 8
+/* Set when a check resumed a ground, read once by that same check's reply, then cleared.
+ * A ground that swapped underneath a caller without saying so would be the same class of
+ * problem this fixes — the reference has to be findable, and one that moves silently is
+ * not. Single-threaded request handling makes a module-level slot safe here. */
+let LAST_RESUMED = null
+
+/** Nearest suspended ground to `goal`, swapped in, or null if the live one is already
+ *  nearest. `jac` is a DISTANCE (1 - overlap), so nearer means smaller. */
+function resumeShared(L, goal) {
+  if (!SUSPENDED.length) return null
+  const g = toWords(goal)
+  // No live ground means we just reset: the next check must be allowed to open its own,
+  // or a subagent that has just declared new work is handed its parent's reference.
+  if (!L.drift.ground) return null
+  let bestI = -1
+  let best = jac(g, toWords(L.drift.ground.goal))
+  for (let i = 0; i < SUSPENDED.length; i++) {
+    const d = jac(g, toWords(SUSPENDED[i].goal))
+    if (d < best) { best = d; bestI = i }      // strictly nearer, so ties keep the live one
+  }
+  if (bestI < 0) return null
+  const pick = SUSPENDED.splice(bestI, 1)[0]
+  // The live ground is suspended in turn rather than dropped, so whoever owns it reclaims
+  // it the same way. That is what lets a parent and a child alternate indefinitely.
+  SUSPENDED.push({ goal: L.drift.ground.goal, drift: L.drift, runId: L.runId, seenOk: L.seenOk })
+  while (SUSPENDED.length > MAX_SUSPENDED) SUSPENDED.shift()
+  L.drift = pick.drift
+  L.runId = pick.runId
+  L.seenOk = pick.seenOk
+  return pick.goal
+}
+
 
 // ── the hosted tools, proxied ────────────────────────────────────────────────
 // This server ran ten tools while the deployed Worker served fifteen, so which
@@ -1463,9 +1526,17 @@ async function call(name, args) {
   // wrong.
   const _L = lane(args?.session)
   _anchorMemo = null            // one anchored() reading per call — see anchored()
+  // Shared lane only, and only for a check: an agent returning to a goal whose ground was
+  // suspended by somebody else's reset gets that ground back rather than being told it has
+  // drifted from a stranger's. See SUSPENDED above for why this is not gated on identity.
+  let _resumed = null
+  if (!args?.session && name === 'check_state' && args?.goal) {
+    _resumed = resumeShared(_L, String(args.goal))
+  }
   drift = _L.drift
   runId = _L.runId
   _seenOk = _L.seenOk
+  if (_resumed) LAST_RESUMED = _resumed
   try {
     return await _call(name, args)
   } finally {
@@ -1720,7 +1791,22 @@ async function _call(name, args) {
   if (name === 'drift_grammar') return JSON.stringify(GRAMMAR)
   // Clears THIS lane only. It used to wipe the single global object, so a subagent's
   // reset landed on its parent's ground — the defect this partition exists for.
-  if (name === 'reset_task') { drift = freshDrift(); runId = null; _seenOk = null; return 'reset — ground and history cleared. Your next check_state sets a new ground.' }
+  if (name === 'reset_task') {
+    // SUSPEND, do not discard — on the shared lane this ground is very often not the
+    // caller's. A subagent is told to reset when it starts new work, does not know it is a
+    // subagent, and cannot pass a `session` it has never heard of, so its reset lands on
+    // whatever ground the parent was using. Deleting it there is what produced the
+    // 2026-08-16 failure: the parent's byte-identical goal came back goal-drift at 0.02.
+    //
+    // An explicit session already has its own lane and its own everything, so it keeps the
+    // original clear-and-forget: isolation was the thing it asked for.
+    if (!args?.session && drift.ground) {
+      SUSPENDED.push({ goal: drift.ground.goal, drift, runId, seenOk: _seenOk })
+      while (SUSPENDED.length > MAX_SUSPENDED) SUSPENDED.shift()
+    }
+    drift = freshDrift(); runId = null; _seenOk = null
+    return 'reset — ground and history cleared. Your next check_state sets a new ground.'
+  }
   if (name === 'get_history') return JSON.stringify({ steps: drift.trace.length, trace: drift.trace })
   if (name === 'modulate') {
     // POLICY, not detection. The verdict comes from the same check_state below and is not
@@ -1763,6 +1849,10 @@ async function _call(name, args) {
   }
   if (name === 'phronesis') return JSON.stringify(judgeWork())
   if (name === 'check_state') {
+    // Consumed once, here, so a resume is reported by the check that caused it and never
+    // leaks onto the next one.
+    const _rg = LAST_RESUMED
+    LAST_RESUMED = null
     const { goal, progress, distance, parent_goal, doing, next, blocked } = args || {}
     const record = (drifting, reason, advice, phi = 0, extra = {}) => {
       const step = drift.trace.length + 1
@@ -1977,11 +2067,16 @@ async function _call(name, args) {
         // to the other — so the arms were separable in the assignment log and unjoinable to
         // any outcome. Measured 2026-08-10, after the stopping rule had already been
         // pre-registered against a comparison that could not have been computed.
+        // resumed_ground rides even the blind arm. It is not a reading — it is a statement
+        // about WHICH ground the (withheld) reading was taken against, and withholding that
+        // would leave a blind-arm caller unable to tell a resumed ground from a fresh one.
         return JSON.stringify({ blind: true, arm: 'blind', run: runId, step,
+          ...(_rg ? { resumed_ground: _rg } : {}),
           note: 'This session is in the blind arm: your state was recorded, the reading is withheld. Continue as you judge best.' })
       }
       return JSON.stringify({ arm: 'sighted', drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
         run: runId, step,
+        ...(_rg ? { resumed_ground: _rg } : {}),
         goal_score, context: ctx, ...extra, ...(claims ? { claims } : {}),
         // Only once it means something. Writing a state once is the normal case and a 1
         // here would be noise on every healthy step.
