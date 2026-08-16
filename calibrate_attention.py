@@ -144,12 +144,92 @@ def user_messages():
     return sorted(when(s) for s in out)
 
 
-def readings():
+def _ts(s):
+    try:
+        return datetime.datetime.fromisoformat(str(s).replace('Z', '+00:00'))
+    except Exception:
+        return None
+
+
+def concurrent_runs(rows):
+    """Runs whose lifetimes overlap another run's — i.e. subagents.
+
+    WHY THIS EXISTS. Every band in this table is "time since the last user message", and
+    user_messages() is a GLOBAL timeline. A subagent has no user turn of its own, so its
+    readings get bucketed against somebody else's — placed on a clock that is not theirs.
+    On 2026-08-16 one session spawned 75 workflow subagents and put 289 such rows into the
+    corpus, 17% of it in a day. They landed hardest in "under a minute", the band carrying
+    the cleanest published claim, taking it from 0.0% (n=57) to 5.6% (n=89).
+
+    WHY CONCURRENCY IS A RULE AND NOT A GUESS. A person's own sessions do not run at the
+    same time on one machine; a parent and its children do, by definition. Runs overlapping
+    another run, per day across the corpus:
+
+        08-04  0%   08-05  0%   08-06  10%   08-07  0%
+        08-08  0%   08-09  0%   08-10   0%   08-16  83.6%
+
+    Validated against a signal that shares no logic with it: matching the goal TEXT against
+    the prompts those subagents were actually given. On the contaminated day, text flags 51
+    runs and clustering flags 50 of the same 51, with ZERO runs flagged that the text does
+    not also flag. One signal is about what an agent was asked, the other about when it ran,
+    and they pick out the same set. That is what makes this a discriminator rather than the
+    inference session_id_of refuses to make.
+
+    WHY THE WIDEST RUN IN A CLUSTER SURVIVES. Plain overlap over-excludes, and measurably:
+    a parent overlaps its own children, so flagging everything that overlaps anything threw
+    the parent away too and left 46 of 446 readings on that day. The parent is the run that
+    spans the others — it was alive before the first child and after the last — so each
+    cluster keeps its widest span and drops the rest. That keeps 171.
+
+    Containment alone was also tried, and is the safest but leanest: 44 of 51, missing the
+    children whose spans poke outside the parent's last check. Clustering strictly dominates
+    it at the same precision.
+
+    The exclusion is the MINIMUM that leaves every reading measurable. Top-level readings
+    from the contaminated day are kept, as is every solitary run on every other day: the
+    instruction was to include all we validly can, and a reading with a user turn of its own
+    is valid whatever else was happening around it.
+
+    If the host ever sets LASERBRAIN_SESSION_ID per subagent, delete this and read the id.
+    """
+    span = {}
+    for r in rows:
+        run, t = r.get('run'), _ts(r.get('ts'))
+        if run is None or t is None:
+            continue
+        a, b = span.get(run, (t, t))
+        span[run] = (min(a, t), max(b, t))
+
+    # Sweep by start time, growing a cluster while runs keep overlapping it.
+    clusters = []
+    for run, (a, b) in sorted(span.items(), key=lambda kv: kv[1][0]):
+        for c in clusters:
+            if a <= c['end']:
+                c['runs'].append((run, a, b))
+                c['end'] = max(c['end'], b)
+                break
+        else:
+            clusters.append({'runs': [(run, a, b)], 'end': b})
+
+    out = set()
+    for c in clusters:
+        if len(c['runs']) < 2:
+            continue
+        parent = max(c['runs'], key=lambda x: x[2] - x[1])[0]
+        out.update(run for run, _, _ in c['runs'] if run != parent)
+    return out
+
+
+def readings(keep_concurrent=False):
     if not DRIFT.exists():
         return []
     rows = [json.loads(l) for l in DRIFT.read_text().splitlines() if l.strip()]
-    return sorted((r for r in rows if r.get('ts') and r.get('drifting') is not None),
+    rows = sorted((r for r in rows if r.get('ts') and r.get('drifting') is not None),
                   key=lambda r: r['ts'])
+    if keep_concurrent:
+        return rows
+    drop = concurrent_runs(rows)
+    return [r for r in rows if r.get('run') not in drop]
 
 
 def split(rows):
@@ -512,7 +592,17 @@ def main():
     # moment you run it, rather than something discovered later inside a published wheel.
     # No threshold, nothing refused: this project does not assert numbers it has not
     # measured, and "how skewed is too skewed" has not been measured.
+    _all = readings(keep_concurrent=True)
     _rows = readings()
+    _dropped = len(_all) - len(_rows)
+    if _dropped:
+        _druns = concurrent_runs(_all)
+        _dd = collections.Counter(str(r.get('ts') or '')[:10] for r in _all
+                                  if r.get('run') in _druns)
+        print(f'  excluded {_dropped} readings from {len(_druns)} concurrent runs — subagents, '
+              f'which have no user turn to measure from')
+        for _d, _n in sorted(_dd.items()):
+            print(f'    {_d}  {_n:>5} readings')
     _by_day = collections.Counter(str(r.get('ts') or '')[:10] for r in _rows)
     _runs_by_day = collections.defaultdict(set)
     for _r in _rows:

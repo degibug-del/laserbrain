@@ -24,6 +24,8 @@
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PARENT = 'Restore the paid laserbrain tiers Group and Pro and rekey the payment links'
@@ -41,7 +43,13 @@ const srv = spawn('node', [join(HERE, 'mcp-server.mjs')], {
   stdio: ['pipe', 'pipe', 'pipe'],
   // Never the real corpus. A test that appends to drift-log.jsonl would be writing its own
   // fixtures into the calibration the product ships.
+  // FULLY ISOLATED. Overriding only the drift log was not enough: the judgment also reads
+  // prior-session state from the config tree, so this test's verdict depended on how much
+  // real work had happened on this machine that day — it passed once and then escalated
+  // past wrong-problem to `abandon` on the next run. LASERBRAIN_HOME relocates both trees
+  // at once, which is what makes the result a fact about the code rather than about today.
   env: { ...process.env,
+         LASERBRAIN_HOME: mkdtempSync(join(tmpdir(), 'lb-test-')),
          LASERBRAIN_DRIFT_LOG: join(HERE, '.test-shared-lane.jsonl'),
          LASERBRAIN_ARM: 'open',            // never the blind arm: we need to read verdicts
          LASERBRAIN_OFFLINE: '1' },

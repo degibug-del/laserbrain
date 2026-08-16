@@ -1431,11 +1431,39 @@ function judgeWork() {
       counsel = 'Run something and read the output before reporting progress again. Half of '
         + 'this score is your own account of yourself, and nothing has agreed with it yet.'
     } else if (judged && goalDrifts >= 3 && goalDrifts > regrounds && pace <= 0) {
+      // IT MAY ONLY COMMAND WITH CORROBORATION. Diego's call, 2026-08-16, after this
+      // branch told an agent to stop working while it was working correctly.
+      //
+      // What happened: a subagent's reset_task had destroyed the parent's ground, so the
+      // parent's byte-identical goal string scored 0.02 five times running. Every input to
+      // the condition above was true and every one of them was an artifact. The counsel
+      // read "You are not solving what you set out to solve" — to an agent that was solving
+      // exactly that, and had the goal string to prove it. It kept going because it could
+      // check; a more obedient one would have abandoned correct work.
+      //
+      // The asymmetry is the point. goalDrifts, regrounds and pace are all computed by this
+      // instrument from the agent's own words, so a fault in the instrument can satisfy all
+      // three at once — which is precisely what happened. `corroborated` counts checks
+      // backed by observed work: output something INDEPENDENT produced. read_corpus.py
+      // already names it "the only signal laserbrain cannot manufacture, and therefore the
+      // only honest referee". A verdict that can halt an agent should have to pass it.
+      //
+      // Uncorroborated, the finding is not suppressed and not softened into vagueness — it
+      // is stated as what it actually is, a reading that might be about the instrument. The
+      // difference is that it asks the agent to check its ground instead of telling it to
+      // abandon its work.
+      const backed = drift.corroborated ?? 0
       verdict = 'wrong-problem'
       because = `The goal has failed its overlap check ${goalDrifts} times against only ${regrounds} legitimate re-grounds. `
         + `The subject keeps moving while the ground stays put.`
-      counsel = 'You are not solving what you set out to solve. Either reset_task to the goal you '
-        + 'actually have now, or return to the original and finish it.'
+        + (backed ? '' : ` Nothing independent has agreed with any check in this run (${backed} corroborated), `
+                       + `so this pattern is equally consistent with the ground having moved underneath you.`)
+      counsel = backed
+        ? 'You are not solving what you set out to solve. Either reset_task to the goal you '
+          + 'actually have now, or return to the original and finish it.'
+        : 'Check the ground before acting on this. Compare the goal you are passing against the '
+          + 'one this run started with — if they are the same, this reading is the thing that is '
+          + 'wrong, not your work. If they differ, reset_task to the goal you actually have.'
     } else if (oscillations > 0 && pace <= 0) {
       // `pace <= 0` is load-bearing, and it was found by dogfooding rather than reasoning:
       // this judgment fired on a run whose distance had gone 6→4→3→2 monotonically. The
