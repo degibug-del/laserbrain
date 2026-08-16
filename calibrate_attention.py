@@ -175,20 +175,24 @@ def concurrent_runs(rows):
     and they pick out the same set. That is what makes this a discriminator rather than the
     inference session_id_of refuses to make.
 
-    WHY THE WIDEST RUN IN A CLUSTER SURVIVES. Plain overlap over-excludes, and measurably:
-    a parent overlaps its own children, so flagging everything that overlaps anything threw
-    the parent away too and left 46 of 446 readings on that day. The parent is the run that
-    spans the others — it was alive before the first child and after the last — so each
-    cluster keeps its widest span and drops the rest. That keeps 171.
+    WHY THE PARENT GOES TOO, which was not obvious and took a second finding to settle.
+    An earlier version kept the widest run in each cluster, reasoning that the parent is a
+    real session with real user turns and its readings are therefore measurable. That is
+    true and beside the point: the parent is not a bystander to a concurrent child, it is
+    the VICTIM of one. Until this was fixed, a child's reset_task destroyed whatever ground
+    was live — usually the parent's — so the parent's subsequent checks were scored against
+    a stranger's goal and returned drift that never happened.
 
-    Containment alone was also tried, and is the safest but leanest: 44 of 51, missing the
-    children whose spans poke outside the parent's last check. Clustering strictly dominates
-    it at the same precision.
+    It shows in the rate. On the contaminated day 54 of 110 readings that survived the
+    keep-the-parent rule were marked drifting: 49%, against about 17% across the corpus.
+    Those verdicts are not measurements of an agent, they are measurements of a defect.
 
-    The exclusion is the MINIMUM that leaves every reading measurable. Top-level readings
-    from the contaminated day are kept, as is every solitary run on every other day: the
-    instruction was to include all we validly can, and a reading with a user turn of its own
-    is valid whatever else was happening around it.
+    So both halves of a cluster are corrupt, for two different reasons, and both go:
+        children — no user turn of their own, so the band's clock is not theirs
+        parents  — ground stolen mid-run, so the verdicts are false
+
+    Containment was also tried and is the leanest: 44 of 51, missing children whose spans
+    poke outside the parent's last check. It is kept in the history rather than the code.
 
     If the host ever sets LASERBRAIN_SESSION_ID per subagent, delete this and read the id.
     """
@@ -215,8 +219,7 @@ def concurrent_runs(rows):
     for c in clusters:
         if len(c['runs']) < 2:
             continue
-        parent = max(c['runs'], key=lambda x: x[2] - x[1])[0]
-        out.update(run for run, _, _ in c['runs'] if run != parent)
+        out.update(run for run, _, _ in c['runs'])
     return out
 
 
@@ -599,8 +602,9 @@ def main():
         _druns = concurrent_runs(_all)
         _dd = collections.Counter(str(r.get('ts') or '')[:10] for r in _all
                                   if r.get('run') in _druns)
-        print(f'  excluded {_dropped} readings from {len(_druns)} concurrent runs — subagents, '
-              f'which have no user turn to measure from')
+        print(f'  excluded {_dropped} readings from {len(_druns)} runs that ran concurrently — '
+              f'children have no user turn to measure from, and their parents had their '
+              f'ground stolen mid-run, so both are corrupt')
         for _d, _n in sorted(_dd.items()):
             print(f'    {_d}  {_n:>5} readings')
     _by_day = collections.Counter(str(r.get('ts') or '')[:10] for r in _rows)

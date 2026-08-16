@@ -8,27 +8,27 @@
       "label": "under a minute",
       "from_seconds": 0,
       "to_seconds": 60,
-      "drift": 5,
-      "n": 89,
-      "rate": 0.0562,
+      "drift": 0,
+      "n": 56,
+      "rate": 0.0,
       "underpowered": false
     },
     {
       "label": "1-5 minutes",
       "from_seconds": 60,
       "to_seconds": 300,
-      "drift": 89,
-      "n": 497,
-      "rate": 0.1791,
+      "drift": 53,
+      "n": 335,
+      "rate": 0.1582,
       "underpowered": false
     },
     {
       "label": "5-30 minutes",
       "from_seconds": 300,
       "to_seconds": 1800,
-      "drift": 136,
-      "n": 466,
-      "rate": 0.2918,
+      "drift": 114,
+      "n": 417,
+      "rate": 0.2734,
       "underpowered": false
     },
     {
@@ -42,12 +42,12 @@
     }
   ],
   "min_n": 20,
-  "z_between_best_powered": 4.133,
+  "z_between_best_powered": 3.777,
   "best_powered_pair": [
     "1-5 minutes",
     "5-30 minutes"
   ],
-  "best_powered_n": 963,
+  "best_powered_n": 752,
   "agent_clock": {
     "what": "Drift against steps since the agent last spelled its own state. Reported with its censoring, not as a schedule.",
     "bands": [
@@ -74,7 +74,7 @@
         "from_steps": 4,
         "to_steps": 7,
         "drift": 0,
-        "n": 96,
+        "n": 100,
         "rate": 0.0,
         "underpowered": false
       },
@@ -83,7 +83,7 @@
         "from_steps": 8,
         "to_steps": 15,
         "drift": 0,
-        "n": 67,
+        "n": 69,
         "rate": 0.0,
         "underpowered": false
       },
@@ -97,24 +97,24 @@
         "underpowered": true
       }
     ],
-    "pairs": 321,
+    "pairs": 327,
     "z_between_best_powered": null,
     "best_powered_pair": [
       "2-3 steps",
       "4-7 steps"
     ],
-    "best_powered_n": 178,
+    "best_powered_n": 182,
     "censored_beyond_steps": 8,
-    "censored_share": 0.2181,
-    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 21.81% of the sample (70 of 321). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
+    "censored_share": 0.2202,
+    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 22.02% of the sample (72 of 327). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
   },
   "overhead": {
     "what": "Share of an agent's tool calls that are laserbrain itself. A cost, not a benefit \u2014 measured so a claim about saved tokens has something to clear.",
-    "runs": 12,
-    "median": 0.1463,
+    "runs": 13,
+    "median": 0.15,
     "iqr": [
       0.1176,
-      0.1957
+      0.1935
     ],
     "note": "Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by construction: the gate forces a check every four steps to hold the coverage floor, so this is the threshold, not an emergent property."
   },
@@ -125,18 +125,18 @@
         "label": "under a minute",
         "from_seconds": 0,
         "to_seconds": 60,
-        "drift": 12,
-        "n": 592,
-        "rate": 0.0203,
+        "drift": 9,
+        "n": 535,
+        "rate": 0.0168,
         "underpowered": false
       },
       {
         "label": "1-5 minutes",
         "from_seconds": 60,
         "to_seconds": 300,
-        "drift": 45,
-        "n": 538,
-        "rate": 0.0836,
+        "drift": 38,
+        "n": 453,
+        "rate": 0.0839,
         "underpowered": false
       },
       {
@@ -144,8 +144,8 @@
         "from_seconds": 300,
         "to_seconds": 1800,
         "drift": 17,
-        "n": 105,
-        "rate": 0.1619,
+        "n": 91,
+        "rate": 0.1868,
         "underpowered": false
       },
       {
@@ -163,12 +163,12 @@
     "written": "2026-08-16",
     "corpus_from": "2026-07-28",
     "corpus_to": "2026-08-16",
-    "readings_total": 2320,
-    "readings_settled": 1080,
-    "readings_fresh_ground": 1240,
-    "user_messages": 4416,
+    "readings_total": 1920,
+    "readings_settled": 836,
+    "readings_fresh_ground": 1084,
+    "user_messages": 4421,
     "dominant_agent": "claude",
-    "dominant_agent_share": 0.999,
+    "dominant_agent_share": 1.0,
     "caveat": "One machine, and 100% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."
   }
 }
