@@ -74,7 +74,7 @@
         "from_steps": 4,
         "to_steps": 7,
         "drift": 0,
-        "n": 158,
+        "n": 162,
         "rate": 0.0,
         "underpowered": false
       },
@@ -83,7 +83,7 @@
         "from_steps": 8,
         "to_steps": 15,
         "drift": 0,
-        "n": 110,
+        "n": 111,
         "rate": 0.0,
         "underpowered": false
       },
@@ -97,21 +97,21 @@
         "underpowered": true
       }
     ],
-    "pairs": 484,
+    "pairs": 489,
     "z_between_best_powered": null,
     "best_powered_pair": [
       "2-3 steps",
       "4-7 steps"
     ],
-    "best_powered_n": 274,
+    "best_powered_n": 278,
     "censored_beyond_steps": 8,
-    "censored_share": 0.2376,
-    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 23.76% of the sample (115 of 484). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
+    "censored_share": 0.2372,
+    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 23.72% of the sample (116 of 489). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
   },
   "overhead": {
     "what": "Share of an agent's tool calls that are laserbrain itself. A cost, not a benefit \u2014 measured so a claim about saved tokens has something to clear.",
     "runs": 22,
-    "median": 0.15,
+    "median": 0.1464,
     "iqr": [
       0.1346,
       0.1935
@@ -126,8 +126,8 @@
         "from_seconds": 0,
         "to_seconds": 60,
         "drift": 9,
-        "n": 536,
-        "rate": 0.0168,
+        "n": 534,
+        "rate": 0.0169,
         "underpowered": false
       },
       {
@@ -135,8 +135,8 @@
         "from_seconds": 60,
         "to_seconds": 300,
         "drift": 38,
-        "n": 454,
-        "rate": 0.0837,
+        "n": 453,
+        "rate": 0.0839,
         "underpowered": false
       },
       {
@@ -162,11 +162,11 @@
   "provenance": {
     "written": "2026-08-17",
     "corpus_from": "2026-07-28",
-    "corpus_to": "2026-08-17",
-    "readings_total": 1922,
+    "corpus_to": "2026-08-16",
+    "readings_total": 1919,
     "readings_settled": 836,
-    "readings_fresh_ground": 1086,
-    "user_messages": 4495,
+    "readings_fresh_ground": 1083,
+    "user_messages": 4507,
     "dominant_agent": "claude",
     "dominant_agent_share": 1.0,
     "caveat": "One machine, and 100% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."
