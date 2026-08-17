@@ -56,7 +56,7 @@
         "from_steps": 1,
         "to_steps": 1,
         "drift": 0,
-        "n": 73,
+        "n": 95,
         "rate": 0.0,
         "underpowered": false
       },
@@ -65,7 +65,7 @@
         "from_steps": 2,
         "to_steps": 3,
         "drift": 0,
-        "n": 82,
+        "n": 116,
         "rate": 0.0,
         "underpowered": false
       },
@@ -74,7 +74,7 @@
         "from_steps": 4,
         "to_steps": 7,
         "drift": 0,
-        "n": 100,
+        "n": 151,
         "rate": 0.0,
         "underpowered": false
       },
@@ -83,7 +83,7 @@
         "from_steps": 8,
         "to_steps": 15,
         "drift": 0,
-        "n": 69,
+        "n": 103,
         "rate": 0.0,
         "underpowered": false
       },
@@ -92,29 +92,29 @@
         "from_steps": 16,
         "to_steps": 60,
         "drift": 0,
-        "n": 3,
+        "n": 5,
         "rate": null,
         "underpowered": true
       }
     ],
-    "pairs": 327,
+    "pairs": 470,
     "z_between_best_powered": null,
     "best_powered_pair": [
       "2-3 steps",
       "4-7 steps"
     ],
-    "best_powered_n": 182,
+    "best_powered_n": 267,
     "censored_beyond_steps": 8,
-    "censored_share": 0.2202,
-    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 22.02% of the sample (72 of 327). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
+    "censored_share": 0.2298,
+    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 22.98% of the sample (108 of 470). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
   },
   "overhead": {
     "what": "Share of an agent's tool calls that are laserbrain itself. A cost, not a benefit \u2014 measured so a claim about saved tokens has something to clear.",
-    "runs": 13,
-    "median": 0.15,
+    "runs": 18,
+    "median": 0.1578,
     "iqr": [
-      0.1176,
-      0.1935
+      0.1321,
+      0.1957
     ],
     "note": "Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by construction: the gate forces a check every four steps to hold the coverage floor, so this is the threshold, not an emergent property."
   },
@@ -160,13 +160,13 @@
     ]
   },
   "provenance": {
-    "written": "2026-08-16",
+    "written": "2026-08-17",
     "corpus_from": "2026-07-28",
-    "corpus_to": "2026-08-16",
+    "corpus_to": "2026-08-17",
     "readings_total": 1920,
     "readings_settled": 836,
     "readings_fresh_ground": 1084,
-    "user_messages": 4421,
+    "user_messages": 4470,
     "dominant_agent": "claude",
     "dominant_agent_share": 1.0,
     "caveat": "One machine, and 100% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."

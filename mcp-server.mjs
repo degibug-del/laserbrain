@@ -71,6 +71,35 @@ function blindNow() {
     return JSON.parse(readFileSync(p, 'utf8'))?.blind === 'blind'
   } catch { return false }
 }
+
+/**
+ * The same file, read whole rather than as a boolean — so a drift row can carry which arm
+ * it belongs to and which unit it was.
+ *
+ * WHY THIS EXISTS, and it is the third time. The probe assigns arms into
+ * blind-arms.jsonl keyed by `unit`; readings go to drift-log.jsonl keyed by `run`. Checked
+ * on 2026-08-17 the two share NOT ONE FIELD, and no `unit` has ever appeared as a `run`.
+ * So a completed probe would hold 40 assignments and several hundred readings with no way
+ * to say which reading belonged to which arm — the comparison it is pre-registered to make
+ * would be uncomputable, discovered only at analysis time.
+ *
+ * That exact failure was found on 2026-08-10 and "fixed" by stating `arm` in the check_state
+ * RESPONSE. But a response is read by an agent and thrown away; nothing persisted it. The
+ * corpus kept no record, so the fix was invisible to the only reader that matters.
+ *
+ * The repair is not a better join, it is not needing one. Every reading carries its own arm
+ * and unit, so a row is self-describing and the assignment log becomes a convenience rather
+ * than a dependency. Failing to nulls on anything unexpected: a reading with an unknown arm
+ * is honest, a reading silently attributed to the wrong one is not.
+ */
+function armNow() {
+  try {
+    const p = join(homedir(), '.claude', 'laserbrain', 'current-arm.json')
+    if (!existsSync(p)) return { arm: null, unit: null }
+    const j = JSON.parse(readFileSync(p, 'utf8')) || {}
+    return { arm: j.blind === 'blind' ? 'blind' : 'sighted', unit: j.unit ?? null }
+  } catch { return { arm: null, unit: null } }
+}
 import { fileURLToPath } from 'node:url'
 
 const HUB = process.env.LASERBRAIN_HUB || 'https://phronesis.world/api/laserbrain'
@@ -1955,9 +1984,15 @@ async function _call(name, args) {
       // A version per row makes the seam visible. grammar_version because a schema change
       // is what moves the meaning of a row, and sdk so a behaviour change with no schema
       // change is still attributable.
+      // arm and unit ride on EVERY row — see armNow(). Without them the probe's assignment
+      // log and this log share no field, and the pre-registered comparison cannot be
+      // computed at all. Denormalised on purpose: a self-describing row needs no join, and
+      // a join that does not exist is what killed this twice already.
+      const _arm = armNow()
       logDrift({ ts: new Date().toISOString(), run: runId, agent: AGENT, step, reason, drifting,
         phi: Number(phi.toFixed(2)), laserscore: score, goal, progress, distance: asDist(distance),
         dist_recent: drift.distHist.slice(-4),
+        arm: _arm.arm, unit: _arm.unit,
         grammar_version: GRAMMAR.laserbrain_grammar ?? null,
         logged_by: 'lasermind/mcp-server.mjs', ...extra })
       const obs = observedProgress()
