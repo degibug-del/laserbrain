@@ -92,13 +92,25 @@ function blindNow() {
  * than a dependency. Failing to nulls on anything unexpected: a reading with an unknown arm
  * is honest, a reading silently attributed to the wrong one is not.
  */
+// AN UNASSIGNED SESSION MUST SAY SO. This returned {arm: null} when the assignment file was
+// absent, and logDrift omits null fields — so a session that never entered the experiment was
+// indistinguishable from one whose arm simply predated the field. On 2026-08-19 that hid the
+// state of the probe entirely: 2,912 of 3,392 rows carried no arm, every armed row came from a
+// single session, and the experiment was believed to have been running for eleven days when it
+// had been running in one place for two.
+//
+// `unassigned` is a value. It is written, it is countable, and it makes "the probe is not
+// reaching sessions" visible in the corpus instead of requiring someone to notice an absence.
 function armNow() {
   try {
     const p = join(homedir(), '.claude', 'laserbrain', 'current-arm.json')
-    if (!existsSync(p)) return { arm: null, unit: null }
+    if (!existsSync(p)) return { arm: 'unassigned', unit: null, why: 'no current-arm.json' }
     const j = JSON.parse(readFileSync(p, 'utf8')) || {}
+    if (!j.blind && !j.unit) return { arm: 'unassigned', unit: null, why: 'assignment file empty' }
     return { arm: j.blind === 'blind' ? 'blind' : 'sighted', unit: j.unit ?? null }
-  } catch { return { arm: null, unit: null } }
+  } catch (e) {
+    return { arm: 'unassigned', unit: null, why: `assignment unreadable: ${e.name}` }
+  }
 }
 import { fileURLToPath } from 'node:url'
 
