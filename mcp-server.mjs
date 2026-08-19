@@ -2139,6 +2139,22 @@ async function _call(name, args) {
       }
       return JSON.stringify({ arm: 'sighted', drifting, reason, laserscore: score, phi: Number(phi.toFixed(2)),
         run: runId, step,
+        // THE FROZEN GROUND, ON EVERY VERDICT — not only when one fires. 2026-08-18.
+        //
+        // It was returned before only inside a firing goal-drift, interpolated into the
+        // advice string. So an agent on a healthy step never saw the goal it started with,
+        // and the advice could say "return to the goal you started with" without saying
+        // what that goal was. Re-presentation was therefore conditional on a detector whose
+        // published precision is 4 of 50.
+        //
+        // The mechanism measured to work is unconditional: re-presenting the ground at
+        // every step took rule survival from 0/8 chains to 8/8 with no detector involved,
+        // while a generic reminder fired just as often scored 0/6. Exhortation is not
+        // transmission — you have to hand over the thing itself.
+        //
+        // Same reasoning as goal_score below, which was also computed from the start and
+        // reported only on failure until it was made unconditional.
+        ground: drift.ground?.goal ?? null,
         ...(_rg ? { resumed_ground: _rg } : {}),
         goal_score, context: ctx, ...extra, ...(claims ? { claims } : {}),
         // Only once it means something. Writing a state once is the normal case and a 1
