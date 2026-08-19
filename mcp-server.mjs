@@ -2154,6 +2154,12 @@ async function _call(name, args) {
         //
         // Same reasoning as goal_score below, which was also computed from the start and
         // reported only on failure until it was made unconditional.
+        //
+        // WHAT IT COSTS IS UNMEASURED. An earlier version of this comment said 11.9%
+        // cheaper than carrying no constraint. That came from a cache-position test that did not
+        // replicate — the identical manipulation measured -11.9% then +5.9%, within-arm variance
+        // hit 101% of the mean, and no contrast cleared |t| = 2. The defect-prevention result is
+        // unaffected: 0/8 relayed chains held a constraint without this, 8/8 with it.
         ground: drift.ground?.goal ?? null,
         ...(_rg ? { resumed_ground: _rg } : {}),
         goal_score, context: ctx, ...extra, ...(claims ? { claims } : {}),
