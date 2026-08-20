@@ -36,18 +36,25 @@ https://laserbrain-mcp.degibug.workers.dev/mcp
 
 ---
 
-## The repositories
+## This repository
 
-| repo | what it is |
-|---|---|
-| [laserbrain-sdk](https://github.com/degibug-del/laserbrain-sdk) | Python. The reference implementation. |
-| [laserbrain-js](https://github.com/degibug-del/laserbrain-js) | TypeScript, parity-checked against the Python vectors. |
-| [lasergear](https://github.com/degibug-del/lasergear) | The hooks — the enforcement half. |
-| [laserbrain-check](https://github.com/degibug-del/laserbrain-check) | CI gate: catches prose that has quietly stopped being true. |
+Three implementations of one grammar, plus the wiring we run ourselves.
 
-The Python package ships the hooks, so `pip install laserbrain` is enough on its own.
+| path | language | what it is |
+|---|---|---|
+| [`python/`](python) | Python | **the reference.** Harness, enforcement hooks, stdio MCP server, tamper-evident audit chain. Published to PyPI as `laserbrain`. |
+| [`typescript/`](typescript) | TypeScript | the port, held to vectors generated **from** Python. Published to npm as `laserbrain`. |
+| [`javascript/`](javascript) | JavaScript | the local stdio MCP server we run ourselves, and the `grammar.json` every implementation reads. |
+| [`infra/`](infra) | — | how it wires into an agent host, and which hosts are known. |
 
----
+```bash
+cd typescript && npm test     # 16 sequences, 276 field comparisons against Python
+```
+
+The logic is deliberately re-implemented per language; the **contract** is not. Every
+implementation reads the same `grammar.json`, and a parity check fails the build when they
+disagree. That is what makes three implementations survivable — and it is also why the
+`excursion` gap described below stayed hidden for months.
 
 ## The nine verdicts
 
