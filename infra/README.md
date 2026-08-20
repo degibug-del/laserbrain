@@ -1,17 +1,18 @@
-# infra — the wiring we actually run
+# infra — how it wires into an agent host
 
-The published packages are the product. This is the setup on our own machines, kept here
-so it can be read and copied rather than described.
+The packages are the product. This directory holds the facts about *wiring*, and nothing
+that is a copy of code living elsewhere in this repository.
 
 ## The two halves
 
-**`lasermind/mcp-server.mjs`** — a stdio MCP server. This is what answers our own
-`check_state` calls. It reads `grammar.json` from this directory, so the server and the
-Python package score against the same file.
+**The instrument** is the MCP server: it answers when an agent asks. `laserbrain mcp` from
+the Python package, or [`../javascript/mcp-server.mjs`](../javascript/mcp-server.mjs), which
+is the local stdio server we run ourselves.
 
-**`lasergear/`** — the hooks. These are the enforcement, and they are the half that
-matters. The MCP server is a detector an agent calls when it remembers to; an agent that
-has drifted is exactly the one that will not remember.
+**The harness** is the hooks, in
+[`../python/laserbrain/hooks/`](../python/laserbrain/hooks). They are the half that matters.
+An MCP server is a detector an agent calls when it remembers to, and an agent that has
+drifted is exactly the one that will not remember.
 
 | hook | event | what it does |
 |---|---|---|
@@ -25,17 +26,15 @@ session and took an unsaved draft with one of them.
 
 ## Wiring it
 
-The supported way is the package:
-
 ```bash
 pip install laserbrain
 laserbrain install
 ```
 
-That installs the same hooks from inside the package, referenced as modules
-(`python -m laserbrain.hooks.lb_gate`), so an upgrade moves them and no settings file goes
-stale. **Prefer it.** The copies here are for reading, and for hosts the installer does
-not know about.
+That installs the MCP server and all four hooks, referenced as **modules** —
+`python3 -m laserbrain.hooks.lb_gate` — so an upgrade moves them and no settings file goes
+stale. It backs up your existing settings, merges rather than overwrites, and verifies the
+hooks execute before reporting success.
 
 By hand, in `~/.claude/settings.json`:
 
@@ -53,19 +52,32 @@ By hand, in `~/.claude/settings.json`:
 }
 ```
 
+To undo: restore `~/.claude/settings.json.before-laserbrain`.
+
 ## Hosts
 
-`lasergear/hosts.json` carries per-host facts — how *this* host names the check tool, so a
-coverage denial can tell the agent what to call. It knows two: Claude Code and Grok.
-The harness is model-agnostic by construction; the enforcement is not host-agnostic.
+[`hosts.json`](hosts.json) carries per-host facts — how *this* host names the check tool,
+so a coverage denial can tell the agent what to call. It knows two: Claude Code and Grok.
 
-## What is deliberately not here
+**The harness is model-agnostic by construction; the enforcement is not host-agnostic.**
+It scores whatever state an agent spells, so it works with any model — verified across
+seven open models from four vendors. Wiring it into a host that is not in `hosts.json`
+means writing that integration yourself.
 
-Session records, the corpus, traces and calibration output. `attention.json` is included
-because it is the published calibration the package ships; the runs behind it are not.
+## The contract
+
+`grammar.json`, the calibration and the parity vectors are in [`../json/`](../json), not
+here. They are shared by every implementation rather than belonging to the wiring.
 
 ## The blind probe
 
-`lasergear/BLIND-PROBE.md` describes it: half of sessions have the verdict withheld, at
-random, pre-registered. It is why our own sessions often show `"blind": true` — the state
-is recorded and the reading is not returned. Do not analyse it early.
+[`BLIND-PROBE.md`](BLIND-PROBE.md) describes it: half of sessions have the verdict
+withheld, at random, pre-registered. It is why our own sessions often report
+`"blind": true` — the state is recorded and the reading is not returned. Do not analyse
+it early.
+
+## What is deliberately not here
+
+Session records, the corpus, traces, and calibration output. `attention.json` is in
+`../json/` because it is the published calibration the package ships; the runs behind it
+are not in this repository.
