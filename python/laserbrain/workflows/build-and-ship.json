@@ -1,0 +1,36 @@
+{
+  "spec_version": 1,
+  "goal": "build something and put it in front of people",
+  "steps": [
+    {
+      "name": "build",
+      "goal": "produce the artifact",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "verify-artifact",
+      "goal": "check the ARTIFACT, not the source it came from",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "commit",
+      "goal": "record the source of this build",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "deploy",
+      "goal": "put it in front of users",
+      "irreversible": true,
+      "outward": true
+    },
+    {
+      "name": "verify-live",
+      "goal": "fetch it back from where it now lives",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

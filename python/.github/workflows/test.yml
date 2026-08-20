@@ -1,0 +1,124 @@
+# CI for laserbrain.
+#
+# There was none until 2026-08-17, and the reason it was missing is worth stating: the 74
+# gates that guard this project live in the SITE repo, so the package itself — the thing
+# 24,808 downloads actually install — had nothing running on push. A portfolio audit found
+# that alongside the fact that `pytest` crashed outright, which is presumably why nobody
+# had wired CI to it.
+#
+# This gates the three things that can silently be wrong in a package like this.
+
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # 1 · THE SUITES, ACROSS THE RANGE THE PACKAGE CLAIMS.
+  #
+  # pyproject says requires-python = ">=3.9" and nothing verified it. A claim in metadata
+  # that nothing tests is the same shape as a comment that nothing enforces — and this one
+  # is load-bearing, because pip believes it and will happily install on 3.9.
+  suites:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false          # one old version breaking should not hide the others
+      matrix:
+        python: ['3.9', '3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install (no runtime deps by design)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest
+
+      # Three suites test the HOOK LAYER, which lives in its own repo. On the first CI run
+      # they failed looking for a path that exists on one laptop — they had always passed
+      # locally, which is exactly why nobody knew. lasergear is public, so check it out and
+      # let them run for real; without this they would skip, and a permanently-skipped test
+      # is a test nobody is running.
+      - uses: actions/checkout@v4
+        with:
+          repository: degibug-del/lasergear
+          path: .lasergear
+
+      - name: pytest
+        env:
+          LASERGEAR_DIR: ${{ github.workspace }}/.lasergear
+          LASERGEAR_COVERAGE: ${{ github.workspace }}/.lasergear/lb_coverage.py
+        run: python -m pytest -q
+
+  # 2 · THE WHEEL CARRIES ITS DATA.
+  #
+  # From pyproject's own comment: a wheel missing grammar.json "imports fine and silently
+  # runs different constants". That is the worst failure this package can have — not a
+  # crash, a quiet recalibration of the instrument whose whole claim is that it does not
+  # move. Building and looking inside is cheap; discovering it from a user is not.
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install build
+      - run: python -m build
+      - name: The wheel must contain grammar.json
+        run: |
+          python - <<'PY'
+          import glob, zipfile, sys
+          whl = glob.glob('dist/*.whl')
+          assert whl, 'no wheel was built'
+          names = zipfile.ZipFile(whl[0]).namelist()
+          data = [n for n in names if n.endswith('.json')]
+          print('json files in the wheel:', data)
+          missing = [n for n in ('grammar.json',) if not any(x.endswith(n) for x in names)]
+          if missing:
+              sys.exit(f'MISSING FROM THE WHEEL: {missing} — it would import fine and run '
+                       f'different constants, which is the silent failure this gate exists for')
+          print('ok — the wheel carries its data')
+          PY
+
+  # 3 · IT INSTALLS CLEAN, FROM THE WHEEL, WITH NOTHING ELSE PRESENT.
+  #
+  # `pip install -e .` above proves the source tree works. It does not prove the artifact
+  # does, and those diverge exactly when packaging is wrong — which is what job 2 is about.
+  # This installs the built wheel into an empty environment and checks the public surface
+  # is actually reachable, because "zero runtime dependencies" is a claim on the site.
+  install:
+    runs-on: ubuntu-latest
+    needs: wheel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install build && python -m build
+      - name: Install the wheel alone and use it
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --quiet dist/*.whl
+          /tmp/clean/bin/python - <<'PY'
+          import laserbrain
+          h = laserbrain.Harness()
+          h.check('ship the parser', 'advancing', 8)
+          v = h.check('paint the kitchen ceiling', 'advancing', 8)
+          assert v.reason == 'goal-drift', f'expected goal-drift on an unrelated goal, got {v.reason}'
+          print(f'ok — laserbrain {laserbrain.__version__} works from the wheel, '
+                f'{len(laserbrain.__all__)} public names, no other package installed')
+          PY
+      - name: Nothing else came with it
+        run: |
+          # `grep -vc` EXITS 1 WHEN THE COUNT IS ZERO, and zero is the success case here.
+          # Under `bash -e` that killed the step, so this gate could only go green if the
+          # thing it guards against had actually happened — a check that cannot pass, which
+          # is the same family as a check that cannot fail. It failed on its first real run
+          # and that is the only reason it was caught.
+          n=$(/tmp/clean/bin/pip list --format=freeze \
+              | grep -vE '^(laserbrain|pip|setuptools|wheel)=' | wc -l | tr -d ' ')
+          echo "extra packages pulled in: $n"
+          test "$n" -eq 0 || { /tmp/clean/bin/pip list; exit 1; }

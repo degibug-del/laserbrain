@@ -1,0 +1,18 @@
+{
+  "spec_version": 1,
+  "goal": "find out what is actually true",
+  "steps": [
+    {
+      "name": "read",
+      "goal": "load the current state without changing it",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "measure",
+      "goal": "take the reading that answers the question",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

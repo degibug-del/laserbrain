@@ -1,0 +1,42 @@
+{
+  "spec_version": 1,
+  "goal": "take something from unverified to published and confirmed",
+  "steps": [
+    {
+      "name": "test",
+      "goal": "the preconditions hold before anything changes",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "build",
+      "goal": "produce the artifact",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "verify-artifact",
+      "goal": "check the ARTIFACT, not the source it came from",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "commit",
+      "goal": "record the source of this release",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "publish",
+      "goal": "make it permanently available",
+      "irreversible": true,
+      "outward": true
+    },
+    {
+      "name": "verify-published",
+      "goal": "install it fresh from where it now lives and confirm",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

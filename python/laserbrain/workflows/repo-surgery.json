@@ -1,0 +1,60 @@
+{
+  "spec_version": 1,
+  "goal": "remove something from git history without losing anything else",
+  "steps": [
+    {
+      "name": "inspect-history",
+      "goal": "find what is oversized and when it entered",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "inspect-secrets",
+      "goal": "lb_secrets finds nothing in any commit before the history is republished",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "verify-fastforward",
+      "goal": "the offending commits are unpushed, so nothing published is rewritten",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "commit",
+      "goal": "record every uncommitted change, because the rewrite eats them",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "generate-backup",
+      "goal": "clone .git so the rewrite is recoverable",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "rewrite-history",
+      "goal": "strip the paths from every commit that carries them",
+      "irreversible": true,
+      "outward": false
+    },
+    {
+      "name": "verify-history",
+      "goal": "no oversized blobs remain, commits survived, the old tip kept its sha",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "push",
+      "goal": "send the rewritten history to the remote",
+      "irreversible": true,
+      "outward": true
+    },
+    {
+      "name": "verify-remote",
+      "goal": "the remote matches local and the work is there",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "laserbrain"
+version = "0.53.0"
+description = "AI agents are made up of language. laserbrain is an automatic grammatical control layer to reduce agent drift — it scores an agent's goal before execution, then checks each step against that fixed reference. Works across tools."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "phronesis" }]
+keywords = ["ai", "agents", "oversight", "drift", "mcp", "llm", "multi-agent"]
+dependencies = []
+
+[project.scripts]
+laserbrain = "laserbrain.cli:main"
+
+[project.urls]
+Homepage = "https://phronesis.world/laserbrain"
+Research = "https://phronesis.world/laserbrain/research"
+Demo = "https://phronesis.world/laserbrain/demo"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["laserbrain*"]
+
+[tool.setuptools.package-data]
+# grammar.json must ship: the package READS its stopwords, stem rule and calibration
+# from it. Without this line the wheel silently falls back to the literals in the source,
+# which is the worst kind of failure — everything imports, every test passes locally where
+# the file is on disk, and only a pip install is quietly running different constants.
+# The shipped workflow library travels the same way and for the same reason: a pip
+# install cannot reach the repo it came from.
+# attention.json is the measured check-in calibration. Its absence is handled gracefully —
+# attention.py reports "no calibration installed" rather than throwing — which is precisely
+# why it has to be listed here: a wheel missing it would not fail, it would just decline to
+# answer, on every install, forever, while the repo worked fine.
+laserbrain = ["py.typed", "grammar.json", "attention.json", "workflows/*.json",
+              # hosts.json is read by the hooks at runtime. Same reasoning as
+              # grammar.json: without this line the wheel installs hooks that
+              # cannot find it, and they degrade silently rather than failing.
+              "hooks/*.json"]
+
+[project.optional-dependencies]
+# The default grammar has no dependencies and never will. This is opt-in, for agents
+# that restate goals in different words — see laserbrain/vocab.py.
+semantic = ["sentence-transformers>=3.0"]

@@ -1,0 +1,18 @@
+{
+  "spec_version": 1,
+  "goal": "check something against what it claims",
+  "steps": [
+    {
+      "name": "inspect",
+      "goal": "look at what is actually there",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "verify-claims",
+      "goal": "compare it against what was asserted about it",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

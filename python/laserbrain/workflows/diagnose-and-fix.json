@@ -1,0 +1,30 @@
+{
+  "spec_version": 1,
+  "goal": "find the cause, fix it, and prove the fix",
+  "steps": [
+    {
+      "name": "read",
+      "goal": "reproduce the problem and find where it lives",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "edit",
+      "goal": "change the thing that is actually wrong",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "verify-change",
+      "goal": "the reported symptom is gone and nothing else moved",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "commit",
+      "goal": "record the fix and what it was for",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

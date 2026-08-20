@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.degibug-del/laserbrain",
+  "description": "The drift harness as an MCP server. Offline, no key \u2014 a fixed reference an agent checks against.",
+  "version": "0.29.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "laserbrain",
+      "version": "0.29.0",
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--from",
+          "value": "laserbrain==0.29.0",
+          "description": "Pin the exact version this entry names. uvx resolves to the newest PyPI release by default, so without this an older, no-longer-latest registry entry would silently invoke a different package than the one it describes. Keep this version in sync with the two above it — check-registry-entry.py asserts all three agree."
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp",
+          "valueHint": "mcp",
+          "description": "Run as an MCP server on stdin/stdout."
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

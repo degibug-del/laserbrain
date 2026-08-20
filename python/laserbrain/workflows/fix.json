@@ -1,0 +1,24 @@
+{
+  "spec_version": 1,
+  "goal": "change something and be sure the change is right",
+  "steps": [
+    {
+      "name": "edit",
+      "goal": "make the change",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "verify-change",
+      "goal": "confirm the change does what it was meant to and breaks nothing",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "commit",
+      "goal": "record it, so it can be reproduced or undone",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

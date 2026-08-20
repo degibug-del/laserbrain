@@ -1,0 +1,36 @@
+{
+  "spec_version": 1,
+  "goal": "move something already made into a place people can reach",
+  "steps": [
+    {
+      "name": "inspect",
+      "goal": "confirm what is about to be promoted is what you think",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "verify-artifact",
+      "goal": "check the artifact itself",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "commit",
+      "goal": "record what is being promoted",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "push",
+      "goal": "send it to the shared place",
+      "irreversible": true,
+      "outward": true
+    },
+    {
+      "name": "verify-remote",
+      "goal": "the shared place has it and matches",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

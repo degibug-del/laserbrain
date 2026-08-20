@@ -1,0 +1,48 @@
+{
+  "spec_version": 1,
+  "goal": "put a directory under git and push it somewhere safe",
+  "steps": [
+    {
+      "name": "inspect-size",
+      "goal": "no file is large enough to make the repo unpushable",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "inspect-secrets",
+      "goal": "lb_secrets finds nothing in the working tree OR the history",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "edit-gitignore",
+      "goal": "build output, virtualenvs and caches are excluded before the first commit",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "verify-staged",
+      "goal": "what is about to be committed is what was actually checked",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "commit",
+      "goal": "the initial history exists locally",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "push",
+      "goal": "send it to a new private remote",
+      "irreversible": true,
+      "outward": true
+    },
+    {
+      "name": "verify-remote",
+      "goal": "clone it back and confirm the remote holds what the local does, and no secret",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}

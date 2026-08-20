@@ -1,0 +1,47 @@
+{
+  "name": "laserbrain",
+  "version": "2.0.1",
+  "description": "A goal-alignment harness for AI agents \u2014 holds the goal your agent stated first, frozen where it cannot revise it, and checks every later step against it. No model, no network, no key.",
+  "keywords": [
+    "agent",
+    "agents",
+    "llm",
+    "goal",
+    "drift",
+    "harness",
+    "alignment",
+    "guardrail",
+    "mcp"
+  ],
+  "homepage": "https://phronesis.world/laserbrain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/degibug-del/laserbrain-js.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types test/parity.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "typescript": "^5.9.3"
+  },
+  "bugs": {
+    "url": "https://github.com/degibug-del/laserbrain-js/issues"
+  }
+}

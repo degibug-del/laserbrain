@@ -1,0 +1,30 @@
+{
+  "spec_version": 1,
+  "goal": "release something that is already built",
+  "steps": [
+    {
+      "name": "verify-artifact",
+      "goal": "check the ARTIFACT, not the source it came from",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "commit",
+      "goal": "record the source of what is about to go out",
+      "irreversible": false,
+      "outward": false
+    },
+    {
+      "name": "publish",
+      "goal": "make it available",
+      "irreversible": true,
+      "outward": true
+    },
+    {
+      "name": "verify-published",
+      "goal": "confirm it landed, read from outside",
+      "irreversible": false,
+      "outward": false
+    }
+  ]
+}
