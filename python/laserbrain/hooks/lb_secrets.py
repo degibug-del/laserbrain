@@ -54,7 +54,7 @@ PATTERNS = {
     'slack-token':         (r'\bxox[baprs]-[A-Za-z0-9\-]{10,}\b', 'Slack token'),
     'stripe-live':         (r'\b(?:sk|rk)_live_[A-Za-z0-9]{20,}\b', 'Stripe LIVE key'),
     'google-api-key':      (r'\bAIza[0-9A-Za-z_\-]{35}\b', 'Google API key'),
-    'private-key-block':   (r'-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----',
+    'private-key-block':   (r'-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----',  # lb-secrets: allow
                             'a private key, inline'),
     'jwt':                 (r'\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.',
                             'a JSON web token'),
@@ -72,11 +72,38 @@ SKIP_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.gz', '.whl', '.mp
             '.woff', '.woff2', '.ico', '.eeg', '.fdt', '.set'}
 
 
+# A LINE MAY DECLARE ITSELF A PATTERN RATHER THAN A SECRET.
+#
+# This scanner flagged ITSELF: its own pattern table and self-test fixtures contain the
+# strings it hunts for, so every clean repository reported exactly one finding. A check
+# that always fires is one people learn to wave through — which is how a real leak
+# eventually passes. Found 2026-08-20, making this repository public.
+#
+# The pragma is deliberately narrow. It exempts the LINE, not the file: a real credential
+# pasted three lines below is still caught, and marking a line is a visible choice in a
+# diff rather than a silent skip.
+ALLOW = re.compile(r'#\s*lb-secrets:\s*allow\b')
+
+
 def hits_in(text, where):
     """Every match, with the VALUE redacted — a scanner that prints secrets is a leak."""
     out = []
+    lines = text.splitlines()
+    # offset -> line index, so a match can be mapped back to the line that produced it
+    starts, pos = [], 0
+    for ln in lines:
+        starts.append(pos); pos += len(ln) + 1
+    def line_of(off):
+        lo, hi = 0, len(starts) - 1
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if starts[mid] <= off: lo = mid
+            else: hi = mid - 1
+        return lo
     for name, (rx, why) in COMPILED.items():
         for m in rx.finditer(text):
+            if lines and ALLOW.search(lines[line_of(m.start())]):
+                continue
             raw = m.group(0)
             out.append({'pattern': name, 'why': why, 'where': where,
                         'shown': raw[:4] + '…' + str(len(raw)) + ' chars'})
@@ -126,7 +153,7 @@ def self_test():
         ('openai', 'sk-' + 'a' * 32),
         ('github-token', 'ghp_' + 'b' * 36),
         ('aws-access-key', 'AKIA' + 'C' * 16),
-        ('private-key-block', '-----BEGIN RSA PRIVATE KEY-----'),
+        ('private-key-block', '-----BEGIN RSA PRIVATE KEY-----'),  # lb-secrets: allow
         ('assigned-secret', 'api_key = "' + 'z' * 24 + '"'),
     ]
     ok = True
