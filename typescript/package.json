@@ -33,7 +33,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --experimental-strip-types test/parity.ts"
+    "test": "tsc -p tsconfig.json && node test/parity.mjs"
   },
   "engines": {
     "node": ">=20"

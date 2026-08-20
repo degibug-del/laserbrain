@@ -58,7 +58,7 @@ jobs:
         working-directory: typescript
       - run: npx tsc -p tsconfig.json
         working-directory: typescript
-      - run: node test/parity.ts
+      - run: node test/parity.mjs
         working-directory: typescript
 
   javascript:
