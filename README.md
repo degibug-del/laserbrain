@@ -28,6 +28,26 @@ laserbrain demo             # watch an agent drift off-goal and get returned
 npm install laserbrain
 ```
 
+### From this clone
+
+If you would rather read the source before trusting a registry — the sensible order for
+something that installs a hook able to refuse your agent's tool calls:
+
+```bash
+git clone https://github.com/degibug-del/laserbrain.git
+cd laserbrain
+
+pip install ./python        # same code as PyPI, plus the hooks
+laserbrain demo             # six lines: an agent drifts off-goal, and is returned
+laserbrain install          # wire it in; verifies the hooks run before reporting success
+
+cd typescript && npm install && npm test    # 276 comparisons against Python
+cd ../javascript && node test/parity.mjs    # 138 comparisons, driven over stdio
+```
+
+`laserbrain install` backs up `~/.claude/settings.json` first and prints the undo line.
+To reverse it, restore `settings.json.before-laserbrain`.
+
 **Hosted MCP**, if you would rather not install anything — needs a free key:
 
 ```
