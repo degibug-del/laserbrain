@@ -38,13 +38,14 @@ https://laserbrain-mcp.degibug.workers.dev/mcp
 
 ## This repository
 
-Three implementations of one grammar, plus the wiring we run ourselves.
+Three implementations of one grammar, the grammar itself, and the wiring we run ourselves.
 
 | path | language | what it is |
 |---|---|---|
 | [`python/`](python) | Python | **the reference.** Harness, enforcement hooks, stdio MCP server, tamper-evident audit chain. Published to PyPI as `laserbrain`. |
 | [`typescript/`](typescript) | TypeScript | the port, held to vectors generated **from** Python. Published to npm as `laserbrain`. |
 | [`javascript/`](javascript) | JavaScript | the local stdio MCP server we run ourselves, and the `grammar.json` every implementation reads. |
+| [`json/`](json) | JSON | **the contract.** `grammar.json`, the measured calibration, and the parity vectors. |
 | [`infra/`](infra) | — | how it wires into an agent host, and which hosts are known. |
 
 ```bash
