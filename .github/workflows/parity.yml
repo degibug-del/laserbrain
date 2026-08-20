@@ -1,0 +1,75 @@
+# Hold the implementations to each other, on every push.
+#
+# This repository's argument is that parity is checked rather than claimed. Until
+# 2026-08-20 nothing ran these suites automatically — they were checked when someone
+# remembered, which is the failure mode the repository documents. Two divergences had
+# already shipped that way: drift.ts missing `excursion` for months, and the stdio server
+# interrupting where the reference warns.
+#
+# python/.github/workflows/ is inert — GitHub only reads workflows at the repository root.
+
+name: parity
+
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python:
+    name: python — the reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install ./python
+      - name: the harness behaves
+        run: |
+          python -c "
+          from laserbrain import Harness
+          G='add a CSV importer to the admin panel'
+          h=Harness()
+          assert h.check(G,'advancing',8).reason=='grounded'
+          assert h.check('validate CSV columns','advancing',6,parent_goal=G).reason=='excursion'
+          assert h.check('refactor the ORM','advancing',5).reason=='goal-drift'
+          print('verdicts ok')"
+      - name: the audit chain verifies, and breaks when tampered
+        run: |
+          python -c "
+          import json
+          from laserbrain import Harness, verify_audit
+          h=Harness(); h.check('x y z','advancing',5); h.check('a b c','advancing',4)
+          h.export_audit('/tmp/a.json')
+          chain=json.load(open('/tmp/a.json'))
+          ok,_=verify_audit(chain); assert ok, 'clean chain did not verify'
+          chain[-1]['reason']='advancing'
+          bad,i=verify_audit(chain); assert not bad, 'tampering was not detected'
+          print('audit chain ok — verifies clean, fails tampered')"
+
+  typescript:
+    name: typescript — vs the Python vectors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install
+        working-directory: typescript
+      - run: npx tsc -p tsconfig.json
+        working-directory: typescript
+      - run: node test/parity.ts
+        working-directory: typescript
+
+  javascript:
+    name: javascript — the stdio server, vs the same vectors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      # The suite redirects HOME itself: the server inherits the blind-probe arm from
+      # ~/.claude/laserbrain/current-arm.json, and under a blind arm it withholds every
+      # verdict — a suite comparing nothing would pass.
+      - run: node test/parity.mjs
+        working-directory: javascript
