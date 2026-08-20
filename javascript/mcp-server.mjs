@@ -2231,7 +2231,19 @@ async function _call(name, args) {
     }
     const phi = displacement({ goal, progress, distance }, drift.ground)
     if ((progress === 'stuck' || progress === 'circling') && phi > SELF_REPORT_MIN)
-      return record(true, `self-report:${progress}`, `You reported ${progress} and have moved from ground. Return to your goal.`, phi)
+      // TWO-STRIKE, matching Python and drift.ts. This returned `true` on the FIRST
+      // occurrence, so this server interrupted where the reference merely warns. Found
+      // 2026-08-20 by giving it the parity suite it had never had: it is the server its
+      // own authors ran daily, and it was stricter than the implementation it mirrors.
+      {
+        const _t = drift.trace ?? []
+        const _last = _t[_t.length - 1]
+        const _prev = _last ? (['ungrammatical', 'goal-drift', 'stalled'].includes(_last.reason)
+                              || String(_last.reason).startsWith('self-report')) : false
+        return record(_prev, `self-report:${progress}`, _prev
+          ? `You reported ${progress} and have stayed off ground. Return to your goal.`
+          : `You reported ${progress}. If it holds next step, return to ground.`, phi)
+      }
     const g = toWords(goal), first = new Set(drift.firstGoal)
     let inter = 0; for (const x of g) if (first.has(x)) inter++
     const anchor = inter / (new Set([...g, ...first]).size || 1)
@@ -2351,7 +2363,15 @@ async function _call(name, args) {
         return record(false, 'advancing',
           `Distance is flat, but every check in the window is backed by observed work — `
           + `this reads as execution, not a stall. (Φ=${phi.toFixed(2)})`, phi)
-      return record(true, 'stalled', `Distance stopped falling (${dh.slice(-4).join(', ')}). Motion without progress is a loop — return.`, phi)
+      {
+        const _t = drift.trace ?? []
+        const _last = _t[_t.length - 1]
+        const _prev = _last ? (['ungrammatical', 'goal-drift', 'stalled'].includes(_last.reason)
+                              || String(_last.reason).startsWith('self-report')) : false
+        return record(_prev, 'stalled', _prev
+          ? `Distance has stopped falling (${dh.slice(-4).join(', ')}) and you were already off ground — return.`
+          : `Distance isn't falling (${dh.slice(-4).join(', ')}). If it holds, return.`, phi)
+      }
     }
     return record(false, 'advancing', `On track (Φ=${phi.toFixed(2)}). Continue.`, phi)
   }
