@@ -1,0 +1,11 @@
+{
+  "what": "Per-host facts the instruction layer needs and the instrument must not contain. laserbrain measures the same way for every agent; how a given host INVOKES a tool is a property of that host, not of the measurement. Keeping it here means adding a host is a config edit, and lb_gate.py names no vendor.",
+  "check_howto": {
+    "what": "The escape-hatch text in a coverage deny: how THIS host calls check_state. Keyed by the value of LASERBRAIN_AGENT. An unlisted host gets `default`, which is correct rather than another host's syntax.",
+    "default": "Call mcp__laserbrain__check_state now with your CURRENT goal, progress (advancing|stuck|circling) and distance 0-10, then reissue the blocked call. Do not batch check_state with other tools (gate race).",
+    "by_agent": {
+      "grok": "Call laserbrain__check_state via use_tool (tool_name=\"laserbrain__check_state\") ALONE — do not batch with other tools — with your CURRENT goal, progress (advancing|stuck|circling) and distance 0-10, then reissue the blocked call. If you need the schema first, search_tool is always allowed."
+    }
+  },
+  "added": "2026-08-01"
+}
