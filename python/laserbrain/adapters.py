@@ -33,10 +33,28 @@ def _harness(harness, key, run_id):
 
 
 def dict_extract(x):
-    """Default extractor: read (goal, progress, distance) from a dict or an object
-       carrying those keys/attributes."""
+    """Default extractor: read (goal, progress, distance, parent_goal) from a dict or an
+       object carrying those keys/attributes. parent_goal is optional, default None."""
     get = x.get if isinstance(x, dict) else (lambda k, d=None: getattr(x, k, d))
-    return get('goal', ''), get('progress', 'advancing'), get('distance', 5)
+    return (get('goal', ''), get('progress', 'advancing'), get('distance', 5),
+            get('parent_goal', None))
+
+
+def _unpack(ex, x):
+    """Normalise an extractor's return to four values.
+
+    Added 2026-08-21. Every adapter here called check(g, p, d) and nothing else, so
+    parent_goal could not be reached from ANY framework integration — and `excursion` with
+    it, so a legitimate sub-task read as drift from LangGraph, CrewAI, the middleware and
+    the decorator alike. Fixing the engine does nothing if no adapter carries the field.
+
+    Three-value extractors — every one written before today, including every one a user has
+    already passed in — keep working unchanged.""" 
+    r = tuple(ex(x))
+    if len(r) >= 4:
+        return r[0], r[1], r[2], r[3]
+    g, p, d = r
+    return g, p, d, None
 
 
 # ── 1. generic decorator — the framework-agnostic core ─────────────────────────
@@ -58,8 +76,8 @@ def guard(fn=None, *, extract=None, harness=None, key=None, run_id=None, on_retu
     def wrap(f):
         def wrapped(*a, **k):
             out = f(*a, **k)
-            g, p, d = ex(out)
-            v = hz.check(g, p, d)
+            g, p, d, pg = _unpack(ex, out)
+            v = hz.check(g, p, d, parent_goal=pg)
             if isinstance(out, dict):
                 out[STATE_KEY] = v
             if v.drifting and on_return:
@@ -87,8 +105,8 @@ def langgraph_node(extract=None, harness=None, key=None, run_id=None, state_key=
     ex = extract or dict_extract
 
     def node(state):
-        g, p, d = ex(state)
-        return {state_key: hz.check(g, p, d)}
+        g, p, d, pg = _unpack(ex, state)
+        return {state_key: hz.check(g, p, d, parent_goal=pg)}
 
     node.harness = hz
     return node
@@ -107,10 +125,10 @@ def crewai_step_callback(extract, harness=None, key=None, run_id=None, on_return
 
     def cb(step_output):
         try:
-            g, p, d = extract(step_output)
+            g, p, d, pg = _unpack(extract, step_output)
         except Exception:
             return None
-        v = hz.check(g, p, d)
+        v = hz.check(g, p, d, parent_goal=pg)
         if v.drifting:
             on_return(v, step_output)
         return v
@@ -133,8 +151,8 @@ def middleware(extract=None, harness=None, key=None, run_id=None):
     ex = extract or dict_extract
 
     def check(x):
-        g, p, d = ex(x)
-        return hz.check(g, p, d)
+        g, p, d, pg = _unpack(ex, x)
+        return hz.check(g, p, d, parent_goal=pg)
 
     check.harness = hz
     return check

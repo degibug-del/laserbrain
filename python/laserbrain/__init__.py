@@ -29,7 +29,7 @@ The single-agent detector mirrors the frozen drift.ts @ 6b483de7 (the published
 instrument); the multi-agent dialogue + recursion teams are the prototype extension.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 import datetime as _dt, hashlib, json, os, re, time as _time, uuid as _uuid
 from pathlib import Path as _Path
 
@@ -693,6 +693,14 @@ class _Run:
         # reference while measuring against it, which is the one thing PROOF forbids.
         self.cal = cal or PUBLISHED
         self.dist_hist = []
+        # THE SAME SPLIT AS `trace`, ONE FIELD DOWN. dist_hist is re-zeroed by a reground
+        # so the PROGRESS rules are not polluted by the previous goal's history. But the
+        # rules whose subject is the whole run — a cycle in the ground — then had no
+        # distance to read, and reached for the re-zeroed one anyway. On a regrounding
+        # cycle every ground is one or two checks old, so `pace` is ~0 by construction and
+        # the oscillation judgment told a run that had gone 9→1 that its "distance is not
+        # falling". Never reset, for the same reason `trace` is not.
+        self.dist_all = []
         self.trace = []          # (reason, drifting)
         # The canonical spelling of the GROUND at each step. Separate from `trace` because
         # trace is unpacked as (reason, drifting) in several places and widening the tuple
@@ -734,6 +742,15 @@ class _Run:
             self._ev_mark = self._ev_ok = self._ev_seen = 0
         self.checks = 0
         self._osc = False        # already reported an oscillation for the current cycle
+        # HOW MANY TIMES THIS RUN ACTUALLY OSCILLATED. Counted here because it cannot be
+        # counted from `trace`: emit() stores the READING, deliberately, so that the cycle
+        # that produced the meta-verdict is not erased by it. Correct — and it left
+        # phronesis() computing `reasons.count('oscillating')` against a list that can never
+        # contain the word, so the `wrong-problem` judgment below it had been unreachable
+        # for the life of the package. Two sound decisions that were never read together.
+        # Not reset on reground, matching `trace`: oscillation is a rule about the sequence
+        # of grounds, and a counter that forgets at each reground has no subject.
+        self._osc_fires = 0
         # Identity of this run, so a context can count the SESSIONS it has been opened in
         # and not merely the checks. Three attempts across three sessions is a different
         # fact from thirty checks in one, and only the first justifies 'abandon'.
@@ -804,6 +821,11 @@ class _Run:
         started, now = (dh[0] if dh else None), (dh[-1] if dh else None)
         closed = (started - now) if (started is not None and now is not None) else 0
         pace = closed / here
+        # Whole-run progress, for the whole-run rules. `pace` is measured from the last
+        # reground and is the right reading for "is this work going anywhere"; it is the
+        # wrong one for "has this run come back to where it started".
+        da = self.dist_all
+        run_pace = ((da[0] - da[-1]) / max(1, steps)) if len(da) >= 2 else 0
         reasons = [r for r, _ in trace]
         # Stalls belong to the work in front of you; a stall on a goal the user replaced is
         # not evidence about the goal they replaced it with.
@@ -814,7 +836,9 @@ class _Run:
         # would delete its subject.
         goal_drifts = reasons.count('goal-drift')
         regrounds = reasons.count('reground')
-        oscillations = reasons.count('oscillating')
+        # NOT reasons.count(...) — see _osc_fires. The trace holds the reading that the
+        # cycle was found in, never the word 'oscillating'.
+        oscillations = self._osc_fires
 
         flat = 0
         for i in range(len(dh) - 1, 0, -1):
@@ -947,8 +971,15 @@ class _Run:
                  'against the one this run started with — if they are the same, this reading '
                  'is the thing that is wrong, not your work. If they differ, re-ground to the '
                  'goal you actually have.'))
-        elif oscillations and pace <= 0:
-            # `pace <= 0` is load-bearing, and it was found by dogfooding rather than
+        elif oscillations and run_pace <= 0:
+            # `run_pace <= 0`, not `pace <= 0`. The guard is load-bearing and was found by
+            # dogfooding rather than reasoning: this judgment fired on a run whose distance
+            # had gone 6→4→3→2 monotonically. But it was written against the setpoint-scoped
+            # pace, and this branch only fires on cycles between grounds the agent was
+            # RE-GROUNDED to — where that pace is ~0 by construction, one or two checks per
+            # ground. So the guard read zero on a run that had closed 9→1 and the counsel
+            # said "the distance is not falling" to an agent that was nearly done. A whole-
+            # run rule needs the whole-run measure; see dist_all.
             # reasoning: this judgment fired on a run whose distance had gone 6→4→3→2
             # monotonically. The cycle detector was reading the VERDICT sequence, which
             # repeats naturally when a healthy run is re-grounded a few times, and a
@@ -1280,6 +1311,13 @@ class _Run:
             # original goes in and `oscillating` is what comes out. Storing the meta-verdict
             # instead would erase the pattern that produced it.
             self.trace.append((reason, drifting))
+            # Beside `trace`, because it is the distance twin of `trace` and must be
+            # recorded on the same single exit. Recording it at the dist_hist append
+            # instead filled the list on ordinary steps and never on a reground, which
+            # returns before that line — so the regrounding cycles this measure exists to
+            # judge were the exact ones it had no distances for.
+            if isinstance(distance, (int, float)) and not isinstance(distance, bool):
+                self.dist_all.append(distance)
             self.trail.append('|'.join(sorted(norm(goal))) if goal else '')
 
             # Recorded here because emit is the single exit every verdict passes through —
@@ -1320,6 +1358,7 @@ class _Run:
             of = 'ground'
             if p and not self._osc:
                 self._osc = True
+                self._osc_fires += 1
                 what = ('You have returned to the same goals in a repeating order'
                         if of == 'ground' else 'Your reading has cycled')
                 osc = Verdict(True, 'oscillating', round(phi, 2),
@@ -1762,7 +1801,12 @@ class Harness:
         if inferred:
             # Marked so a spelled check and an inferred one are never averaged into one
             # number and reported as the same measurement.
-            v = Verdict(v.drifting, v.reason, v.phi, v.advice + ' [inferred: Φ is a lower bound]')
+            # REPLACE, DO NOT REBUILD. Constructing a fresh Verdict from four positional
+            # fields let every other field fall back to its default — so `anchored` came
+            # back 1.0, the most confident value available, on the reading explicitly
+            # marked as the least trustworthy. laserscore, goal_score, why, context and
+            # parent_overlap were dropped outright.
+            v = _dc_replace(v, advice=v.advice + ' [inferred: Φ is a lower bound]')
         if doing or next or blocked:
             from .ceiling import mark as _mark
             v.claims = _mark(doing, next, blocked)
@@ -1961,11 +2005,19 @@ class Harness:
         """Async check for asyncio agent loops. The local check is instant; the
            optional API mirror is dispatched off the event loop, so it never blocks."""
         import asyncio
-        v = self._run.step(goal, progress, distance, parent_goal)
+        # user_turn was accepted here and dropped: acheck(user_turn=True) returned
+        # goal-drift where check(user_turn=True) returned reground, so the async path
+        # could not reground at all.
+        v = self._run.step(goal, progress, distance, parent_goal, user_turn)
         if inferred:
             # Marked so a spelled check and an inferred one are never averaged into one
             # number and reported as the same measurement.
-            v = Verdict(v.drifting, v.reason, v.phi, v.advice + ' [inferred: Φ is a lower bound]')
+            # REPLACE, DO NOT REBUILD. Constructing a fresh Verdict from four positional
+            # fields let every other field fall back to its default — so `anchored` came
+            # back 1.0, the most confident value available, on the reading explicitly
+            # marked as the least trustworthy. laserscore, goal_score, why, context and
+            # parent_overlap were dropped outright.
+            v = _dc_replace(v, advice=v.advice + ' [inferred: Φ is a lower bound]')
         self._record(goal, progress, distance, v)
         if self.key:
             body = {'run_id': self.run_id, 'goal': goal, 'progress': progress, 'distance': distance}
@@ -1973,6 +2025,9 @@ class Harness:
                 body['tokens'] = tokens
                 body['overhead'] = overhead
             asyncio.get_event_loop().run_in_executor(None, _post, self.api, self.key, '/v1/drift', body)
+        # `last` exists so Operator(harness=...) can read whether the agent is on its
+        # ground. acheck never set it, so an async loop handed the operator None forever.
+        self.last = v
         return v
 
     async def arun(self, step, max_steps: int = 30, on_return=None, escalate_after: int = None, on_escalate=None) -> dict:
