@@ -73,8 +73,10 @@ class GrimdallPEP:
         if self.tier == "strict":
             # Deny all writes — the most restrictive mode.
             return Policy(deny=["*"])
-        # review, normal, and warn all use the default policy;
-        # the tier distinction is honoured by the caller (Operator).
+        if self.tier == "review":
+            # Human review required for all tool calls.
+            return Policy(require_approval=["*"])
+        # normal and warn: default permissive policy.
         return Policy()
 
     # ── wrap ───────────────────────────────────────────────────────────────
