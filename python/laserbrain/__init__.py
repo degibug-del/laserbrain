@@ -49,16 +49,41 @@ def _link(prev, body):
     return hashlib.sha256((prev + _canon(body)).encode()).hexdigest()
 
 
-def verify_audit(chain: list) -> tuple:
+def verify_audit(chain: list, expect_head: str = None, expect_len: int = None) -> tuple:
     """Independently verify an exported audit chain. Returns (ok, first_bad_index):
-       (True, -1) if intact, else (False, i) at the first tampered/broken link.
-       Free and offline — anyone can audit an agent's run without a key."""
+       (True, -1) if intact, else (False, i) at the first broken link.
+       Free and offline — anyone can audit an agent's run without a key.
+
+       WHAT A HASH CHAIN PROVES, AND WHAT IT DOES NOT. Every record present is unmodified
+       and in its original order: edit a past verdict, reorder two records or drop the
+       first one and this returns the index where it breaks. It CANNOT, on its own, prove
+       that no records were removed from the END. Dropping the last three checks leaves a
+       shorter chain that is still perfectly self-consistent, and before 2026-08-21 this
+       returned (True, -1) for it — so an agent could hide a drift by deleting it rather
+       than editing it, which is both easier and what someone would actually do. An empty
+       chain verified as intact for the same reason.
+
+       That gap cannot be closed from inside the chain; it needs something recorded
+       outside it. So pass what you pinned when the run ended:
+
+           head = chain[-1]['hash']                 # keep this somewhere the agent cannot edit
+           verify_audit(chain, expect_head=head)    # now truncation is (False, len(chain))
+
+       Both are optional and default to the old behaviour, which is why the limitation is
+       spelled out above rather than left to the caller to discover. If you pin neither,
+       you are trusting that the chain you were handed is the whole chain."""
     prev = ''
     for i, rec in enumerate(chain):
         body = {k: rec[k] for k in rec if k != 'hash'}
         if rec.get('prev') != prev or _link(prev, body) != rec.get('hash'):
             return (False, i)
         prev = rec['hash']
+    # Truncation reports the index one past the last surviving link — the position where
+    # the chain stops and should not have.
+    if expect_len is not None and len(chain) != expect_len:
+        return (False, len(chain))
+    if expect_head is not None and prev != expect_head:
+        return (False, len(chain))
     return (True, -1)
 
 

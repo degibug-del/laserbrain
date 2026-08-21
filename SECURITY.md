@@ -19,8 +19,16 @@ To reverse it completely: restore that backup and `pip uninstall laserbrain`.
 ## What it sends
 
 Nothing. The Python package, its hooks and the stdio MCP server make **no network calls**
-— verified by scanning every shipped file for URLs. State is written under your own home
-directory (`~/.claude/laserbrain`, `~/.config/laserbrain`).
+— verified by blocking `socket.connect` and `socket.create_connection`, then importing all
+25 shipped modules and exercising the full path: check, reground, async check, judgment,
+report, ledger and export. Zero connection attempts, and importing the package pulls in no
+TLS or HTTP client at all. Re-run it yourself with `python3 test_no_network.py`.
+
+That replaces the method this file used to cite — scanning every shipped file for URLs —
+which would not have caught a host assembled at runtime, read from the environment, or
+reached through a dependency. The claim was true; the way it was checked could not
+establish it. State is written under your own home directory
+(`~/.claude/laserbrain`, `~/.config/laserbrain`).
 
 The hosted MCP endpoint and the `/v1` REST API are opt-in and separate. If you use those,
 your spelled goals and verdicts reach that server; if you use the package, they do not

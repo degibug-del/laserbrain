@@ -29,6 +29,21 @@ tampered[2]["reason"] = "advancing"
 bad_ok, bad_i = verify_audit(tampered)
 show("tampering is caught", (not bad_ok) and bad_i == 2, f"first bad link @ {bad_i}")
 show("survives JSON export round-trip", verify_audit(json.loads(json.dumps(chain))) == (True, -1))
+# TRUNCATION — the easier way to hide a drift, and the one the chain cannot catch alone.
+# Deleting the last records leaves something still perfectly self-consistent, so this
+# verified as intact until 2026-08-21. It is closed only by pinning the head outside the
+# chain; with nothing pinned the old answer is still the honest one, and stays the default.
+short = json.loads(json.dumps(chain))[:1]
+show("truncation passes when nothing is pinned", verify_audit(short) == (True, -1),
+     "documented limit, not a regression")
+head = chain[-1]["hash"]
+t_ok, t_i = verify_audit(short, expect_head=head)
+show("truncation is caught when the head is pinned", (not t_ok) and t_i == 1, f"breaks @ {t_i}")
+show("truncation is caught when the length is pinned",
+     verify_audit(short, expect_len=len(chain)) == (False, 1))
+show("an empty chain no longer verifies as intact", verify_audit([], expect_head=head) == (False, 0))
+show("pinning the right head still passes an intact chain",
+     verify_audit(chain, expect_head=head, expect_len=len(chain)) == (True, -1))
 
 # 2) ESCALATION — drift that a return can't fix escalates to a human, whose call is injected.
 print("\n== 2) human-in-the-loop escalation ==")

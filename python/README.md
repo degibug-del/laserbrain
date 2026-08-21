@@ -554,12 +554,19 @@ Harness().run(step, escalate_after=3, on_escalate=on_escalate)
 
 **Provenance.** Every check is written to a hash-chained ledger — tamper-evident and
 verifiable offline, by anyone, no key. Editing a past verdict to hide a drift breaks
-the chain at that link.
+the chain at that link, as does reordering two records or dropping the first.
+
+What a chain cannot prove by itself is that nothing was removed from the **end** —
+delete the last three checks and what remains is still perfectly self-consistent. That
+is the easier way to hide a drift, so close it by pinning the head somewhere the agent
+cannot reach:
 
 ```python
 hz.export_audit("run.json")
 from laserbrain import verify_audit
-verify_audit(json.load(open("run.json")))      # (True, -1) intact · (False, i) broken at link i
+chain = json.load(open("run.json"))
+verify_audit(chain)                            # (True, -1) intact · (False, i) broken at link i
+verify_audit(chain, expect_head=known_head)    # also catches truncation, and an empty chain
 ```
 
 **Team continuity.** Snapshot a running team and resume it in a later session — the
