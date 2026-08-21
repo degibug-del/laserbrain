@@ -46,3 +46,4 @@ laserbrain = ["py.typed", "grammar.json", "attention.json", "workflows/*.json",
 # The default grammar has no dependencies and never will. This is opt-in, for agents
 # that restate goals in different words — see laserbrain/vocab.py.
 semantic = ["sentence-transformers>=3.0"]
+grimdall = ["grimdall>=0.1"]
