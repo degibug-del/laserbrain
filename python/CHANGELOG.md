@@ -42,11 +42,30 @@ detector are not swept up.
 
 ### known and not fixed
 
-`excursion` is granted on the declared parent's overlap with the GROUND alone — the child
-goal is never tested for containment in the parent. An agent that echoes its own ground back
-as `parent_goal` therefore converts any departure into a non-drifting excursion. That is a
-question about what the verdict should mean rather than a defect in this release, and it
-predates it.
+`excursion` is granted on the declared parent's overlap with the GROUND alone — nothing asks
+whether the current step serves that parent. So naming your own ground as `parent_goal`
+scores 1.00 by construction and any departure becomes a non-drifting excursion:
+`buy groceries` under a parent equal to the ground returns `excursion`, where the same goal
+with no parent returns `goal-drift`.
+
+Two fixes were attempted for this release and both were refuted by suites that predate them.
+Requiring the child to share a token with the parent fails on `"escaped-quote handling"`
+under `"benchmark the parser build"` — a real sub-task with no lexical overlap, already
+written down in `test_parent_rejection.py`. Rejecting a parent identical to the ground fails
+because naming the ground as the parent is the primary documented usage.
+
+Measured, the legitimate and exploitable shapes are lexically identical except on one axis,
+where the exploit scores higher:
+
+| | parent~ground | child~parent | child~ground |
+|---|---|---|---|
+| legitimate | 0.60 | 0.00 | 0.00 |
+| exploitable | 1.00 | 0.00 | 0.00 |
+
+So closing it lexically means a threshold asserting that closeness to the ground is
+suspicious — inverting what the instrument rewards, on the three parent declarations the
+corpus contains. It needs a semantic similarity (`sim=`) or more declarations, not a
+cleverer token rule. The reasoning is recorded beside the code in `__init__.py`.
 
 ## 0.54.1 - 2026-08-21
 
