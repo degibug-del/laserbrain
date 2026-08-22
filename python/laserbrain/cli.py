@@ -295,7 +295,14 @@ def _coverage(args: argparse.Namespace) -> int:
     "204 checks across 10 sessions recorded zero fires".
     """
     import glob, os
-    paths = sorted(glob.glob(os.path.expanduser(args.dir + '/*.json')))
+    # Resolve here, not at parse time: _paths reads the environment, and the environment is
+    # what a caller sets to point the harness somewhere else.
+    _dir = args.dir
+    if not _dir:
+        from ._paths import sessions_dir
+        _dir = str(sessions_dir())
+    args.dir = _dir
+    paths = sorted(glob.glob(os.path.expanduser(_dir + '/*.json')))
     if not paths:
         print(f"  no sessions in {args.dir} — is the hook installed?")
         return 2
@@ -431,8 +438,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     v = sub.add_parser("verify", help="verify an exported audit chain")
     v.add_argument("file", help="a JSON file written by Harness.export_audit()")
     cv = sub.add_parser("coverage", help="how much of your work the harness actually watched")
-    cv.add_argument("--dir", default="~/.claude/laserbrain",
-                    help="where the hook writes sessions (default: ~/.claude/laserbrain)")
+    # DEFAULT None, RESOLVED AT USE, so LASERBRAIN_HOME and LASERBRAIN_STATE_DIR are
+    # honoured. This hardcoded ~/.claude/laserbrain, which is only where the hook writes
+    # when neither variable is set — so anyone who had pointed the harness elsewhere got a
+    # coverage number computed over somebody else's sessions, or over none. _paths owns that
+    # resolution for every other reader in the package; this was the one that guessed.
+    cv.add_argument("--dir", default=None,
+                    help="where the hook writes sessions (default: the resolved state dir, "
+                         "honouring LASERBRAIN_HOME / LASERBRAIN_STATE_DIR)")
     st = sub.add_parser("store", help="prefabricated workflows and team presets — list, find, or vend")
     st.add_argument("action", nargs="?", default="list", choices=["list", "find", "vend"])
     st.add_argument("query", nargs="?", default=None,
@@ -489,7 +502,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.cmd == "check":
         return _check(args)
     if args.cmd == "coverage":
-        args.dir = args.dir.replace("~", __import__("os").path.expanduser("~"))
+        if args.dir:
+            args.dir = args.dir.replace("~", __import__("os").path.expanduser("~"))
         return _coverage(args)
     if args.cmd == "attention":
         return _attention(args)
