@@ -490,6 +490,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     ins.add_argument("--dry-run", action="store_true")
     ins.add_argument("--no-hooks", action="store_true",
                      help="MCP server only — the detector without the enforcement")
+    # Mirrors install.py's own flag. The two parsers are separate — this one is what
+    # `laserbrain install` actually reaches — so a flag added there and not here is
+    # rejected before install.py ever sees it, which is exactly what happened first.
+    ins.add_argument("--server", choices=["python", "node"], default="python",
+                     help="which stdio server to wire. 'python' (default) is offline. "
+                          "'node' serves 7 more tools, six of which reach a hosted service.")
     sub.add_parser("version", help="print the version")
 
     args = p.parse_args(argv)
@@ -522,6 +528,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         argv = ["--host", args.host]
         if args.dry_run: argv.append("--dry-run")
         if args.no_hooks: argv.append("--no-hooks")
+        argv += ["--server", args.server]
         return _install(argv)
     if args.cmd == "version":
         print(f"laserbrain {__version__}")

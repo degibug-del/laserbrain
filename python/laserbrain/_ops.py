@@ -199,6 +199,36 @@ def op_similarity(a):
     return {'similarity': round(float(sim(a.get('a', ''), a.get('b', ''))), 4)}
 
 
+# ── the four the JS server lacked ────────────────────────────────────────────
+#
+# laserscore and the store trio were served by `laserbrain mcp` and not by mcp-server.mjs,
+# the mirror of the gap the rest of this file closes. Written as ops rather than ported into
+# JS for the same reason as everything above: a second implementation is a second thing to
+# keep in step, and nothing would have kept it.
+#
+# They delegate to mcp.py's handlers, which are the definitions. This module is the registry
+# both doors read, not a third copy.
+
+def op_laserscore(a):
+    from .mcp import _laserscore
+    return _laserscore(a or {})
+
+
+def op_store_list(a):
+    from .mcp import _store_list
+    return _store_list(a or {})
+
+
+def op_store_find(a):
+    from .mcp import _store_find
+    return _store_find(a or {})
+
+
+def op_store_vend(a):
+    from .mcp import _store_vend
+    return _store_vend(a or {})
+
+
 # THE REGISTRY LIVES WITH THE OPS, because op_capabilities reports it — it was reading an
 # OPS defined below it in sdk_bridge.py, so the move left it naming something that was no
 # longer in scope. Both front doors import this rather than each keeping a list that has to
@@ -212,4 +242,8 @@ OPS = {
     'write_grounded': op_write_grounded,
     'read_text': op_read_text,
     'similarity': op_similarity,
+    'laserscore': op_laserscore,
+    'store_list': op_store_list,
+    'store_find': op_store_find,
+    'store_vend': op_store_vend,
 }

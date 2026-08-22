@@ -1002,6 +1002,44 @@ const TOOLS = [
     },
   },
   {
+    name: 'laserscore',
+    description:
+      'The compact one-line reading of a state, without setting or touching a ground. The ' +
+      'determinate half: identical states produce identical strings.',
+    inputSchema: {
+      type: 'object',
+      properties: { goal: { type: 'string' }, progress: { type: 'string' },
+                    distance: { type: 'number' } },
+      required: ['goal'],
+    },
+  },
+  {
+    name: 'store_list',
+    description: 'Every prefabricated method on the shelf — task workflows and team presets.',
+    inputSchema: { type: 'object', properties: { kind: { type: 'string' } } },
+  },
+  {
+    name: 'store_find',
+    description:
+      'Which stored method is FOR a task, in your own words — ranked by what it does, not ' +
+      'by its name.',
+    inputSchema: {
+      type: 'object',
+      properties: { task: { type: 'string' }, kind: { type: 'string' },
+                    top: { type: 'number' } },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'store_vend',
+    description: 'The raw spec for one stored method — its goal or task, and its steps or roles.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string' }, kind: { type: 'string' } },
+      required: ['name'],
+    },
+  },
+  {
     name: 'write_grounded',
     description:
       'laserbrain as a decoder. Learns from the text you pass and generates new text steered toward ' +
@@ -1676,8 +1714,12 @@ async function _call(name, args) {
   // rather than reimplemented — a second copy of the reading rule in JS is exactly what
   // check-reading-parity.mjs exists to prevent, and creating one here while adding that
   // gate would be perverse.
+  // laserscore and the store trio were served by `laserbrain mcp` and not here — the mirror
+  // of the gap this bridge closes in the other direction. Bridged rather than ported, so
+  // there is one definition and not a second that has to be kept in step.
   const BRIDGED = new Set(['find_bugs', 'supercode', 'explore', 'trailscore',
-    'write_grounded', 'read_text', 'similarity', 'capabilities'])
+    'write_grounded', 'read_text', 'similarity', 'capabilities',
+    'laserscore', 'store_list', 'store_find', 'store_vend'])
   if (BRIDGED.has(name)) return await viaBridge(name, args)
   if (name === 'attention') {
     // Reads attention.json and a clock. No verdict is consulted, which is the whole

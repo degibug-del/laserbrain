@@ -56,6 +56,10 @@ def main(argv=None) -> int:
     ap.add_argument('--host', default='claude', choices=['claude'],
                     help='agent host to wire (only Claude Code today)')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--server', choices=['python', 'node'], default='python',
+                    help="which stdio server to wire. 'python' (default) is offline — no "
+                         "network, no key. 'node' serves 7 more tools, six of which reach a "
+                         "hosted service; it needs node on PATH.")
     ap.add_argument('--no-hooks', action='store_true',
                     help='MCP server only — the detector without the enforcement')
     a = ap.parse_args(argv)
@@ -72,9 +76,32 @@ def main(argv=None) -> int:
     changed = []
     mcp = cfg.setdefault('mcpServers', {})
     if 'laserbrain' not in mcp:
-        # The package's OWN stdio server: offline, no key, no network call per step.
-        mcp['laserbrain'] = {'type': 'stdio', 'command': 'laserbrain', 'args': ['mcp']}
-        changed.append('mcpServers.laserbrain')
+        # THE OFFLINE SERVER IS THE DEFAULT, AND STAYS THE DEFAULT.
+        #
+        # The wheel also ships mcp-server.mjs, which serves 28 tools against this one's 21.
+        # It is not wired here unless asked, because six of that difference — ask_alice,
+        # analyze_language, compare_phrasings, remember_self, resume_self, forget_self —
+        # reach a hosted service. SECURITY.md says the hosted endpoint is "opt-in and
+        # separate", and an installer that silently turned it on would make that false for
+        # everyone who ran it without reading this.
+        #
+        # So: --server node opts in, and the line printed afterwards says the option exists.
+        # A default that quietly widens what leaves the machine is not a default anyone
+        # chose.
+        if a.server == 'node':
+            mjs = Path(__file__).with_name('mcp-server.mjs')
+            if not shutil.which('node'):
+                print('  --server node needs node on PATH; not wiring a server')
+                mjs = None
+            elif not mjs.exists():
+                print(f'  --server node: {mjs.name} is not in this install; not wiring')
+                mjs = None
+            if mjs:
+                mcp['laserbrain'] = {'type': 'stdio', 'command': 'node', 'args': [str(mjs)]}
+                changed.append('mcpServers.laserbrain (node, 28 tools)')
+        else:
+            mcp['laserbrain'] = {'type': 'stdio', 'command': 'laserbrain', 'args': ['mcp']}
+            changed.append('mcpServers.laserbrain')
 
     if not a.no_hooks:
         hooks = cfg.setdefault('hooks', {})
@@ -114,6 +141,14 @@ def main(argv=None) -> int:
             print('  Tell us rather than working around it.')
             return 1
         print('  hooks verified: lb_safety, lb_gate, lb_coverage all execute')
+
+    # Say the richer server exists, rather than leaving it to be found. Not wiring it by
+    # default is a decision about what leaves the machine; hiding it would be a different
+    # decision, about what the user gets to know.
+    if a.server != 'node' and shutil.which('node') and Path(__file__).with_name('mcp-server.mjs').exists():
+        print('\n  node is available: `laserbrain install --server node` wires a server with '
+              '7 more tools.')
+        print('  Six of them reach the hosted endpoint, which is why it is not the default.')
 
     print('\n  restart your agent, then:  laserbrain coverage')
     print(f'  to undo: restore {path}.before-laserbrain')

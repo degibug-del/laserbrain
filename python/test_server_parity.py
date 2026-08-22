@@ -16,6 +16,7 @@ against 28, so a future attempt to "close the gap" by serving them fails here fi
 """
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -82,7 +83,18 @@ show('and it names them, rather than staying silent', HOSTED <= _not_here,
 
 # ONE IMPLEMENTATION. Both doors must import the ops, not hold copies.
 from laserbrain import _ops                                        # noqa: E402
-show('the shared ops live in the package', len(_ops.OPS) == 8, f'{len(_ops.OPS)} ops')
+# NOT A COUNT. The first version asserted len(OPS) == 8 and broke the moment four more were
+# added — a test that fails on correct work teaches people to edit the test. The invariant
+# is that the two servers agree on WHICH ops are bridged, which is what actually goes wrong.
+_mjs_src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             'javascript', 'mcp-server.mjs')).read()
+_b = _mjs_src[_mjs_src.index('BRIDGED = new Set('):]
+_b = _b[:_b.index(')')]
+_bridged = set(re.findall(r"'([a-z_]+)'", _b))
+show('the shared ops live in the package', bool(_ops.OPS), f'{len(_ops.OPS)} ops')
+show('  and the JS server bridges exactly them', _bridged == set(_ops.OPS),
+     f'only in .mjs: {sorted(_bridged - set(_ops.OPS))}; '
+     f'only in registry: {sorted(set(_ops.OPS) - _bridged)}')
 _bridge = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             'javascript', 'sdk_bridge.py')).read()
 show('  and the bridge imports them rather than redefining them',
