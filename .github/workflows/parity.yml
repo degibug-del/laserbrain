@@ -47,6 +47,27 @@ jobs:
           bad,i=verify_audit(chain); assert not bad, 'tampering was not detected'
           print('audit chain ok — verifies clean, fails tampered')"
 
+  suites:
+    name: python — the 46 suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install ./python pytest
+      # THE SUITES RAN NOWHERE. This workflow was added on 2026-08-20 because "nothing ran
+      # these suites automatically" — and then ran two inline smoke checks rather than the
+      # suites, so all 46 still executed only when someone remembered. Three of them had
+      # rotted apart unnoticed in the meantime, which is the same argument the header above
+      # makes, one level down.
+      #
+      # Suites needing the author's drift log skip themselves here (no corpus is a skip, a
+      # stale table is a failure), and the ones reading a personal deployment skip when it
+      # is absent — so a clean runner exercises everything a clean runner can.
+      - name: every suite
+        run: python -m pytest -q
+        working-directory: python
+
   typescript:
     name: typescript — vs the Python vectors
     runs-on: ubuntu-latest

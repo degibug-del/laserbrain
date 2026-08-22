@@ -215,15 +215,37 @@ cal = HERE / 'calibrate_attention.py'
 src_json = next((c for c in (HERE.parent / 'json' / 'attention.json',
                              HERE / 'attention.json') if c.exists()),
                 HERE.parent / 'json' / 'attention.json')
+class _SkipCorpus(Exception):
+    pass
+
+
+def _no_corpus(r):
+    """--check cannot judge staleness where no drift log exists.
+
+    Added 2026-08-21, when this suite was first collected by a runner. Without it every
+    corpus-dependent check below FAILS on any machine that has the repo and not the
+    author's drift log — CI most of all — which would have made a green build impossible
+    for a reason that says nothing about the code. A missing corpus is a skip; a stale
+    table is a failure. They are different facts and were being reported as one."""
+    return 'no corpus' in (r.stdout + r.stderr)
+
+
 if not (cal.exists() and src_json.exists()):
     check('calibrate_attention.py and attention.json present', False)
 else:
     p = subprocess.run([sys.executable, str(cal), '--check'], cwd=HERE,
                        env=_LIVE_ENV, capture_output=True, text=True, timeout=900)
-    check('--check passes against the live corpus', p.returncode == 0,
-          (p.stdout + p.stderr).strip()[:70])
+    if _no_corpus(p):
+        print('  skip  --check against the live corpus   no drift log on this machine')
+        _skip_corpus = True
+    else:
+        _skip_corpus = False
+        check('--check passes against the live corpus', p.returncode == 0,
+              (p.stdout + p.stderr).strip()[:70])
     saved = src_json.read_text()
     try:
+        if _skip_corpus:
+            raise _SkipCorpus
         doctored = json.loads(saved)
         # The rate, not the count: --check asks whether the table still DESCRIBES the
         # corpus, and 19% -> 90% is a table that does not.
@@ -234,19 +256,27 @@ else:
         check('  and fails on a doctored table', q.returncode == 1, f'rc={q.returncode}')
         check('  saying which command fixes it', 'calibrate_attention.py' in q.stdout,
               q.stdout.strip()[:60])
+    except _SkipCorpus:
+        pass
     finally:
+        # Restores unconditionally, skip or not: the doctored write may already have
+        # landed, and this is a real file in the repo.
         src_json.write_text(saved)
-    r = subprocess.run([sys.executable, str(cal), '--check'], cwd=HERE,
-                       env=_LIVE_ENV, capture_output=True, text=True, timeout=900)
-    check('  and the file is restored', r.returncode == 0, r.stdout.strip()[:50])
+    if not _skip_corpus:
+        r = subprocess.run([sys.executable, str(cal), '--check'], cwd=HERE,
+                           env=_LIVE_ENV, capture_output=True, text=True, timeout=900)
+        check('  and the file is restored', r.returncode == 0, r.stdout.strip()[:50])
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════
 # THE PACKAGED COPY MUST NOT DRIFT FROM THE CALIBRATED ONE
 #
-# attention.json exists twice: lasermind/ holds the calibrated table, and
-# laserbrain-sdk/laserbrain/ holds package data that ships inside the wheel — the table
-# every pip-installed agent actually schedules against.
+# attention.json exists twice: json/ holds the calibrated table, and
+# python/laserbrain/ holds package data that ships inside the wheel — the table every
+# pip-installed agent actually schedules against. (Those were lasermind/ and
+# laserbrain-sdk/ before the reorg; the constants below named the old ones until
+# 2026-08-21, so _SHIPPED.parent did not exist, this whole block printed "no SDK checkout
+# on this machine", and the drift it guards went unreported for five days.)
 #
 # calibrate_attention.py wrote only the first. On 2026-08-04 a recalibration moved the
 # rates, the two had been byte-identical minutes earlier, and the split was noticed by
@@ -289,6 +319,13 @@ else:
     try:
         check('the two copies are identical to begin with', _OUT.read_text() == _bak)
 
+        # Everything past this point drives the REAL calibrator, which needs the drift
+        # log. No corpus is a skip, not a failure — see _no_corpus above. The identity
+        # check before it is a plain file comparison and runs anywhere, which is the one
+        # that matters here: it is the drift guard itself.
+        if _skip_corpus:
+            raise _SkipCorpus
+
         # Doctor the SHIPPED copy only — the precise failure that occurred.
         _d = _json.loads(_bak)
         _d['bands'][1]['rate'] = 0.999
@@ -307,6 +344,8 @@ else:
         _rc2 = _sp.run([_sys.executable, str(_CAL), '--check'],
                        env=_LIVE_ENV, capture_output=True, text=True, cwd=_HERE)
         check('  and the check passes again', _rc2.returncode == 0, f'exit {_rc2.returncode}')
+    except _SkipCorpus:
+        print('  skip  the calibrator round-trip   no drift log on this machine')
     finally:
         _SHIPPED.write_text(_bak)
         _OUT.write_text(_bak_out)
