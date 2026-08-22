@@ -62,8 +62,12 @@ jobs:
       # makes, one level down.
       #
       # Suites needing the author's drift log skip themselves here (no corpus is a skip, a
-      # stale table is a failure), and the ones reading a personal deployment skip when it
-      # is absent — so a clean runner exercises everything a clean runner can.
+      # stale table is a failure). test_host_wiring.py checks a host client that is no
+      # longer in use and is opt-in behind LASERBRAIN_CHECK_GROK; it exits 77, so this
+      # reports a skip rather than a pass and nobody reads "green" as "checked".
+      #
+      # Every skip in this repo exits 77 for that reason. 0 is a pass, and a suite that
+      # cannot run must not claim one.
       - name: every suite
         run: python -m pytest -q
         working-directory: python
