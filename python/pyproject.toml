@@ -40,7 +40,18 @@ laserbrain = ["py.typed", "grammar.json", "attention.json", "workflows/*.json",
               # hosts.json is read by the hooks at runtime. Same reasoning as
               # grammar.json: without this line the wheel installs hooks that
               # cannot find it, and they degrade silently rather than failing.
-              "hooks/*.json"]
+              "hooks/*.json",
+              # THE RICHER SERVER, so a pip install can run it. mcp-server.mjs serves 28
+              # tools against `laserbrain mcp`'s 21 — the six hosted ones plus a wider
+              # surface — and needed only node builtins to do it, but it lived in
+              # javascript/ where no pip user could reach it. lb_paths.mjs and sdk_bridge.py
+              # are its two siblings; the JSON it reads is already above.
+              #
+              # javascript/ stays the source. These are copies, and copies of a thing that
+              # must agree are the bug this package keeps finding — so
+              # test_server_parity.py asserts they are byte-identical, the same guard
+              # attention.json gets.
+              "*.mjs", "sdk_bridge.py"]
 
 [project.optional-dependencies]
 # The default grammar has no dependencies and never will. This is opt-in, for agents

@@ -150,8 +150,15 @@ def _check_state(args: dict) -> dict:
     resumed = _maybe_resume(goal)
     if _state['harness'] is None:
         _state['harness'] = Harness()
+    # parent_goal AND user_turn CARRIED, 2026-08-22. This passed three arguments and
+    # dropped the rest, so `excursion` was unreachable from this server exactly as it was
+    # from every framework adapter until this morning: a legitimate sub-task declaring its
+    # parent came back `goal-drift`. Same defect, a different door — which is the argument
+    # for _ops existing at all.
     v = _state['harness'].check(goal, str(args.get('progress', 'advancing')),
-                                args.get('distance'))
+                                args.get('distance'),
+                                parent_goal=args.get('parent_goal'),
+                                user_turn=bool(args.get('user_turn')))
     out = _verdict_dict(v)
     if resumed is not None:
         # Said out loud. A ground silently swapping underneath a caller would be the same
@@ -338,7 +345,153 @@ def _read_text(args: dict) -> dict:
     return _r(text, connectivity=conn)
 
 
+# ── the doors that were missing ──────────────────────────────────────────────
+#
+# These ten were reachable from the JS server and not from this one, so `laserbrain mcp`
+# served 11 tools where mcp-server.mjs served 28. Five of them are the shared ops, which now
+# live in laserbrain._ops and are called by both servers rather than reimplemented here; the
+# other five are thin adapters over SDK calls that were already local.
+#
+# WHAT IS STILL NOT HERE, and why the count does not reach 28: ask_alice, analyze_language,
+# compare_phrasings, remember_self, resume_self and forget_self reach a hosted service.
+# Verified by blocking sockets and calling them — six connection attempts to
+# laserbrain-mcp.degibug.workers.dev:443. This server's defining property is that it runs
+# with the network unplugged, so they stay in `not_here` with a pointer to where they live.
+# Serving them would make the README's first line false.
+
+def _op(name):
+    """Serve one of the shared ops. One implementation, two front doors — see _ops."""
+    def run(args: dict) -> dict:
+        from ._ops import OPS
+        return OPS[name](args or {})
+    return run
+
+
+def _attention(args: dict) -> dict:
+    """When a person should look, from how long the agent has run."""
+    from . import attention as _a
+    if args.get('steps') is not None:
+        return _a.agent_risk(int(args['steps']))
+    # `since_seconds` is what the .mjs calls it; `seconds` is accepted so neither spelling
+    # is wrong, but the declared name matches the other server.
+    secs = args.get('since_seconds', args.get('seconds'))
+    return _a.risk(0 if secs is None else float(secs))
+
+
+def _phronesis(args: dict) -> dict:
+    """Judgment on the WORK, beside the measurement of the state.
+
+    Reads the run this server is already holding — the same one check_state has been
+    writing to — because a judgment computed over a fresh harness would be a judgment about
+    nothing.
+    """
+    h = _state.get('harness')
+    if h is None:
+        return {'verdict': 'ungrounded',
+                'because': 'No ground state — nothing has been measured yet.',
+                'counsel': 'Call check_state first; judgment needs a trace to judge.'}
+    return h.phronesis()
+
+
+def _link_read(args: dict) -> dict:
+    from . import link_read
+    return {'entries': link_read(limit=int(args.get('limit') or 20),
+                                 agent=args.get('agent'), kind=args.get('kind'))}
+
+
+def _link_write(args: dict) -> dict:
+    from . import link_write
+    return link_write(str(args.get('text') or ''), kind=str(args.get('kind') or 'note'),
+                      goal=args.get('goal'), agent=args.get('agent'))
+
+
+def _link_whoami(args: dict) -> dict:
+    from . import link_whoami
+    return link_whoami()
+
+
 TOOLS: dict[str, dict[str, Any]] = {
+    'phronesis': {
+        'fn': _phronesis,
+        'description': (
+            'Judgment on the WORK, not the state. Φ says how far you are from your ground; '
+            'this says whether the journey is worth continuing — and is willing to say '
+            'abandon. Reads the run already in progress.'),
+        'schema': {'type': 'object', 'properties': {}},
+    },
+    'attention': {
+        'fn': _attention,
+        'description': (
+            'When a person should look. Pass seconds since the user last spoke, or steps '
+            'since the agent last spelled its state. Measured, and says "unknown" where it '
+            'was never measured rather than guessing zero.'),
+        'schema': {'type': 'object', 'properties': {
+            'since_seconds': {'type': 'number', 'description': 'Since the user last spoke.'},
+            'steps': {'type': 'number', 'description': 'Since the agent last checked.'}}},
+    },
+    'explore': {
+        'fn': _op('explore'),
+        'description': 'Is this search widening or circling? Novelty, commitment, revisits.',
+        # SCHEMA KEYS COPIED FROM THE OP AND CROSS-CHECKED AGAINST THE .mjs, not invented.
+        # The first draft said `goals` and the tool answered "trail is empty" to every call —
+        # a door that opens onto a wall. Both servers now declare the same names.
+        'schema': {'type': 'object', 'properties': {
+            'trail': {'type': 'array', 'items': {'type': 'string'},
+                      'description': 'The goals visited, in order.'}},
+                   'required': ['trail']},
+    },
+    'trailscore': {
+        'fn': _op('trailscore'),
+        'description': 'The canonical spelling of a sequence of goals — what the trail looks like.',
+        'schema': {'type': 'object', 'properties': {
+            'goals': {'type': 'array', 'items': {'type': 'string'}}}, 'required': ['goals']},
+    },
+    'supercode': {
+        'fn': _op('supercode'),
+        'description': 'Hold several agents to their own grounds at once, and report who moved.',
+        'schema': {'type': 'object', 'properties': {
+            'goal': {'type': 'string'},
+            'observations': {'type': 'array', 'items': {'type': 'object'}}}},
+    },
+    'find_bugs': {
+        'fn': _op('find_bugs'),
+        'description': 'The catches: what an independent check caught that the agent did not.',
+        'schema': {'type': 'object', 'properties': {
+            'events': {'type': 'array', 'items': {'type': 'object'}},
+            'text': {'type': 'string'}, 'pattern': {'type': 'string'},
+            'before': {'type': 'string'}, 'after': {'type': 'string'},
+            'repeats': {'type': 'number'}}},
+    },
+    'write_grounded': {
+        'fn': _op('write_grounded'),
+        'description': 'Hold generation to a ground — the harness used as a decoder.',
+        'schema': {'type': 'object', 'properties': {
+            'corpus': {'type': 'array', 'items': {'type': 'string'},
+                       'description': 'The vocabulary to draw from.'},
+            'ground': {'type': 'string', 'description': 'What the writing must stay on.'},
+            'seed': {'type': 'string'}, 'words': {'type': 'number'},
+            'pull': {'type': 'number'}},
+                   'required': ['corpus']},
+    },
+    'link_read': {
+        'fn': _link_read,
+        'description': 'Read the shared log — what other agents on this machine have written.',
+        'schema': {'type': 'object', 'properties': {
+            'limit': {'type': 'number'}, 'agent': {'type': 'string'}, 'kind': {'type': 'string'}}},
+    },
+    'link_write': {
+        'fn': _link_write,
+        'description': 'Write one entry to the shared log, for another agent to read.',
+        'schema': {'type': 'object', 'properties': {
+            'text': {'type': 'string'}, 'kind': {'type': 'string'}, 'goal': {'type': 'string'},
+            'agent': {'type': 'string'}}, 'required': ['text']},
+    },
+    'link_whoami': {
+        'fn': _link_whoami,
+        'description': 'Which agent this process is, as the shared log sees it.',
+        'schema': {'type': 'object', 'properties': {}},
+    },
+
     'check_state': {
         'fn': _check_state,
         'description': (
@@ -353,6 +506,14 @@ TOOLS: dict[str, dict[str, Any]] = {
                              'description': 'Honestly. A false "advancing" wastes the reading.'},
                 'distance': {'type': 'number',
                              'description': 'How far from done, 0-10. 0 means finished.'},
+                'parent_goal': {'type': 'string',
+                                'description': 'Optional. If this step serves a LARGER goal '
+                                               'you have not abandoned, name it here. Without '
+                                               'it a legitimate sub-task reads as drift, '
+                                               'because the grammar has one goal slot.'},
+                'user_turn': {'type': 'boolean',
+                              'description': 'Optional. True when the user just spoke, so a '
+                                             'new goal regrounds instead of reading as drift.'},
             },
             'required': ['goal'],
         },
