@@ -556,6 +556,10 @@ def main():
     ap.add_argument('--tolerance', type=float, default=0.05,
                     help='how far a band rate may move before the table counts as stale '
                          '(default 0.05, i.e. five percentage points)')
+    ap.add_argument('--force', action='store_true',
+                    help='write even when the measured agent_clock is dead (drift 0 in '
+                         'every band against a live shipped one). For the case where zero '
+                         'is genuinely the answer rather than a blind-arm artefact.')
     ap.add_argument('--ship', action='store_true',
                     help='also write the packaged copy that goes inside the wheel. Off by '
                          'default: a site build must not mutate published package data as '
@@ -564,6 +568,42 @@ def main():
     a = ap.parse_args()
     ship = a.ship
     fresh = build()
+    if fresh is not None and OUT.exists() and not a.check:
+        # A DEAD agent_clock MUST NOT SILENTLY REPLACE A LIVE ONE.
+        #
+        # agent_clock is the one block built from the SESSION STORE rather than the drift
+        # log, and the session store only records a verdict when the run is not in the blind
+        # arm. Under a blind arm every check lands as 'no-reading', pairs still form, and the
+        # table comes out looking like a measurement: bands populated, n populated, drift 0
+        # in every band. It is not a measurement that agents never drift. It is the absence
+        # of readings, wearing the shape of one.
+        #
+        # It had already happened three times, each worse than the last — 2356 pairs/195
+        # drifts on 2026-08-15, then 212/0, then 200/0 — and nothing said a word, because
+        # compare() gates on `bands` alone and agent_clock is outside it. The 08-20 table
+        # sat in json/ for a day; shipping it would have made agent_risk() answer "no risk"
+        # at every gap, which is the opposite of the instrument's purpose.
+        #
+        # So: refuse, loudly, and say what to do. A guard on the WRITE only — `not a.check`
+        # above, because --check reads and compares and must stay able to report staleness
+        # even on a machine whose session store is blind. The first version of this guard
+        # gated both and turned the read-only path into a refusal, which would have made the
+        # parity suite unable to report the very divergence it exists for.
+        # --force overrides, for the case where zero really is the answer.
+        _cur = json.loads(OUT.read_text())
+        _live = sum((b.get('drift') or 0) for b in _cur.get('agent_clock', {}).get('bands', []))
+        _fresh_drift = sum((b.get('drift') or 0)
+                           for b in fresh.get('agent_clock', {}).get('bands', []))
+        if _live > 0 and _fresh_drift == 0 and not a.force:
+            print(f'  REFUSING — the measured agent_clock has drift 0 in every band, and '
+                  f'{OUT.name} holds one with {_live}.')
+            print('  That is the signature of a blind-arm session store, not of an agent '
+                  'that never drifts:')
+            print(f'    measured pairs {fresh.get("agent_clock", {}).get("pairs")}, '
+                  f'shipped pairs {_cur.get("agent_clock", {}).get("pairs")}')
+            print('  Recalibrate from a session store recorded outside the blind arm, or '
+                  'pass --force if zero is genuinely the answer.')
+            return 1
     if fresh is None:
         # 77 under --check, not 1. Both of build()'s empty returns mean "the corpus this
         # check needs is not on this machine", which is a skip — a different fact from "the

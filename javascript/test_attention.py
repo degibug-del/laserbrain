@@ -350,12 +350,28 @@ else:
         check('  and the message names the divergence', 'DIVERGED' in _rc.stdout,
              _rc.stdout.strip().splitlines()[-1][:60] if _rc.stdout.strip() else '(no output)')
 
-        # And a --ship run repairs it, rather than leaving a human to copy the file. The
-        # packaged copy became opt-in behind --ship ("a site build must not mutate published
-        # package data as a side effect"); this assertion still said "a plain run" and so had
-        # been asserting behaviour the calibrator deliberately gave up.
-        _sp.run([_sys.executable, str(_CAL), '--ship'], env=_LIVE_ENV, capture_output=True,
-                text=True, cwd=_HERE)
+        # THE GUARD FIRST, because it is the thing that would silently stop the repair.
+        # calibrate_attention.py refuses to write an agent_clock with drift 0 in every band
+        # over a live one — the blind-arm signature. On a machine recording verdicts this
+        # passes straight through; on a blind one it refuses, and either way the refusal
+        # must be observable rather than mistaken for a failed repair.
+        _g = _sp.run([_sys.executable, str(_CAL), '--ship'], env=_LIVE_ENV,
+                     capture_output=True, text=True, cwd=_HERE)
+        _guarded = 'REFUSING' in _g.stdout
+        if _guarded:
+            check('  the blind-arm guard refuses to write a dead agent_clock',
+                  _g.returncode == 1 and 'drift 0 in every band' in _g.stdout,
+                  f'exit {_g.returncode}')
+
+        # And a --ship run repairs the divergence, rather than leaving a human to copy the
+        # file. The packaged copy became opt-in behind --ship ("a site build must not mutate
+        # published package data as a side effect"); this assertion said "a plain run" and so
+        # had been asserting behaviour the calibrator deliberately gave up. --force is passed
+        # only where the guard already fired: this block is testing the WRITE mechanism, and
+        # it restores both files from backup in the finally below.
+        if _guarded:
+            _sp.run([_sys.executable, str(_CAL), '--ship', '--force'], env=_LIVE_ENV,
+                    capture_output=True, text=True, cwd=_HERE)
         check('a --ship run rewrites BOTH copies', _SHIPPED.read_text() == _OUT.read_text())
         _rc2 = _sp.run([_sys.executable, str(_CAL), '--check'],
                        env=_LIVE_ENV, capture_output=True, text=True, cwd=_HERE)
