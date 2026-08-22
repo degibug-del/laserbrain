@@ -227,8 +227,21 @@ def _no_corpus(r):
     author's drift log — CI most of all — which would have made a green build impossible
     for a reason that says nothing about the code. A missing corpus is a skip; a stale
     table is a failure. They are different facts and were being reported as one."""
-    return 'no corpus' in (r.stdout + r.stderr)
+    # THE EXIT CODE, not the wording. This matched the substring 'no corpus' in the
+    # calibrator's output, which was correct only by accident of phrasing: any future
+    # message containing those words on some other failure path would have converted a real
+    # failure into a silent skip — the exact defect this session spent its length removing.
+    # calibrate_attention.py returns 77 under --check when the corpus is absent.
+    return r.returncode == 77
 
+
+# Bound BEFORE the branch, and True. Without this it is unbound whenever the calibrator or
+# the table is missing, and the round-trip block below raises NameError — which exits
+# non-zero, so no false green, but the traceback replaces the assertion summary and the
+# remaining checks never run. True is the right default: with no calibrator present there is
+# no round-trip to make, and False would shell out to a script that is not there and read
+# python's "can't open file" status as a passing assertion.
+_skip_corpus = True
 
 if not (cal.exists() and src_json.exists()):
     check('calibrate_attention.py and attention.json present', False)
@@ -337,10 +350,13 @@ else:
         check('  and the message names the divergence', 'DIVERGED' in _rc.stdout,
              _rc.stdout.strip().splitlines()[-1][:60] if _rc.stdout.strip() else '(no output)')
 
-        # And a plain run repairs it, rather than leaving a human to copy the file.
-        _sp.run([_sys.executable, str(_CAL)], env=_LIVE_ENV, capture_output=True,
+        # And a --ship run repairs it, rather than leaving a human to copy the file. The
+        # packaged copy became opt-in behind --ship ("a site build must not mutate published
+        # package data as a side effect"); this assertion still said "a plain run" and so had
+        # been asserting behaviour the calibrator deliberately gave up.
+        _sp.run([_sys.executable, str(_CAL), '--ship'], env=_LIVE_ENV, capture_output=True,
                 text=True, cwd=_HERE)
-        check('a plain run rewrites BOTH copies', _SHIPPED.read_text() == _OUT.read_text())
+        check('a --ship run rewrites BOTH copies', _SHIPPED.read_text() == _OUT.read_text())
         _rc2 = _sp.run([_sys.executable, str(_CAL), '--check'],
                        env=_LIVE_ENV, capture_output=True, text=True, cwd=_HERE)
         check('  and the check passes again', _rc2.returncode == 0, f'exit {_rc2.returncode}')

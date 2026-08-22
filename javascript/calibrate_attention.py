@@ -565,7 +565,13 @@ def main():
     ship = a.ship
     fresh = build()
     if fresh is None:
-        return 1
+        # 77 under --check, not 1. Both of build()'s empty returns mean "the corpus this
+        # check needs is not on this machine", which is a skip — a different fact from "the
+        # table is stale", and the two were being reported with the same code. The caller
+        # in test_attention.py had to tell them apart by substring-matching this script's
+        # printed prose, so a reworded message would have silently turned a real failure
+        # into a skip. 77 is the code the runner already means "could not run" by.
+        return 77 if a.check else 1
 
     if a.check:
         if not OUT.exists():

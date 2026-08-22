@@ -28,7 +28,7 @@ import { spawn } from 'node:child_process'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { existsSync, unlinkSync, readFileSync, writeFileSync, openSync, closeSync, statSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 import { configDir as lbConfigDir } from './lb_paths.mjs'
 
 /**
@@ -289,9 +289,18 @@ const _BUILTIN = {
 // scored 77 of 124 inputs differently between this server and the SDK reading the same
 // grammar. Byte-identical server, opposite verdicts, decided purely by which directory it
 // was started from. Found 2026-08-21 once that suite was made to actually run.
+// ../json/ LEAVES THE INSTALL DIRECTORY, so it is only taken in the one layout it was
+// written for: this repo, where javascript/ and json/ are siblings. Installed under
+// node_modules the same relative hop lands on a SIBLING PACKAGE — `json` is a real npm
+// name — and would quietly supply someone else's file as this instrument's grammar. The
+// basename separates all three real layouts: 'javascript' here, 'laserbrain' under
+// node_modules, 'lasermind' deployed (where the beside-copy wins first anyway).
+const _dir = dirname(fileURLToPath(import.meta.url))
+const _sibling = basename(_dir) === 'javascript'
+const _grammarPaths = [join(_dir, 'grammar.json')]
+if (_sibling) _grammarPaths.push(join(_dir, '..', 'json', 'grammar.json'))
 let _fromFile = {}
-for (const _p of [join(dirname(fileURLToPath(import.meta.url)), 'grammar.json'),
-                  join(dirname(fileURLToPath(import.meta.url)), '..', 'json', 'grammar.json')]) {
+for (const _p of _grammarPaths) {
   try {
     _fromFile = JSON.parse(readFileSync(_p, 'utf8'))
     break
@@ -335,8 +344,11 @@ function loadAttention() {
   // server, and in this repo the reorg moved it to json/. Absent stays a real state — the
   // tool says "no calibration installed" rather than guessing — but it should only be
   // reported when the table is genuinely missing, not when it merely moved.
-  for (const _p of [new URL('./attention.json', import.meta.url),
-                    new URL('../json/attention.json', import.meta.url)]) {
+  // Bounded the same way as grammar.json — see _sibling. An unconditional ../json/ hop
+  // would reach a neighbouring package when installed under node_modules.
+  const _attnPaths = [new URL('./attention.json', import.meta.url)]
+  if (_sibling) _attnPaths.push(new URL('../json/attention.json', import.meta.url))
+  for (const _p of _attnPaths) {
     try {
       _attnCache = JSON.parse(readFileSync(_p, 'utf8'))
       return _attnCache
