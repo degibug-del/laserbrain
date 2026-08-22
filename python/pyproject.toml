@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "laserbrain"
-version = "0.53.0"
+version = "0.54.0"
 description = "AI agents are made up of language. laserbrain is an automatic grammatical control layer to reduce agent drift — it scores an agent's goal before execution, then checks each step against that fixed reference. Works across tools."
 readme = "README.md"
 requires-python = ">=3.9"

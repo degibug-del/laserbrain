@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.54.0 - unreleased
+## 0.54.0 - 2026-08-21
 
 ### fields the signatures promised, and guards that were only pretending to run
 
