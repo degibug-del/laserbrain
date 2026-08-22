@@ -1536,6 +1536,38 @@ class _Run:
                 # moving a published calibration on three points is the mistake the corpus
                 # exists to prevent. Making the rejection legible is what generates the
                 # data to settle it.
+                #
+                # THE HOLE THIS LEAVES OPEN, stated so nobody has to rediscover it. Nothing
+                # asks whether THIS STEP serves the declared parent — only whether the
+                # parent serves the ground. So an agent that names its own ground as the
+                # parent scores 1.00 by construction and any departure becomes a
+                # non-drifting excursion: `buy groceries` under a parent equal to the ground
+                # returns excursion, where the same goal with no parent returns goal-drift.
+                #
+                # TWO FIXES WERE TRIED ON 2026-08-22 AND BOTH WERE REFUTED BY THIS REPO'S
+                # OWN SUITES.
+                #
+                #   Require the child to share a token with the parent. Refuted by
+                #   test_parent_rejection.py, which already contains "escaped-quote
+                #   handling" under "benchmark the parser build" — a real sub-task sharing
+                #   no token with its parent.
+                #
+                #   Reject a parent identical to the ground. Refuted by the documented usage:
+                #   naming the ground as the parent is the PRIMARY case, asserted by
+                #   test_parent_rejection.py and test_carried_fields.py and by the MCP tool's
+                #   own description.
+                #
+                # Measured, the two shapes are lexically indistinguishable:
+                #
+                #     legit    parent~ground 0.60   child~parent 0.00   child~ground 0.00
+                #     exploit  parent~ground 1.00   child~parent 0.00   child~ground 0.00
+                #
+                # The only axis that separates them is one where the exploit scores HIGHER.
+                # Closing it lexically means a threshold saying "too close to the ground is
+                # suspicious", which inverts what the instrument rewards and is a calibration
+                # change on three points — the exact mistake the paragraph above refuses.
+                # It needs either a semantic similarity (pass sim=) or more declarations in
+                # the corpus, not a cleverer token rule.
                 self._rejected_parent = None if p_anchor >= self.cal.goal_min else p_anchor
                 if p_anchor >= self.cal.goal_min:
                     return emit('excursion', False,
