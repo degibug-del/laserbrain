@@ -4,9 +4,11 @@ This is the pytest-visible surface. The suites themselves are standalone scripts
 ../conftest.py for why) and are run here the same way a human runs them, so there is no
 second code path that could pass while the real one fails.
 """
+import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
@@ -16,8 +18,25 @@ SUITES = sorted(p.name for p in ROOT.glob('test_*.py'))
 
 @pytest.mark.parametrize('suite', SUITES)
 def test_suite_passes(suite):
+    # A PRIVATE STATE ROOT PER SUITE. Two comments in the tree — test_gate_hosts.py and
+    # javascript/test_attention.py — already say "run-tests.sh exports LASERBRAIN_HOME so no
+    # suite can write to it" and defend against it. There is no run-tests.sh in this repo and
+    # there is no record of one, so that invariant was being assumed rather than provided:
+    # 37 of the 42 suites set no state root, and a full run rewrote the live
+    # ~/.config/laserbrain/contexts.json every time.
+    #
+    # Which is not cosmetic. That store feeds `repetition` and "opened in N earlier
+    # sessions", and those change what phronesis() returns — a probe in this repo watched a
+    # verdict move from wrong-problem to abandon purely on residue from an earlier identical
+    # run. The corpus has already paid for it once: the comment on the `repetition >= 3`
+    # threshold records re-deriving it "after 248 of 680 contexts turned out to be test
+    # fixtures". This is where that stops, centrally, instead of in 37 files that would each
+    # have to remember.
+    #
+    # mkdtemp per suite, not per run: suites must not see each other's contexts either.
+    env = {**os.environ, 'LASERBRAIN_HOME': tempfile.mkdtemp(prefix=f'lb-{suite[:-3]}-')}
     r = subprocess.run([sys.executable, suite], cwd=ROOT, capture_output=True, text=True,
-                       timeout=300)
+                       timeout=300, env=env)
     # 77 means the suite could not run — its subject lives in another repo and was not
     # found. That is a SKIP, not a pass: reporting it green would be the same lie as a
     # green build over a check that never executed, which is the failure this whole project

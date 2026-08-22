@@ -70,10 +70,13 @@ def run_gate(ev, env=None, link=None, session=None, sid='test-gate-sid'):
                 json.dumps(session))
         env['HOME'] = str(fake_home)
         # AND CLEAR THE ROOT OVERRIDES, because this suite isolates via HOME and lb_paths
-        # deliberately ranks LASERBRAIN_HOME above the HOME-derived default. run-tests.sh
-        # exports LASERBRAIN_HOME for every suite, so without this the hook resolves to the
-        # runner's temp root and never sees the session file written into fake_home — the
-        # precedence working exactly as documented, against a test that predates it.
+        # deliberately ranks LASERBRAIN_HOME above the HOME-derived default. tests/
+        # test_suites.py gives every suite a private LASERBRAIN_HOME, so without this the
+        # hook resolves to the runner's temp root and never sees the session file written
+        # into fake_home — the precedence working exactly as documented, against a test that
+        # predates it. (This said "run-tests.sh" until 2026-08-21. No such file existed in
+        # the repo, and the isolation it named was not actually being provided by anything;
+        # the runner now provides it. The defence below was right either way.)
         for _v in ('LASERBRAIN_HOME', 'LASERBRAIN_STATE_DIR'):
             env.pop(_v, None)
         # also clear agent unless set

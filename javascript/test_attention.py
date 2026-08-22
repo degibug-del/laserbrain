@@ -193,9 +193,12 @@ print()
 print('the calibrator refuses to go stale silently')
 # THE LIVE CORPUS, on purpose — the same exemption test_corpus_clean takes and for the same
 # reason. attention.json is calibrated FROM the accumulated drift log, so "does the table
-# still describe the corpus" is a question about the real file. run-tests.sh exports
-# LASERBRAIN_HOME so no suite can write to it; honouring that here would point --check at an
-# empty temp directory, where it reports "no corpus" and the assertion means nothing.
+# still describe the corpus" is a question about the real file. tests/test_suites.py gives
+# every suite a private LASERBRAIN_HOME so no suite can write to it; honouring that here
+# would point --check at an empty temp directory, where it reports "no corpus" and the
+# assertion means nothing. (This said "run-tests.sh" until 2026-08-21 — a file that did not
+# exist, naming isolation nothing was providing. The runner provides it now, so the sentence
+# is true for the first time; stripping the vars here was already correct.)
 #
 # Reading it is safe in a way writing never was: --check computes and compares, it does not
 # append.
