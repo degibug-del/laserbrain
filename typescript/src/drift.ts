@@ -19,6 +19,11 @@ export type DriftState = {
   ground: { goal: string; progress: string; distance: number } | null
   firstGoal: string[]
   distHist: number[]
+  // Whole-run twins of distHist and the osc latch — NOT reset on a reground, because the
+  // rules whose subject is the whole run (a cycle in the ground) have no subject without
+  // them. See the Python dist_all declaration for the failure that produced them.
+  distAll: number[]
+  oscFires: number
   // Experiment + outcome metadata (run-level), set through the ingest. `pair`
   // groups a treatment/control pair for the H1 A/B; `arm` says which side this
   // run is; `outcome`/`score` record whether the task actually succeeded — so
@@ -56,7 +61,7 @@ export type DriftState = {
   scores?: string[]
 }
 
-export const emptyDrift = (): DriftState => ({ ground: null, firstGoal: [], distHist: [], trace: [], trail: [] })
+export const emptyDrift = (): DriftState => ({ ground: null, firstGoal: [], distHist: [], distAll: [], oscFires: 0, trace: [], trail: [] })
 
 // A trace step's reason, classified. The Verdict carries `drifting` for the
 // current step; for a PAST step only the reason is stored, so alerts (which fire
@@ -264,7 +269,14 @@ export function judgeRun(
   const reasons = trace.map((t) => t.reason)
   const count = (r: string) => reasons.filter((x) => x === r).length
   const stalls = count('stalled'), goalDrifts = count('goal-drift')
-  const regrounds = count('reground'), oscillations = count('oscillating')
+  const regrounds = count('reground')
+  // NOT count('oscillating'): the trace holds the READING the cycle was found in and never
+  // the word, so this was always 0 and the wrong-problem branch unreachable.
+  const oscillations = st.oscFires ?? 0
+  // Whole-run progress for the whole-run rule, from the run's WORST point so a reground to
+  // a harder goal is not charged as lost ground.
+  const da = st.distAll ?? []
+  const runPace = da.length >= 2 ? (Math.max(...da) - da[da.length - 1]) / Math.max(1, steps) : 0
 
   let flat = 0
   for (let i = dh.length - 1; i > 0; i--) { if (dh[i] >= dh[i - 1]) flat++; else break }
@@ -295,7 +307,7 @@ export function judgeRun(
     return { verdict: 'wrong-problem',
       because: `The goal has failed its overlap check ${goalDrifts} times against only ${regrounds} legitimate re-grounds.`,
       counsel: 'You are not solving what you set out to solve. Either re-ground to the goal you actually have, or return to the original and finish it.' }
-  if (judged && oscillations > 0 && pace <= 0)
+  if (judged && oscillations > 0 && runPace <= 0)
     return { verdict: 'wrong-problem',
       because: 'A repeating cycle was detected and the distance is not falling.',
       counsel: 'Returning again will land you here a third time. Change the approach, not the position.' }
@@ -443,6 +455,10 @@ export function checkStep(
     ...prev,
     firstGoal: [...prev.firstGoal], distHist: [...prev.distHist], trace: [...prev.trace],
     trail: [...(prev.trail ?? [])], scores: [...(prev.scores ?? [])],
+    // distAll copied for the same reason as the rest: a mutable array left out of this list
+    // is shared with `prev`, so a push inside emit writes into the caller's state and
+    // checkStep stops being pure.
+    distAll: [...(prev.distAll ?? [])],
   }
   const { goal, progress, distance } = input
   // Did the PREVIOUS step already read as a drift condition? The soft modes
@@ -456,6 +472,9 @@ export function checkStep(
     // The trace records the READING; the cycle is a fact about the sequence of readings,
     // so the original goes in and `oscillating` is what comes out.
     st.trace.push({ step: st.trace.length + 1, reason, phi: Number(phi.toFixed(2)), drifting })
+    if (distance !== undefined && distance !== null && typeof distance !== 'boolean') {
+      (st.distAll ??= []).push(asDist(distance))
+    }
     st.trail = [...(st.trail ?? []), goal ? [...norm(goal)].sort().join('|') : '']
 
     // GROUND FIRST, then readings. The ground is x and the verdicts are f(x); a cycle in x
@@ -518,6 +537,7 @@ export function checkStep(
     }
     if (period && !st.osc) {
       st.osc = true
+      st.oscFires = (st.oscFires ?? 0) + 1
       const what = of === 'ground'
         ? 'You have returned to the same goals in a repeating order'
         : 'Your reading has cycled'

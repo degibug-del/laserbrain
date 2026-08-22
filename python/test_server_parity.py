@@ -140,5 +140,19 @@ for _f in ('mcp-server.mjs', 'lb_paths.mjs', 'sdk_bridge.py'):
     _h = lambda q: hashlib.sha256(open(q, 'rb').read()).hexdigest()[:12]
     show(f'{_f} matches javascript/', _h(_a) == _h(_b), f'{_h(_a)} vs {_h(_b)}')
 
+# ── one drift-vectors, not several ────────────────────────────────────────────
+# json/drift-vectors.json is what both parity suites read. A second copy existed at
+# python/drift-vectors.json with 6 vectors against its 16, read by nothing — the third time
+# this repo has grown a duplicate vector file, and grammar.ts:235 records the first two:
+# "two drift-vectors.json files disagreeing 15 vs 9, one of them read by nothing".
+_vec = [os.path.join(_root, p) for p in
+        ('json/drift-vectors.json', 'python/drift-vectors.json',
+         'typescript/test/drift-vectors.json')]
+_present = [v for v in _vec if os.path.exists(v)]
+_hashes = {hashlib.sha256(open(v, 'rb').read()).hexdigest()[:12] for v in _present}
+show('every drift-vectors copy that exists agrees', len(_hashes) <= 1,
+     ' '.join(f'{os.path.relpath(v, _root)}={hashlib.sha256(open(v,"rb").read()).hexdigest()[:12]}'
+              for v in _present))
+
 print('\n' + ('SERVER PARITY HOLDS ✓' if ok else 'SOME FAILED ✗'))
 raise SystemExit(0 if ok else 1)
