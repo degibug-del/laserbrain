@@ -17,18 +17,18 @@
       "label": "1-5 minutes",
       "from_seconds": 60,
       "to_seconds": 300,
-      "drift": 53,
-      "n": 333,
-      "rate": 0.1592,
+      "drift": 54,
+      "n": 338,
+      "rate": 0.1598,
       "underpowered": false
     },
     {
       "label": "5-30 minutes",
       "from_seconds": 300,
       "to_seconds": 1800,
-      "drift": 123,
-      "n": 425,
-      "rate": 0.2894,
+      "drift": 114,
+      "n": 420,
+      "rate": 0.2714,
       "underpowered": false
     },
     {
@@ -42,7 +42,7 @@
     }
   ],
   "min_n": 20,
-  "z_between_best_powered": 4.215,
+  "z_between_best_powered": 3.679,
   "best_powered_pair": [
     "1-5 minutes",
     "5-30 minutes"
@@ -106,15 +106,17 @@
     "best_powered_n": 2127,
     "censored_beyond_steps": 8,
     "censored_share": 0.0768,
-    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 7.68% of the sample (181 of 2356). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose."
+    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 7.68% of the sample (181 of 2356). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose.",
+    "carried_from": "the last calibration with readable pairs",
+    "carried_because": "this corpus yielded 6 readable pair(s) \u2014 every band underpowered. Measured pairs are counted only where a verdict was actually read; blind-arm checks are censored at the source and excluded."
   },
   "overhead": {
     "what": "Share of an agent's tool calls that are laserbrain itself. A cost, not a benefit \u2014 measured so a claim about saved tokens has something to clear.",
-    "runs": 269,
-    "median": 0.2143,
+    "runs": 9,
+    "median": 0.1757,
     "iqr": [
-      0.1875,
-      0.2333
+      0.0909,
+      0.1957
     ],
     "note": "Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by construction: the gate forces a check every four steps to hold the coverage floor, so this is the threshold, not an emergent property."
   },
@@ -125,27 +127,27 @@
         "label": "under a minute",
         "from_seconds": 0,
         "to_seconds": 60,
-        "drift": 9,
-        "n": 547,
-        "rate": 0.0165,
+        "drift": 10,
+        "n": 557,
+        "rate": 0.018,
         "underpowered": false
       },
       {
         "label": "1-5 minutes",
         "from_seconds": 60,
         "to_seconds": 300,
-        "drift": 44,
-        "n": 461,
-        "rate": 0.0954,
+        "drift": 42,
+        "n": 475,
+        "rate": 0.0884,
         "underpowered": false
       },
       {
         "label": "5-30 minutes",
         "from_seconds": 300,
         "to_seconds": 1800,
-        "drift": 17,
-        "n": 90,
-        "rate": 0.1889,
+        "drift": 18,
+        "n": 93,
+        "rate": 0.1935,
         "underpowered": false
       },
       {
@@ -160,15 +162,15 @@
     ]
   },
   "provenance": {
-    "written": "2026-08-15",
+    "written": "2026-08-21",
     "corpus_from": "2026-07-28",
-    "corpus_to": "2026-08-16",
-    "readings_total": 1946,
+    "corpus_to": "2026-08-22",
+    "readings_total": 1973,
     "readings_settled": 843,
-    "readings_fresh_ground": 1103,
-    "user_messages": 4364,
+    "readings_fresh_ground": 1130,
+    "user_messages": 3243,
     "dominant_agent": "claude",
-    "dominant_agent_share": 0.999,
+    "dominant_agent_share": 1.0,
     "caveat": "One machine, and 100% one agent. This calibrates THIS setup. It is not a constant of nature and should be recomputed anywhere else."
   }
 }

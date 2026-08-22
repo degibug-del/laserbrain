@@ -341,6 +341,24 @@ def agent_clock():
                 gap = cur['step'] - prev['step']
                 if not 1 <= gap <= 60:
                     continue            # a reset between them, or a corrupt pair
+                # AN UNREAD CHECK IS NOT A CHECK THAT DID NOT DRIFT.
+                #
+                # Under the blind arm the agent is not told its verdict and the store
+                # records `reason: 'no-reading'`. Those rows were counted as pairs and could
+                # never satisfy `== 'goal-drift'`, so every one of them entered the
+                # denominator as evidence of not drifting. On 2026-08-21 that was 718 of 745
+                # pairs and the table came out reporting drift 0 in every band — a
+                # measurement of the absence of readings, wearing the shape of a measurement.
+                #
+                # It is the same censoring error this file is careful about everywhere else:
+                # `censored_beyond_steps` exists precisely so nobody reads a tail the policy
+                # produced as a fact about the world. A blind row is censored at the source.
+                # Out of the denominator, so n falls to what was actually read and the
+                # underpowered machinery can say so honestly.
+                #
+                # `None` and 'unparsed' go too, for the same reason — no verdict was read.
+                if cur.get('reason') in (None, 'no-reading', 'unparsed'):
+                    continue
                 pairs += 1
                 gaps[gap] += 1
                 drift[gap] += cur.get('reason') == 'goal-drift'
@@ -446,6 +464,46 @@ def overhead():
     }
 
 
+def _agent_clock_or_last():
+    """The measured agent_clock, or the last real one when this corpus cannot see it.
+
+    WHY A RECALIBRATION MUST NOT SILENTLY DOWNGRADE THIS BLOCK. agent_clock is the one
+    reading built from the SESSION STORE rather than the drift log, and the store only
+    carries a verdict for checks the agent was actually told. After the blind probe, 718 of
+    745 pairs on this machine read 'no-reading'; excluding them (see agent_clock) is
+    correct, and it leaves 6 pairs — every band underpowered, every rate None. That is the
+    honest measurement, and writing it would still be a loss: it would replace 2356 pairs
+    and 195 drifts, measured when the store was readable, with "unknown".
+
+    Both are true at once, so neither overwriting nor refusing is right. Bands come from the
+    drift log and are healthy, so a recalibration should refresh them; agent_clock has no
+    fresh evidence, so it keeps the last block that did — the same move the grammar loader
+    makes one file over, where "an instrument that refuses to start because a data file
+    moved is worse than one that starts on its last known-good constants and says so".
+
+    It SAYS SO: the carried block gets `carried_from`, naming the calibration it came from,
+    so nothing downstream can mistake it for a fresh reading. The moment the store has
+    readable pairs again this stops firing on its own.
+    """
+    fresh = agent_clock()
+    powered = [b for b in fresh.get('bands', []) if not b.get('underpowered')]
+    if powered:
+        return fresh                       # the corpus can see it; use what was measured
+    try:
+        prev = json.loads(OUT.read_text()).get('agent_clock') or {}
+    except Exception:
+        return fresh                       # nothing to carry — thin is better than absent
+    if not [b for b in prev.get('bands', []) if not b.get('underpowered')]:
+        return fresh                       # the previous one was thin too
+    prev = dict(prev)
+    prev['carried_from'] = prev.get('carried_from') or 'the last calibration with readable pairs'
+    prev['carried_because'] = (
+        f'this corpus yielded {fresh.get("pairs", 0)} readable pair(s) — every band '
+        f'underpowered. Measured pairs are counted only where a verdict was actually read; '
+        f'blind-arm checks are censored at the source and excluded.')
+    return prev
+
+
 def build():
     rows = readings()
     if not rows:
@@ -485,7 +543,7 @@ def build():
         # the external clock is strong, the internal clock is flat AND censored by the gate
         # that produced it. Kept in the same file because a reader comparing them is the
         # whole point; split across two files, only the flattering one gets quoted.
-        'agent_clock': agent_clock(),
+        'agent_clock': _agent_clock_or_last(),
         'overhead': overhead(),
         'fresh_ground': {
             'what': ('The same table over readings on a ground that was just set. Kept '
