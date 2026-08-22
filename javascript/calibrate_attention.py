@@ -300,7 +300,11 @@ SESSIONS = _root.sessions_dir()
 
 # Step-gaps between one spelled check and the next.
 AGENT_BANDS = [(1, 1, '1 step'), (2, 3, '2-3 steps'), (4, 7, '4-7 steps'),
-               (8, 15, '8-15 steps'), (16, 60, '16+ steps')]
+               (8, 15, '8-15 steps'), (16, None, '16+ steps')]
+# The last band is OPEN-ENDED, matching what BANDS already does with to_seconds for "over
+# 30 minutes". It carried a finite 60 while calling itself "16+", so agent_risk() answered
+# band=None for any gap past it — a label promising coverage the band did not have. The 60
+# was never a measured boundary: that band has n=0.
 
 
 def agent_clock():
@@ -339,6 +343,9 @@ def agent_clock():
                             key=lambda c: c['step'])
             for prev, cur in zip(checks, checks[1:]):
                 gap = cur['step'] - prev['step']
+                # 60 was the old last-band cap; the band is open-ended now, but a gap this
+                # large is still far more likely to be a reset than a real interval, so it
+                # stays excluded from the SAMPLE while the BAND stays open for lookups.
                 if not 1 <= gap <= 60:
                     continue            # a reset between them, or a corrupt pair
                 # AN UNREAD CHECK IS NOT A CHECK THAT DID NOT DRIFT.
@@ -367,8 +374,12 @@ def agent_clock():
 
     bands = []
     for lo, hi, label in AGENT_BANDS:
-        n = sum(gaps[g] for g in range(lo, hi + 1))
-        dd = sum(drift[g] for g in range(lo, hi + 1))
+        # `hi is None` means open-ended — the last band says "16+" and now means it. The
+        # pairing loop above already excludes gaps over 60 as resets rather than intervals,
+        # so this sums everything that survived it from `lo` upward.
+        _in = [g for g in gaps if g >= lo and (hi is None or g <= hi)]
+        n = sum(gaps[g] for g in _in)
+        dd = sum(drift[g] for g in _in)
         bands.append({'label': label, 'from_steps': lo, 'to_steps': hi,
                       'drift': dd, 'n': n,
                       'rate': round(dd / n, 4) if n >= MIN_N else None,
@@ -631,6 +642,16 @@ def main():
     a = ap.parse_args()
     ship = a.ship
     fresh = build()
+    if fresh is not None:
+        # A TABLE CANNOT COVER DATA THAT POSTDATES ITS OWN WRITE. 0.54.1 shipped
+        # written=2026-08-21 with corpus_to=2026-08-22, because `written` was carried from a
+        # literal instead of the run. describe() prints both, so the contradiction was
+        # user-visible. Fail here rather than ship it.
+        _pv = fresh.get('provenance', {})
+        if _pv.get('corpus_from') and _pv.get('corpus_to') and _pv.get('written'):
+            assert _pv['corpus_from'] <= _pv['corpus_to'] <= _pv['written'], (
+                f"provenance is not ordered: corpus_from={_pv['corpus_from']} "
+                f"corpus_to={_pv['corpus_to']} written={_pv['written']}")
     if fresh is not None and OUT.exists() and not a.check:
         # A DEAD agent_clock MUST NOT SILENTLY REPLACE A LIVE ONE.
         #

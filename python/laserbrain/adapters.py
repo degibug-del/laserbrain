@@ -132,6 +132,14 @@ def crewai_step_callback(extract, harness=None, key=None, run_id=None, on_return
     def cb(step_output):
         try:
             g, p, d, pg = _unpack(extract, step_output)
+        except ValueError:
+            # A MIS-SHAPED EXTRACTOR IS THE CALLER'S BUG, and _unpack was changed to say so
+            # loudly. This blanket `except Exception` then swallowed exactly that message
+            # and returned None, so CrewAI was the one adapter where a wrong-arity extractor
+            # stayed silent — the other three propagate it. The broad catch below still
+            # stands for what it was written for: a step_output CrewAI hands us that the
+            # user's extractor cannot read is not worth crashing an agent run over.
+            raise
         except Exception:
             return None
         v = hz.check(g, p, d, parent_goal=pg)

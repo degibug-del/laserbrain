@@ -90,7 +90,7 @@
       {
         "label": "16+ steps",
         "from_steps": 16,
-        "to_steps": 60,
+        "to_steps": null,
         "drift": 0,
         "n": 0,
         "rate": null,
@@ -162,7 +162,7 @@
     ]
   },
   "provenance": {
-    "written": "2026-08-21",
+    "written": "2026-08-22",
     "corpus_from": "2026-07-28",
     "corpus_to": "2026-08-22",
     "readings_total": 1973,

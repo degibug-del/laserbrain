@@ -1,7 +1,8 @@
 """When should a person look at the agent?
 
     from laserbrain import attention
-    attention.risk(900)                  # -> {'band': '5-30 minutes', 'rate': 0.387, ...}
+    attention.risk(900)                  # -> {'band': '5-30 minutes', 'rate': ..., 'n': ...}
+    attention.describe()                 # the current numbers — never quoted here, see below
     attention.next_check_in(0, 0.25)     # -> seconds until expected drift exceeds 25%
     attention.advise(900)                # -> one sentence for a human
 
@@ -30,9 +31,18 @@ that file matter to every function here:
                             neighbour's number or a zero. A schedule built on an invented
                             rate is worse than no schedule, because it looks like one.
 
-  IT DESCRIBES ONE SETUP    The corpus behind it is 92% a single agent on a single machine.
-                            provenance.caveat says so, and `describe()` prints it, so the
-                            limit travels with the number rather than living in a README.
+  IT DESCRIBES ONE SETUP    The corpus behind it is one agent on one machine.
+                            provenance.caveat carries the exact share and `describe()`
+                            prints it, so the limit travels with the number rather than
+                            living in a README.
+
+                            NO FIGURE IS QUOTED IN THIS DOCSTRING, deliberately.
+                            attention.json is rewritten by every recalibration, so any
+                            literal here is guaranteed to rot — and did: this line said
+                            "92% a single agent" against a shipped 100%, and the example
+                            above said rate 0.387 against a shipped 0.2714, both wrong
+                            since 0.44.0 and both shipped in every release since. A number
+                            that is regenerated must be read, not typed.
 
 RATES ARE STEPS, NOT A CURVE
 
@@ -186,7 +196,12 @@ def agent_risk(steps):
     cut = AGENT.get('censored_beyond_steps')
     censored = cut is not None and s >= cut
     for b in bands:
-        if b.get('from_steps', 0) <= s <= b.get('to_steps', 10 ** 9):
+        # `to_steps is None` means open-ended, matching what the time bands already do with
+        # to_seconds. The last band is labelled "16+ steps" but carried a finite cap, so any
+        # gap past it fell through the loop and agent_risk answered band=None — a label
+        # promising coverage the band did not have.
+        _hi = b.get('to_steps')
+        if b.get('from_steps', 0) <= s and (_hi is None or s <= _hi):
             # A CENSORED BAND QUOTES NO RATE. It used to return the band's number with
             # `known: False` beside it — so a caller reading `rate` got 0.0 for the region
             # past the gate, which renders "we cannot see out there" as "the risk out there
