@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.54.2 - 2026-08-22
+
+### what a clean-install verification of 0.54.1 found
+
+Twenty agents exercised the published 0.54.1 wheel in fresh virtualenvs — behaviour, not
+source inspection. The four fixes it was cut for all hold, including the one worth checking:
+the oscillation detector still fires on a genuine flat cycle, so the corrections did not
+quietly disable it. All four adapters reach `excursion` without losing drift detection.
+
+**CrewAI was swallowing the error 0.54.1 made loud.** `_unpack` was changed in 0.54.1 to
+raise on a mis-shaped extractor rather than silently truncate it — and
+`crewai_step_callback`'s blanket `except Exception` caught exactly that, returning None. So
+CrewAI was the single adapter where a wrong-arity extractor stayed silent while the other
+three propagated it. `ValueError` re-raises now; the broad catch still covers what it was
+written for, a step_output the user's extractor cannot read.
+
+**The table claimed to cover a day that postdated its own write.** 0.54.1 shipped
+`corpus_to` 2026-08-22 under `written` 2026-08-21, because the recalibration took `written`
+from a literal rather than the run. `describe()` prints both, so the contradiction was
+user-visible. Corrected, and the generator now asserts `corpus_from <= corpus_to <= written`
+at write time.
+
+**A band labelled "16+ steps" was capped at 60.** `agent_risk()` answered `band=None` for
+any larger gap — a label promising coverage it did not have, on a band whose n is 0, so the
+60 was never a measured boundary. Open-ended now in the data, the reader and the generator.
+
+### the prose stops quoting the table
+
+`attention.py`'s header example said `'rate': 0.387` where the wheel ships 0.2714, and its
+caveat said the corpus is "92% a single agent" where the wheel ships 100%. Both wrong since
+0.44.0 and shipped in every release since — alongside the "0.3% of the sample" figure fixed
+in 0.54.1, which was wrong by twenty-five times. Three literals in one file, all describing
+a table that every recalibration rewrites.
+
+Correcting the digits is what has already failed, three times. So the figures are gone from
+the prose, and `test_prose_matches_table.py` holds the invariant instead: a percentage in
+that docstring must be absent or agree with the table shipped beside it. It is scoped to
+lines that claim to describe the corpus, so a parameter echo and a figure from the drift
+detector are not swept up.
+
+### known and not fixed
+
+`excursion` is granted on the declared parent's overlap with the GROUND alone — the child
+goal is never tested for containment in the parent. An agent that echoes its own ground back
+as `parent_goal` therefore converts any departure into a non-drifting excursion. That is a
+question about what the verdict should mean rather than a defect in this release, and it
+predates it.
+
 ## 0.54.1 - 2026-08-21
 
 ### what a review of 0.54.0 found in 0.54.0

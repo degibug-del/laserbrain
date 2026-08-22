@@ -35,7 +35,7 @@ from pathlib import Path as _Path
 
 __all__ = ['Harness', 'Team', 'Verdict', 'PRESETS', 'norm', 'laserscore', 'context_id',
            'verify_audit', 'ground_score', 'MAX_DEPTH']
-__version__ = '0.54.1'
+__version__ = '0.54.2'
 MAX_DEPTH = 50   # nesting deeper than this is a drift signal, not a decomposition
 API_DEFAULT = 'https://laserbrain-mcp.degibug.workers.dev'
 
