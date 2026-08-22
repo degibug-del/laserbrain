@@ -51,10 +51,16 @@ def _unpack(ex, x):
     Three-value extractors — every one written before today, including every one a user has
     already passed in — keep working unchanged.""" 
     r = tuple(ex(x))
-    if len(r) >= 4:
-        return r[0], r[1], r[2], r[3]
-    g, p, d = r
-    return g, p, d, None
+    if len(r) == 4:
+        return r
+    if len(r) == 3:
+        return r[0], r[1], r[2], None
+    # LOUD, not truncated. `len(r) >= 4` quietly dropped the tail of a 5-value return, so a
+    # mis-shaped extractor fed a wrong field into check() instead of failing — where the
+    # original `g, p, d = ex(x)` raised. An extractor is user code; it should hear about it.
+    raise ValueError(
+        f'extractor returned {len(r)} value(s); expected (goal, progress, distance) or '
+        f'(goal, progress, distance, parent_goal)')
 
 
 # ── 1. generic decorator — the framework-agnostic core ─────────────────────────

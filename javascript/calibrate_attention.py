@@ -493,6 +493,11 @@ def _agent_clock_or_last():
         prev = json.loads(OUT.read_text()).get('agent_clock') or {}
     except Exception:
         return fresh                       # nothing to carry — thin is better than absent
+    if not isinstance(prev, dict):
+        # `{"agent_clock": null}` and other malformed shapes reached .get() below and raised
+        # AttributeError mid-write. A carry-forward that crashes is worse than one that
+        # declines: this runs on the path that writes the shipped table.
+        return fresh
     if not [b for b in prev.get('bands', []) if not b.get('underpowered')]:
         return fresh                       # the previous one was thin too
     prev = dict(prev)

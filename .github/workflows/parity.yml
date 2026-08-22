@@ -48,7 +48,7 @@ jobs:
           print('audit chain ok — verifies clean, fails tampered')"
 
   suites:
-    name: python — the 46 suites
+    name: python — the 45 suites
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
       - run: pip install ./python pytest
       # THE SUITES RAN NOWHERE. This workflow was added on 2026-08-20 because "nothing ran
       # these suites automatically" — and then ran two inline smoke checks rather than the
-      # suites, so all 46 still executed only when someone remembered. Three of them had
+      # suites, so all 45 still executed only when someone remembered. Three of them had
       # rotted apart unnoticed in the meantime, which is the same argument the header above
       # makes, one level down.
       #

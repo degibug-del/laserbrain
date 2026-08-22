@@ -19,9 +19,11 @@ To reverse it completely: restore that backup and `pip uninstall laserbrain`.
 ## What it sends
 
 Nothing. The Python package, its hooks and the stdio MCP server make **no network calls**
-— verified by blocking `socket.connect` and `socket.create_connection`, then importing all
-25 shipped modules and exercising the full path: check, reground, async check, judgment,
-report, ledger and export. Zero connection attempts, and importing the package pulls in no
+— verified by blocking `socket.connect` and `socket.create_connection`, then importing
+every shipped module — the 25 at the top level and the hooks in `laserbrain/hooks/`, which
+an earlier version of this sentence named while the check's non-recursive glob skipped them
+— and exercising the full path: check, reground, async check, judgment, report, ledger and
+export. Zero connection attempts, and importing the package pulls in no
 TLS or HTTP client at all. Re-run it yourself with `python3 test_no_network.py`.
 
 That replaces the method this file used to cite — scanning every shipped file for URLs —

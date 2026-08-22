@@ -329,6 +329,22 @@ else:
     # is testing is not a test, it is a migration with assertions attached.
     _bak = _SHIPPED.read_text()
     _bak_out = _OUT.read_text()
+    # ON DISK TOO, BEFORE ANY WRITE. `_bak`/`_bak_out` alone are process memory: kill the
+    # suite between the doctoring write and the finally and the repo is left holding test
+    # fixture values in two real files, with no record of what they were. Worse, two
+    # concurrent runs corrupt each other — B reads A's doctored file as its own backup and
+    # writes that back. The sidecars survive the first; refusing to start when one already
+    # exists closes the second.
+    _sides = [(_SHIPPED, _SHIPPED.with_suffix('.json.testbak')),
+              (_OUT, _OUT.with_suffix('.json.testbak'))]
+    _stale = [b for _, b in _sides if b.exists()]
+    if _stale:
+        check('no stale test backup is present', False,
+              f'{_stale[0]} exists — another run is in flight, or one died mid-write. '
+              f'Restore it by hand before rerunning.')
+        raise SystemExit(1)
+    for _live, _side in _sides:
+        _side.write_text(_live.read_text())
     try:
         check('the two copies are identical to begin with', _OUT.read_text() == _bak)
 
@@ -362,6 +378,12 @@ else:
             check('  the blind-arm guard refuses to write a dead agent_clock',
                   _g.returncode == 1 and 'drift 0 in every band' in _g.stdout,
                   f'exit {_g.returncode}')
+        else:
+            # LOUDLY, not by vanishing. Wrapped in `if _guarded:` alone this assertion
+            # simply did not exist on a machine whose store is readable, which is the
+            # pattern this whole file is written against: a check that is absent reads
+            # exactly like a check that passed.
+            print('  skip  the blind-arm guard   this store is readable, nothing to refuse')
 
         # And a --ship run repairs the divergence, rather than leaving a human to copy the
         # file. The packaged copy became opt-in behind --ship ("a site build must not mutate
@@ -381,6 +403,9 @@ else:
     finally:
         _SHIPPED.write_text(_bak)
         _OUT.write_text(_bak_out)
+        for _live, _side in _sides:
+            if _side.exists():
+                _side.unlink()
 
 print()
 if fails:

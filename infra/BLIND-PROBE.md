@@ -24,7 +24,7 @@
 > |---|---|
 > | unit → check | units are keyed `session#segment`; checks carry `run`, a different id space. **0 of 14** units match any run. |
 > | via segments | the segment index is `len(segments)`, and the arm file records `#0`–`#13` — but the store holds **2 segments in total**, both from July, and **none** for this session. |
-> | via timestamps | only **4 of 757** checks carry a `ts`, all from July, before the probe window opened. |
+> | via timestamps | only **4** checks in the whole store carry a `ts`, all from July, before the probe window opened. (The store is live and grows; the 4 is the stable figure, the denominator is not.) |
 >
 > So the assignment side was recorded faithfully and the outcome side was never recorded in
 > a form that could be joined to it. This was true for the whole restarted run. The
@@ -34,30 +34,34 @@
 > It does not protect against never being able to read it.** That is the durable lesson
 > here, and it is worth more than the number below.
 >
-> ### What was computed instead
+> ### What was computed instead, and why it is WITHDRAWN
 >
 > The drift log carries both `ts` and `drifting`, so each reading was joined to whichever
-> arm `current-arm.json` held at that moment — the same file the server actually reads. It
-> is a real mechanism, but it is **not the specified estimator**: it pools per READING,
-> where the design says per UNIT, and it attributes every reading in a gap to the last
-> recorded switch.
+> arm `current-arm.json` held at that moment. A first version of this section reported
+> blind 0.1888 against sighted 0.2356 and called it the harness-does-not-help outcome.
+> **Those numbers are withdrawn.** A review on 2026-08-21 found two defects in the join and,
+> more importantly, that the estimate is not stable under either correction.
 >
-> | arm | readings | drifting | rate |
+> The join compared naive LOCAL assignment stamps (`lb_gate.py` writes
+> `datetime.now().isoformat()`, no tzinfo) against UTC reading stamps, applying every arm
+> window seven hours early. And two rows in `blind-arms.jsonl` are not sessions at all —
+> `unknown#0` and `t#0` — whose windows absorbed most of the sample.
+>
+> | variant | blind | sighted | sighted − blind |
 > |---|---|---|---|
-> | blind | 752 | 142 | **0.1888** |
-> | sighted | 1350 | 318 | **0.2356** |
+> | as first reported (naive, junk kept) | 0.1888 | 0.2924 | **+0.1035** |
+> | timezone corrected, junk kept | 0.2011 | 0.3087 | **+0.1076** |
+> | timezone corrected, junk dropped, window closed at the probe's end | 0.2308 | 0.0172 (n=58) | **−0.2136** |
 >
-> **The sighted arm drifted more, by 0.047.** Against the pre-registered criterion —
-> *"the harness does not help if the sighted arm's mean drift rate is not lower than the
-> blind arm's ... sighted ≥ blind on mean drift rate"* — this is that outcome, and the
-> document says it is not to be explained away.
+> Three defensible variants, two signs. Dropping two junk rows collapses the sighted arm
+> from 1350 readings to 58 against blind's 1681 — so the comparison rests on which stretches
+> of one session happened to fall inside two mislabelled windows. **This is not an
+> underpowered result, it is a sign-unstable one**, and an estimate that changes direction on
+> a judgement call about two rows is not evidence in either direction.
 >
-> It is also not to be believed. Every unit came from a single session, so the arms are
-> consecutive stretches of different tasks rather than randomised comparable work, and
-> difficulty is entirely confounded with arm. The estimator is not the one specified, n is
-> a fifth of target on one side, and the secondary measure (catches per unit) is
-> unjoinable for the same reason as the primary. **Read it as "no usable evidence that the
-> harness helps", not as evidence that it hurts.**
+> So the pre-registered question is unanswered, and nothing here should be quoted as
+> bearing on it — in particular not the first table's direction, which was reported before
+> the instability was known and repeated in this file for several hours.
 >
 > ### If this is ever run again
 >

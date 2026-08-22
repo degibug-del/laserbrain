@@ -48,6 +48,13 @@ argument leans on.
 
 ### the suites
 
+One of those nine was very nearly not fixed at all: the `agent_risk` docstring edit was
+written against the wrong indentation, so `str.replace` returned the string unchanged and
+reported success. It was caught by a review of this release and is fixed now — but it is
+worth recording that the failure mode this entry is largely about was committed once more
+in the commit that removes it, and that only an assertion on the anchor would have caught
+it at the time.
+
 `test_carried_fields.py` and `test_no_network.py` are new; both assert on observable
 behaviour rather than plumbing, because a test that checks "`parent_goal` was forwarded"
 passes against a mock that forwards it into a drawer. Every fix above is mutation-tested:
@@ -58,8 +65,8 @@ Three things about the suite itself turned out to matter more than any single fi
 `~/.config/laserbrain/contexts.json` every time — and that store feeds `repetition` and
 "opened in N earlier sessions", which change what `phronesis()` returns. The runner now
 gives each suite a private root. The runner also globbed `python/` only, so the three
-suites in `javascript/` ran nowhere and all three had rotted. And CI, added five days
-earlier *because* "nothing ran these suites automatically", ran two inline smoke checks
+suites in `javascript/` ran nowhere and all three had rotted. And CI, added the day
+before *because* "nothing ran these suites automatically", ran two inline smoke checks
 rather than the suites. It runs them now.
 
 Fixing that surfaced a conformance failure invisible until this release: 77 of 124 inputs

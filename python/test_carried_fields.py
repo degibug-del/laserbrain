@@ -151,5 +151,47 @@ show('a closing run is not called wrong-problem',
      _close.phronesis().get('verdict') != 'wrong-problem',
      _close.phronesis().get('verdict'))
 
+# ── the whole-run distance series agrees with the others ──────────────────────
+# dist_all stored the RAW distance argument while dist_hist, the audit chain and laserscore
+# all normalise through _asdist. A caller passing '9' as a string — supported everywhere
+# else, and what the MCP and adapter paths naturally produce — left dist_all empty, so
+# run_pace took its `else 0` arm and the branch fired "the distance is not falling" on a run
+# that had closed 9 to 1. The false counsel the measure exists to prevent, produced by the
+# line that records it. Four series, one value: they must agree.
+
+_str = lb.Harness()
+for _i, _d in enumerate(['9', '8', '7', '6', '5', '4', '3', '2', '1', '1']):
+    _str.check(goal=(A if _i % 2 == 0 else B), progress='advancing', distance=_d,
+               user_turn=True)
+show('string distances reach dist_all', _str._run.dist_all == [9, 8, 7, 6, 5, 4, 3, 2, 1, 1],
+     str(_str._run.dist_all))
+show('and a closing run of them is not called wrong-problem',
+     _str.phronesis().get('verdict') != 'wrong-problem', _str.phronesis().get('verdict'))
+
+_clamp = lb.Harness()
+for _d in (100, '4', -7):
+    _clamp.check(goal=A, progress='advancing', distance=_d)
+show('dist_all clamps exactly as dist_hist does',
+     _clamp._run.dist_all == _clamp._run.dist_hist,
+     f'{_clamp._run.dist_all} vs {_clamp._run.dist_hist}')
+
+_none = lb.Harness()
+_none.check(goal=A, progress='advancing', distance=None)
+show('an unknown distance stays unknown, not 5', _none._run.dist_all == [],
+     str(_none._run.dist_all))
+
+# run_pace measured from da[0] charged a SETPOINT CHANGE as lost ground: close a little on
+# one goal, be handed a harder one, close a lot on that — and the run reads as going
+# backwards. Measured from the run's worst point instead.
+_mirror = lb.Harness()
+_mirror.check(goal=A, progress='advancing', distance=3)
+_mirror.check(goal=A, progress='advancing', distance=2)
+for _i, _d in enumerate([9, 8, 7, 6, 5, 4]):
+    _mirror.check(goal=(B if _i % 2 == 0 else A), progress='advancing', distance=_d,
+                  user_turn=True)
+show('a reground to a HARDER goal is not called wrong-problem',
+     _mirror.phronesis().get('verdict') != 'wrong-problem',
+     _mirror.phronesis().get('verdict'))
+
 print('\n' + ('ALL CARRIED-FIELD TESTS PASS ✓' if ok else 'SOME FAILED ✗'))
 raise SystemExit(0 if ok else 1)

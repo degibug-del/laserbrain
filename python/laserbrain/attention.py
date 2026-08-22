@@ -154,9 +154,16 @@ def agent_risk(steps):
     Two clocks, and only one of them is free. Time since the user spoke is external:
     laserbrain does not control it, the bands are whatever they are, and they are strong.
     Steps since the agent's own last check is internal, and the coverage gate forces a
-    check at 4 steps — so 85% of every gap ever recorded lands in 4-7, and gaps of 8 or
-    more are 0.3% of the sample. The interval cannot be evaluated against data the
+    check at 4 steps — so 78% of every gap ever recorded lands in 4-7, and gaps of 8 or
+    more are 7.7% of the sample. The interval cannot be evaluated against data the
     interval produced.
+
+    Those read 85% and 0.3% until 2026-08-21, against a table shipped in the same wheel
+    saying 77.8% and 7.68%. The second was wrong by a factor of twenty-five, and it is the
+    one the argument leans on: "gaps of 8 or more are 0.3%" says the long tail is too rare
+    to reason about, where 7.7% is 181 observations and not rare at all. Recomputed from
+    agent_clock in attention.json, the only source either number ever had; if that table is
+    recalibrated these move with it.
 
     Inside the range the gate permits, the effect is small and not significant. That is
     reported, not buried, and it is NOT evidence that the interval does not matter: a flat

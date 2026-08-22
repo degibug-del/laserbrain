@@ -71,7 +71,11 @@ show('a full run opens no connection', not attempts, str(attempts))
 
 # Every shipped module, not only the ones __init__ happens to pull in.
 pkg = pathlib.Path(lb.__file__).parent
-shipped = sorted(p.stem for p in pkg.glob('*.py') if p.stem != '__init__')
+# rglob, NOT glob. The non-recursive version skipped laserbrain/hooks/ entirely — the very
+# modules SECURITY.md's sentence named, and the ones that run on every tool call. Caught by
+# a review on 2026-08-21: the wheel holds 32 .py files and this reported 25.
+shipped = sorted(str(p.relative_to(pkg).with_suffix('')).replace('/', '.')
+                 for p in pkg.rglob('*.py') if p.stem != '__init__')
 blocked_on_import = []
 for _m in shipped:
     try:
@@ -83,7 +87,7 @@ for _m in shipped:
         pass
 show(f'all {len(shipped)} shipped modules import without connecting',
      not blocked_on_import, str(blocked_on_import))
-show('no module was silently skipped', len(shipped) >= 20, f'{len(shipped)} modules')
+show('no module was silently skipped', len(shipped) >= 30, f'{len(shipped)} modules')
 
 # Importing the package must not even pull in a TLS or HTTP client. asyncio drags in ssl,
 # which is why this is measured in a clean subprocess rather than in this one.

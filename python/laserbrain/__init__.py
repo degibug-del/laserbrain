@@ -850,7 +850,16 @@ class _Run:
         # reground and is the right reading for "is this work going anywhere"; it is the
         # wrong one for "has this run come back to where it started".
         da = self.dist_all
-        run_pace = ((da[0] - da[-1]) / max(1, steps)) if len(da) >= 2 else 0
+        # FROM THE RUN'S WORST POINT, not its first. Measuring from da[0] charges a
+        # setpoint change as lost ground: two checks on goal A at 3 then 2, then the user
+        # hands over a harder goal and the agent works 9 down to 4 — da[0]-da[-1] is
+        # negative, run_pace <= 0 holds, and the branch fires "the distance is not falling"
+        # at an agent that has closed 9 to 4 on the goal it was actually given. That is the
+        # mirror of the bug this measure fixed, and the ground_at comment above already
+        # explains why a never-reset accumulator paired with a setpoint change is wrong.
+        # Resetting dist_all at reground is NOT the fix — on a regrounding cycle each ground
+        # holds one check, len(da) < 2, and the original bug returns.
+        run_pace = ((max(da) - da[-1]) / max(1, steps)) if len(da) >= 2 else 0
         reasons = [r for r, _ in trace]
         # Stalls belong to the work in front of you; a stall on a goal the user replaced is
         # not evidence about the goal they replaced it with.
@@ -1341,8 +1350,22 @@ class _Run:
             # instead filled the list on ordinary steps and never on a reground, which
             # returns before that line — so the regrounding cycles this measure exists to
             # judge were the exact ones it had no distances for.
-            if isinstance(distance, (int, float)) and not isinstance(distance, bool):
-                self.dist_all.append(distance)
+            # THROUGH _asdist, like every other series. dist_hist, the audit chain and
+            # laserscore all normalise the distance; this stored the raw argument, so a
+            # caller passing '9' as a STRING — which _asdist explicitly supports, and which
+            # the MCP and adapter paths naturally produce — left dist_all empty. run_pace
+            # then took its `else 0` arm, 0 <= 0 held, and the branch fired "the distance is
+            # not falling" on a run that had closed 9 to 1: the exact false counsel the
+            # whole-run measure was added to remove, reintroduced by the line that records
+            # it. distance=100 likewise entered unclamped while dist_hist stored 10.
+            #
+            # _asdist directly, not the local `d`: emit() is also called on the
+            # ungrammatical path before `d` is bound. `is not None` stays because
+            # _asdist(None) is 5 and "distance unknown" must not silently become 5 — the
+            # same exclusion dist_hist already makes. Bools stay out; a bool is not a
+            # distance.
+            if distance is not None and not isinstance(distance, bool):
+                self.dist_all.append(_asdist(distance))
             self.trail.append('|'.join(sorted(norm(goal))) if goal else '')
 
             # Recorded here because emit is the single exit every verdict passes through —

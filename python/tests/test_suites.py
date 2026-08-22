@@ -30,6 +30,12 @@ SUITES = ([('.', p.name) for p in ROOT.glob('test_*.py')]
 SUITES = sorted(SUITES, key=lambda t: (t[0], t[1]))
 
 
+def _run_suite(where, suite, home):
+    env = {**os.environ, 'LASERBRAIN_HOME': home}
+    return subprocess.run([sys.executable, suite], cwd=(ROOT / where).resolve(),
+                          capture_output=True, text=True, timeout=300, env=env)
+
+
 @pytest.mark.parametrize('where,suite', SUITES,
                          ids=[f'{d}/{n}' if d != '.' else n for d, n in SUITES])
 def test_suite_passes(where, suite):
@@ -49,9 +55,11 @@ def test_suite_passes(where, suite):
     # have to remember.
     #
     # mkdtemp per suite, not per run: suites must not see each other's contexts either.
-    env = {**os.environ, 'LASERBRAIN_HOME': tempfile.mkdtemp(prefix=f'lb-{suite[:-3]}-')}
-    r = subprocess.run([sys.executable, suite], cwd=(ROOT / where).resolve(),
-                       capture_output=True, text=True, timeout=300, env=env)
+    # CLEANED UP. mkdtemp does not remove itself, so this leaked one populated state
+    # directory per suite per run — 45 of them, growing with every CI job and every local
+    # run. TemporaryDirectory in a with-block keeps the isolation and returns the disk.
+    with tempfile.TemporaryDirectory(prefix=f'lb-{suite[:-3]}-') as _home:
+        r = _run_suite(where, suite, _home)
     # 77 means the suite could not run — its subject lives in another repo and was not
     # found. That is a SKIP, not a pass: reporting it green would be the same lie as a
     # green build over a check that never executed, which is the failure this whole project

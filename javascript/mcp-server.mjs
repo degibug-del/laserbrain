@@ -287,8 +287,10 @@ const _BUILTIN = {
 // floor for stopwords, stemming and calibration, but the CEILING PHRASE LISTS exist only in
 // grammar.json — so the failsafe silently dropped them, and test_ceiling_conformance.py
 // scored 77 of 124 inputs differently between this server and the SDK reading the same
-// grammar. Byte-identical server, opposite verdicts, decided purely by which directory it
-// was started from. Found 2026-08-21 once that suite was made to actually run.
+// grammar. Byte-identical server, opposite verdicts, decided by WHERE THE FILE SITS — the
+// lookup keys off import.meta.url, not the process's working directory, so copying the
+// server elsewhere changes its answers while running it from elsewhere does not. Found
+// 2026-08-21 once that suite was made to actually run.
 // ../json/ LEAVES THE INSTALL DIRECTORY, so it is only taken in the one layout it was
 // written for: this repo, where javascript/ and json/ are siblings. Installed under
 // node_modules the same relative hop lands on a SIBLING PACKAGE — `json` is a real npm
@@ -558,7 +560,13 @@ const displacement = (s, g) =>
  */
 const LANES = new Map()
 const SHARED = '__shared__'
-const freshDrift = () => ({ ground: null, firstGoal: [], distHist: [], trace: [], trail: [] })
+// oscFires and distAll twin the Python run's _osc_fires and dist_all. Both are whole-run
+// series that must NOT reset on a reground — see the Python comments at their declarations.
+// Added 2026-08-21: laserbrain 0.54.0 fixed two defects here and this side was not brought
+// with it, so the two front doors the codebase calls one instrument returned different
+// verdicts for the same run.
+const freshDrift = () => ({ ground: null, firstGoal: [], distHist: [], distAll: [],
+                            trace: [], trail: [], oscFires: 0 })
 function lane(session) {
   const k = String(session || SHARED)
   if (!LANES.has(k)) LANES.set(k, { drift: freshDrift(), runId: null, seenOk: null })
@@ -1399,7 +1407,16 @@ function judgeWork() {
     // grounds already held, and drifts-against-regrounds is a claim about the SEQUENCE of
     // grounds. Scoping either to the current ground would delete its subject.
     const goalDrifts = count('goal-drift')
-    const regrounds = count('reground'), oscillations = count('oscillating')
+    const regrounds = count('reground')
+    // NOT count('oscillating') — see drift.oscFires. The trace holds the reading the cycle
+    // was found in, never the word.
+    const oscillations = drift.oscFires ?? 0
+    // Whole-run progress for the whole-run rule, measured from the run's WORST point so a
+    // reground to a harder goal is not charged as lost ground. `pace` below is measured
+    // from the last reground and is the right reading for "is this work going anywhere";
+    // it is the wrong one for "has this run come back to where it started".
+    const da = drift.distAll ?? []
+    const runPace = da.length >= 2 ? (Math.max(...da) - da[da.length - 1]) / Math.max(1, steps) : 0
 
     // Length of the trailing run in which distance never improved on its own best.
     let flat = 0
@@ -1538,7 +1555,7 @@ function judgeWork() {
         : 'Check the ground before acting on this. Compare the goal you are passing against the '
           + 'one this run started with — if they are the same, this reading is the thing that is '
           + 'wrong, not your work. If they differ, reset_task to the goal you actually have.'
-    } else if (oscillations > 0 && pace <= 0) {
+    } else if (oscillations > 0 && runPace <= 0) {
       // `pace <= 0` is load-bearing, and it was found by dogfooding rather than reasoning:
       // this judgment fired on a run whose distance had gone 6→4→3→2 monotonically. The
       // cycle detector reads the VERDICT sequence, which repeats naturally when a healthy
@@ -1959,6 +1976,12 @@ async function _call(name, args) {
     const record = (drifting, reason, advice, phi = 0, extra = {}) => {
       const step = drift.trace.length + 1
       drift.trace.push({ step, reason, phi: Number(phi.toFixed(2)) })
+      // Beside trace, because it is its distance twin and must be recorded on the same
+      // single exit: a reground returns before the distHist push, so recording it there
+      // would leave this empty on exactly the regrounding cycles it exists to judge.
+      if (distance !== undefined && distance !== null && typeof distance !== 'boolean') {
+        (drift.distAll ??= []).push(asDist(distance))
+      }
       // The trace records the READING; the cycle is a fact about the sequence, so the
       // original goes in and `oscillating` comes out. drift.osc keeps it from re-firing
       // every step once a cycle is established.
@@ -1982,6 +2005,11 @@ async function _call(name, args) {
       const of = 'ground'
       if (period && !drift.osc) {
         drift.osc = true
+        // COUNTED HERE, not from the trace. trace holds the READING the cycle was found in
+        // and never the word 'oscillating' (see just above), so count('oscillating') was
+        // provably always 0 and the wrong-problem branch below was unreachable — the same
+        // defect the Python twin carried "for the life of the package".
+        drift.oscFires = (drift.oscFires ?? 0) + 1
         drifting = true
         reason = 'oscillating'
         const what = of === 'ground'
