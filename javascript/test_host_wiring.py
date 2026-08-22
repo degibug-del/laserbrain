@@ -90,14 +90,33 @@ def _grok_root():
 
 GROK = _grok_root()
 CLIENT = GROK.name.lstrip('.')          # the client's own name — never "the host", never "agent-b"
+
+# OPT-IN, BECAUSE THE SUBJECT IS NOT IN USE. Diego stopped using this client in August 2026,
+# and its hook copies have drifted from lasergear accordingly — three parity checks that
+# fail on a deployment nobody runs. A permanently red suite is worse than no suite: it
+# teaches everyone to ignore the colour, which is the thing this repository is organised
+# against.
+#
+# Not deleted, because "not using it these days" is not "never again" and this file is the
+# only thing that checks a host's wiring end to end — the config, the server actually
+# starting, the tool list, and the skill naming only tools that exist. Set
+# LASERBRAIN_CHECK_GROK=1 to run it; it will report the hook drift again the moment it is
+# asked to.
+#
+# 77, not 0. tests/test_suites.py reads 0 as a PASS and 77 as a skip. Skipping with 0 was
+# how this suite reported success on machines that had never seen the client at all.
+if os.environ.get('LASERBRAIN_CHECK_GROK', '').strip() not in ('1', 'true', 'yes'):
+    print(f'  SKIP — {CLIENT} wiring is not checked by default; '
+          f'set LASERBRAIN_CHECK_GROK=1 to run it')
+    sys.exit(77)
 ICLOUD = pathlib.Path(os.environ.get('LB_ICLOUD_ROOT')
                       or HOME / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis')
 LASERGEAR = ICLOUD / 'lasergear'
 CANONICAL_SERVER = ICLOUD / 'lasermind/mcp-server.mjs'
 
 if not GROK.exists():
-    print(f'  SKIP — {GROK} not present; nothing to check' )
-    sys.exit(0)
+    print(f'  SKIP — {GROK} not present; nothing to check')
+    sys.exit(77)
 
 fails = []
 skipped = []
@@ -120,7 +139,7 @@ def skip(label, why):
 cfg = GROK / 'config.toml'
 if not cfg.exists():
     print(f'  SKIP — no {cfg}')
-    sys.exit(0)
+    sys.exit(77)
 
 raw = cfg.read_text()
 m = re.search(r'\[mcp_servers\.laserbrain\](.*?)(?=\n\[|\Z)', raw, re.S)
