@@ -1,5 +1,93 @@
 # Changelog
 
+## 0.54.0 - unreleased
+
+### fields the signatures promised, and guards that were only pretending to run
+
+Nine defects, one shape: something is accepted or arranged, and then nothing reads it.
+None of them raise, none log, and the suite was green throughout — so every one shipped.
+
+**Arguments dropped before the engine saw them.** `acheck()` took `user_turn` and never
+passed it, so the async path could not reground: `acheck(user_turn=True)` returned
+`goal-drift` where `check(user_turn=True)` returned `reground`. It also never set `.last`,
+so `Operator(harness=...)` read `None` forever. `inferred=True` rebuilt the `Verdict` from
+four positional fields and let the rest fall back to defaults — the reading marked *least*
+trustworthy came back reporting `anchored=1.0`, the most confident value available, with
+`laserscore` and `goal_score` dropped. It replaces now instead of rebuilding.
+
+**`excursion` was unreachable from every framework.** No adapter passed `parent_goal` —
+not LangGraph, CrewAI, the middleware or the decorator — so a legitimate sub-task read as
+drift from all four. Fixing the engine does nothing if no adapter carries the field.
+Three-value extractors, including every one already written by a user, still work.
+
+**A judgment that had never fired.** `phronesis()` counted `reasons.count('oscillating')`
+over a trace that deliberately stores the *reading* rather than the meta-verdict, so the
+count was always zero and `wrong-problem` was unreachable. Two sound decisions that had
+never been read together. Waking it exposed the defect underneath: its `pace <= 0` guard
+measures distance since the last **reground**, but the branch only fires on regrounding
+cycles, where that pace is ~0 by construction — it told a run that had closed 9→1 that its
+"distance is not falling". Whole-run rules need a whole-run measure, so `dist_all` now
+survives regrounds the way `trace` does.
+
+**The audit chain proved less than it claimed.** `verify_audit` caught an edited verdict,
+two records swapped, and a dropped first record — and returned `(True, -1)` for a chain
+with its last three deleted. So the documented threat, *editing a past verdict to hide a
+drift*, had an easier route that worked: delete it. An empty chain verified as intact for
+the same reason. That cannot be closed from inside a hash chain, so `verify_audit` now
+takes `expect_head` and `expect_len`; both default to `None`, the old behaviour is
+unchanged, and the limit is stated rather than left to be discovered.
+
+**Two claims wider than their evidence.** SECURITY.md said the package makes no network
+calls, "verified by scanning every shipped file for URLs" — a method that would pass a host
+assembled at runtime, read from the environment, or reached through a dependency. The claim
+is true; the check could not have established it. Replaced with one that can fail: block
+`socket.connect`, import all 25 shipped modules, run the full path. And `attention.py`'s
+`agent_risk` docstring said gaps of 8+ steps are "0.3% of the sample" against a table
+shipped in the same wheel saying 7.68% — wrong by twenty-five times, on the figure the
+argument leans on.
+
+### the suites
+
+`test_carried_fields.py` and `test_no_network.py` are new; both assert on observable
+behaviour rather than plumbing, because a test that checks "`parent_goal` was forwarded"
+passes against a mock that forwards it into a drawer. Every fix above is mutation-tested:
+reverting any one of them fails the check written for it, and only that check.
+
+Three things about the suite itself turned out to matter more than any single fix.
+37 of 42 suites set no state root, so a full run rewrote the live
+`~/.config/laserbrain/contexts.json` every time — and that store feeds `repetition` and
+"opened in N earlier sessions", which change what `phronesis()` returns. The runner now
+gives each suite a private root. The runner also globbed `python/` only, so the three
+suites in `javascript/` ran nowhere and all three had rotted. And CI, added five days
+earlier *because* "nothing ran these suites automatically", ran two inline smoke checks
+rather than the suites. It runs them now.
+
+Fixing that surfaced a conformance failure invisible until this release: 77 of 124 inputs
+scored differently between the SDK and the stdio server. Byte-identical server, opposite
+verdicts, decided purely by which directory it started from — it reads `grammar.json`
+beside itself, 0.53.0 moved the file, and the read is guarded, so it fell back to built-in
+literals that do not contain the ceiling phrase lists. The comment above those literals
+says "neither absence nor corruption can take the instrument below its published
+behaviour". It could. Now 124/124.
+
+## 0.53.0 - 2026-08-20
+
+### both implementations, in one place
+
+The consolidation: 140 files and 28,917 insertions bringing the Python SDK, the stdio
+server, the TypeScript port and the shared JSON contract into one repository, with
+`lasermind/` becoming `javascript/`, `laserbrain-sdk/` becoming `python/`, and the data
+files moving to `json/`.
+
+Written retroactively on 2026-08-21. This release had no entry, which is worth recording
+rather than quietly backfilling: 0.53.0 is the build every `pip install laserbrain` served
+for the days after, and it carried the whole of the above with it. Constants naming the
+pre-move paths were left behind across both trees, and because most of them sit inside
+guards, the result was not a crash — it was checks reporting success while comparing
+nothing. The calibrator could not start at all, which is why the table inside the wheel and
+the calibrated table in `json/` were free to drift for five days with the parity guard
+between them pointed at a directory that no longer existed.
+
 ## 0.52.0 - 2026-08-18
 
 ### the frozen ground comes back on every verdict, not only when one fires
