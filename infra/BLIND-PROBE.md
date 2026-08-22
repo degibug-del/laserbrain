@@ -1,5 +1,73 @@
 # The blind probe — pre-registration
 
+> ## ENDED 2026-08-21, SHORT OF THE STOPPING RULE, AND READ ANYWAY
+>
+> **The probe is disabled.** `LASERBRAIN_BLIND_PROBE=1` was removed from the four hook
+> commands in `~/.claude/settings.json`; `blind_arm` now returns `sighted` for every unit.
+> `blind-arms.jsonl` is kept, not deleted.
+>
+> **It stopped at 8 blind / 6 sighted, against a pre-registered 20/20** — and two of the
+> six sighted units are junk (`unknown#0`, `t#0`), so the real count is 8 / 4. Diego chose
+> to lower the target to what it reached and read the outcome. That is the one move this
+> document argues against most directly — *"a threshold moved once the data is visible is
+> fitted to it"* — and it is recorded here rather than quietly applied. **What follows is a
+> post-hoc look, not the result this file asked for.** No future blind probe can be run
+> clean on this corpus by anyone who has read it.
+>
+> ### The specified outcome measure could not be computed at all
+>
+> Ending it early is not what stopped this from being an answer. The primary measure —
+> *drift rate per unit, from the session records, joined to an arm through
+> `blind-arms.jsonl`* — has no join. Three routes, all closed:
+>
+> | route | why it fails |
+> |---|---|
+> | unit → check | units are keyed `session#segment`; checks carry `run`, a different id space. **0 of 14** units match any run. |
+> | via segments | the segment index is `len(segments)`, and the arm file records `#0`–`#13` — but the store holds **2 segments in total**, both from July, and **none** for this session. |
+> | via timestamps | only **4 of 757** checks carry a `ts`, all from July, before the probe window opened. |
+>
+> So the assignment side was recorded faithfully and the outcome side was never recorded in
+> a form that could be joined to it. This was true for the whole restarted run. The
+> 2026-08-16 restart fixed a moving frozen ground; it did not fix this, because nobody had
+> looked yet — which is precisely what a no-interim-looks rule costs when the instrument
+> itself is unverified. **A pre-registration protects against reading the data too early.
+> It does not protect against never being able to read it.** That is the durable lesson
+> here, and it is worth more than the number below.
+>
+> ### What was computed instead
+>
+> The drift log carries both `ts` and `drifting`, so each reading was joined to whichever
+> arm `current-arm.json` held at that moment — the same file the server actually reads. It
+> is a real mechanism, but it is **not the specified estimator**: it pools per READING,
+> where the design says per UNIT, and it attributes every reading in a gap to the last
+> recorded switch.
+>
+> | arm | readings | drifting | rate |
+> |---|---|---|---|
+> | blind | 752 | 142 | **0.1888** |
+> | sighted | 1350 | 318 | **0.2356** |
+>
+> **The sighted arm drifted more, by 0.047.** Against the pre-registered criterion —
+> *"the harness does not help if the sighted arm's mean drift rate is not lower than the
+> blind arm's ... sighted ≥ blind on mean drift rate"* — this is that outcome, and the
+> document says it is not to be explained away.
+>
+> It is also not to be believed. Every unit came from a single session, so the arms are
+> consecutive stretches of different tasks rather than randomised comparable work, and
+> difficulty is entirely confounded with arm. The estimator is not the one specified, n is
+> a fifth of target on one side, and the secondary measure (catches per unit) is
+> unjoinable for the same reason as the primary. **Read it as "no usable evidence that the
+> harness helps", not as evidence that it hurts.**
+>
+> ### If this is ever run again
+>
+> Record the arm ON the check, at write time, in the session record — one field, decided
+> where the reading is produced. Every failure above is the same failure: the arm and the
+> outcome were written by different processes into different files with no shared key.
+> Verify the join produces rows **before** collecting, on a handful of units. A probe whose
+> analysis has never once been executed end to end is not collecting data; it is collecting
+> the belief that it is.
+
 > ## RESTARTED FROM ZERO, 2026-08-16
 >
 > **The first collection is void and was not looked at.** 21 assignments had accumulated,
