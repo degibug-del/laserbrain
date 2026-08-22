@@ -1,6 +1,6 @@
 {
   "name": "laserbrain",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "A goal-alignment harness for AI agents \u2014 holds the goal your agent stated first, frozen where it cannot revise it, and checks every later step against it. No model, no network, no key.",
   "keywords": [
     "agent",

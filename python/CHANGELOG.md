@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.55.0 - 2026-08-22
+
+### one implementation behind every door, and the offline server stops being a stub
+
+`laserbrain mcp` served 11 tools where mcp-server.mjs served 28, because eight operations
+lived in the JS tree and were reachable only by shelling out to Python. The package
+implemented them the whole time. They are in `laserbrain/_ops.py` now and both servers call
+the same function; the JS bridge imports the registry rather than holding a copy.
+
+The offline server goes 11 -> 21, and it was also dropping `parent_goal` and `user_turn` in
+`check_state` — so a legitimate sub-task declaring its parent came back `goal-drift` and
+`excursion` was unreachable from it entirely. The same defect fixed in every framework
+adapter in 0.54.0, sitting in another door.
+
+Six tools stay JS-only and always will: ask_alice, analyze_language, compare_phrasings,
+remember_self, resume_self and forget_self reach a hosted service, verified by blocking
+sockets and calling them. This server runs with the network unplugged; `not_here` names them
+and says where they live, and test_server_parity.py asserts that boundary so a later attempt
+to "close the gap" fails there first.
+
+The wheel now ships mcp-server.mjs, lb_paths.mjs and sdk_bridge.py, so `pip install
+laserbrain` plus node gets the 32-tool server. `laserbrain install --server node` wires it;
+the offline one stays the default, because six of the difference reach a hosted endpoint and
+an installer that silently turned that on would make SECURITY.md's "opt-in and separate"
+false for everyone who ran it.
+
+Also: the oscillation counter and the whole-run distance measure went into the two
+implementations that were missed in 0.54.1 — TypeScript and the Cloudflare worker — so all
+four now agree, as drift.ts requires. `laserbrain coverage` honours LASERBRAIN_HOME instead
+of hardcoding a path. And a duplicate drift-vectors.json with 6 vectors against the live 16,
+read by nothing, is gone.
+
 ## 0.54.2 - 2026-08-22
 
 ### what a clean-install verification of 0.54.1 found
