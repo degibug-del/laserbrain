@@ -20,7 +20,8 @@ asked.
 
 THE TABLE IS MEASURED, NOT DECREED
 
-attention.json is written by lasermind/calibrate_attention.py from the live drift log
+attention.json is written by calibrate_attention.py (javascript/ in the laserbrain repo)
+from the live drift log
 joined to user-message timestamps, and regenerated rather than edited. Two properties of
 that file matter to every function here:
 
@@ -126,7 +127,8 @@ def advise(seconds, tolerance=0.25):
     if not r['known']:
         if not BANDS:
             return ('No calibration is installed, so there is nothing to say about '
-                    f'{when_str} unattended. Run lasermind/calibrate_attention.py.')
+                    f'{when_str} unattended. Recalibrate with calibrate_attention.py '
+                    'from the laserbrain repo.')
         return (f'{when_str} unattended, which falls in "{r["band"]}" — a band with only '
                 f'{r["n"]} readings behind it. Too few to quote a rate.')
     pct = r['rate'] * 100
@@ -201,7 +203,8 @@ def describe():
     """The table and the limits it was measured under, for printing."""
     p = _CAL.get('provenance', {})
     if not BANDS:
-        return f'No calibration at {_PATH}. Run lasermind/calibrate_attention.py.'
+        return (f'No calibration at {_PATH}. Recalibrate with '
+                'calibrate_attention.py from the laserbrain repo.')
     lines = ['drift against time since the user last spoke', '']
     for b in BANDS:
         rate = 'underpowered' if b.get('rate') is None else f"{b['rate'] * 100:5.1f}%"

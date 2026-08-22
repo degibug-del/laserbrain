@@ -13,11 +13,26 @@ import tempfile
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SUITES = sorted(p.name for p in ROOT.glob('test_*.py'))
+
+# BOTH TREES, NOT JUST THIS ONE. This globbed python/ alone, so the three suites in
+# javascript/ were collected by nothing and ran nowhere. All three had rotted: two died on
+# imports the reorg left behind (_testhome, lasergear/lb_gate.py) and the third pointed at
+# a laserbrain-sdk/ that no longer exists — and because no runner called them, none of it
+# surfaced. test_attention.py is the parity guard on attention.json; it had been silently
+# skipping the very comparison it exists to make while the two copies drifted five days
+# apart. Found 2026-08-21.
+#
+# Identified as (dir, name) because the two trees can hold the same filename and each suite
+# must run with its own directory as cwd.
+SUITES = ([('.', p.name) for p in ROOT.glob('test_*.py')]
+          + [('../javascript', p.name)
+             for p in (ROOT.parent / 'javascript').glob('test_*.py')])
+SUITES = sorted(SUITES, key=lambda t: (t[0], t[1]))
 
 
-@pytest.mark.parametrize('suite', SUITES)
-def test_suite_passes(suite):
+@pytest.mark.parametrize('where,suite', SUITES,
+                         ids=[f'{d}/{n}' if d != '.' else n for d, n in SUITES])
+def test_suite_passes(where, suite):
     # A PRIVATE STATE ROOT PER SUITE. Two comments in the tree — test_gate_hosts.py and
     # javascript/test_attention.py — already say "run-tests.sh exports LASERBRAIN_HOME so no
     # suite can write to it" and defend against it. There is no run-tests.sh in this repo and
@@ -35,8 +50,8 @@ def test_suite_passes(suite):
     #
     # mkdtemp per suite, not per run: suites must not see each other's contexts either.
     env = {**os.environ, 'LASERBRAIN_HOME': tempfile.mkdtemp(prefix=f'lb-{suite[:-3]}-')}
-    r = subprocess.run([sys.executable, suite], cwd=ROOT, capture_output=True, text=True,
-                       timeout=300, env=env)
+    r = subprocess.run([sys.executable, suite], cwd=(ROOT / where).resolve(),
+                       capture_output=True, text=True, timeout=300, env=env)
     # 77 means the suite could not run — its subject lives in another repo and was not
     # found. That is a SKIP, not a pass: reporting it green would be the same lie as a
     # green build over a check that never executed, which is the failure this whole project
@@ -52,3 +67,6 @@ def test_suite_passes(suite):
 def test_every_suite_is_collected():
     """A suite that stops being found is a suite that stops running, silently."""
     assert len(SUITES) >= 39, f'only {len(SUITES)} suites found — did a file get renamed?'
+    # Named explicitly: the count alone would stay satisfied if javascript/ dropped out
+    # again, which is exactly how these three went unrun.
+    assert any(d == '../javascript' for d, _ in SUITES), 'the javascript suites vanished'

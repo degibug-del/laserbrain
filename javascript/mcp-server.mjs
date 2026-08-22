@@ -277,11 +277,26 @@ const _BUILTIN = {
   calibration: { goal_min: 0.30, self_report_min: 0.15, stall_window: 4,
                  weights: { goal: 0.5, distance: 0.3, progress: 0.2 } },
 }
+// WHERE THE FILE IS LOOKED FOR, and why there are two places. Deployed, grammar.json sits
+// beside this server and that stays first. In this repo the reorg moved it to json/ — the
+// source directory both the SDK and the worker read — and nothing updated this line, so the
+// server beside it found no file and fell back to the literals below.
+//
+// Which the comment above says must not be able to happen: "neither absence nor corruption
+// can take the instrument below its published behaviour". It could. The literals are the
+// floor for stopwords, stemming and calibration, but the CEILING PHRASE LISTS exist only in
+// grammar.json — so the failsafe silently dropped them, and test_ceiling_conformance.py
+// scored 77 of 124 inputs differently between this server and the SDK reading the same
+// grammar. Byte-identical server, opposite verdicts, decided purely by which directory it
+// was started from. Found 2026-08-21 once that suite was made to actually run.
 let _fromFile = {}
-try {
-  _fromFile = JSON.parse(
-    readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'grammar.json'), 'utf8'))
-} catch { /* offline failsafe: the built-ins below are the published instrument */ }
+for (const _p of [join(dirname(fileURLToPath(import.meta.url)), 'grammar.json'),
+                  join(dirname(fileURLToPath(import.meta.url)), '..', 'json', 'grammar.json')]) {
+  try {
+    _fromFile = JSON.parse(readFileSync(_p, 'utf8'))
+    break
+  } catch { /* try the next location; the built-ins below remain the published floor */ }
+}
 const _ok = (v, fallback) => (Array.isArray(v) ? v.length : v != null) ? v : fallback
 const GRAMMAR = _fromFile.laserbrain_grammar ? _fromFile : { ..._fromFile, offline: true }
 const PROGRESS = new Set(['advancing', 'stuck', 'circling'])
@@ -316,12 +331,18 @@ const readsAsReport = (t) => Boolean(t) && REPORT_RE.test(String(t))
 let _attnCache
 function loadAttention() {
   if (_attnCache !== undefined) return _attnCache
-  try {
-    const p = new URL('./attention.json', import.meta.url)
-    _attnCache = JSON.parse(readFileSync(p, 'utf8'))
-  } catch {
-    _attnCache = null
+  // Two locations, for the same reason grammar.json has two: deployed it sits beside this
+  // server, and in this repo the reorg moved it to json/. Absent stays a real state — the
+  // tool says "no calibration installed" rather than guessing — but it should only be
+  // reported when the table is genuinely missing, not when it merely moved.
+  for (const _p of [new URL('./attention.json', import.meta.url),
+                    new URL('../json/attention.json', import.meta.url)]) {
+    try {
+      _attnCache = JSON.parse(readFileSync(_p, 'utf8'))
+      return _attnCache
+    } catch { /* try the next location */ }
   }
+  _attnCache = null
   return _attnCache
 }
 // ── the goal vocabulary, shared with the SDK ──────────────────────────────────

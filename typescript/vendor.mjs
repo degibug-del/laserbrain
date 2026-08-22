@@ -16,8 +16,14 @@ const REPO = process.env.LASERBRAIN_WORKER_SRC
 const here = new URL('./src/', import.meta.url)
 
 copyFileSync(`${REPO}/src/grammar.json`, new URL('grammar.json', here))
+// json/drift-vectors.json, NOT test/drift-vectors.json. Both parity suites read the former
+// (typescript/test/parity.mjs:16 and javascript/test/parity.mjs:26); nothing reads the
+// latter, so re-vendoring updated a file no one consumes and left the consumed one stale.
+// grammar.ts:235 already names this failure in this repo's own history — "two
+// drift-vectors.json files disagreeing 15 vs 9, one of them read by nothing". It was still
+// true, and this is the line that kept it true.
 copyFileSync(`${REPO}/drift-vectors.json`,
-             new URL('./test/drift-vectors.json', import.meta.url))
+             new URL('../json/drift-vectors.json', import.meta.url))
 
 const grammar = readFileSync(`${REPO}/src/grammar.json`, 'utf8')
 writeFileSync(new URL('grammar.ts', here),

@@ -13,6 +13,17 @@ the test that makes one list with two readers a fact rather than an intention.
 
 Skipped, loudly, if node or mcp-server.mjs is absent — the SDK ships to people who have
 neither, and a gate that fails on a missing sibling checkout teaches people to ignore it.
+
+"Loudly" was not true until 2026-08-21. The skip exited 0, and tests/test_suites.py reads
+exit 0 as a PASS — so on any machine without the server this suite reported success having
+compared nothing, which is the failure this file was written to prevent, one level up. It
+now exits 77, the code the runner already understands as "could not run" and reports as a
+skip. Three sibling suites were already using it.
+
+It also looked for the server ONLY in the author's iCloud tree, so a fresh clone could never
+run it even though javascript/mcp-server.mjs sits in the checkout. The repo's own copy comes
+first now; LASERMIND_SERVER still overrides, and the iCloud path remains as the last fallback
+for the working tree it was written against.
 """
 import json
 import os
@@ -26,11 +37,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from laserbrain.ceiling import mark, CAUSE_PATTERNS, OBSERVATION_PATTERNS  # noqa: E402
 
 _ROOT = pathlib.Path.home() / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis'
-SERVER = pathlib.Path(os.environ.get('LASERMIND_SERVER') or _ROOT / 'lasermind/mcp-server.mjs')
+_IN_REPO = pathlib.Path(__file__).resolve().parent.parent / 'javascript' / 'mcp-server.mjs'
+_CANDIDATES = [os.environ.get('LASERMIND_SERVER'), _IN_REPO, _ROOT / 'lasermind/mcp-server.mjs']
+SERVER = next((pathlib.Path(c) for c in _CANDIDATES if c and pathlib.Path(c).exists()),
+              pathlib.Path(_CANDIDATES[1]))
 
 if not shutil.which('node') or not SERVER.exists():
     print(f'  SKIP — node or {SERVER.name} unavailable; nothing to compare against')
-    sys.exit(0)
+    # 77, NOT 0. tests/test_suites.py reads 0 as a pass and 77 as a skip, and it says so:
+    # "reporting it green would be the same lie as a green build over a check that never
+    # executed". This suite was telling that lie on every machine without the server.
+    sys.exit(77)
 
 fails = []
 

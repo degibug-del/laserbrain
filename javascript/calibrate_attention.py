@@ -76,11 +76,22 @@ DRIFT = pathlib.Path(os.environ.get('LASERBRAIN_DRIFT_LOG')
                      or _root.config('drift-log.jsonl'))
 TRANSCRIPTS = pathlib.Path(os.environ.get('LASERBRAIN_TRANSCRIPTS')
                            or pathlib.Path.home() / '.claude/projects')
-OUT = pathlib.Path(__file__).resolve().parent / 'attention.json'
+# WHERE THE CALIBRATED TABLE LIVES. This wrote next to the script until 2026-08-21, which
+# was true when the script lived in lasermind/ beside its output. Git records the move:
+# `R100 infra/lasermind/attention.json -> javascript/attention.json`, then
+# `R100 javascript/attention.json -> json/attention.json` ("json/ - the contract, at top
+# level"). The constant was never updated, and this is the WRITE path - so a plain run
+# SUCCEEDED, depositing a stray javascript/attention.json that nothing reads while the real
+# table stayed as it was. A wrong-location write is worse than a failed one: it reports
+# success and leaves the artifact untouched.
+_HERE = pathlib.Path(__file__).resolve().parent
+OUT = next((c for c in (_HERE.parent / 'json' / 'attention.json',
+                        _HERE / 'attention.json') if c.exists()),
+           _HERE.parent / 'json' / 'attention.json')
 
 # THE SECOND COPY, and the reason it is named here rather than left to a human.
 #
-# laserbrain-sdk/laserbrain/attention.json is PACKAGE DATA: it goes out inside the wheel,
+# python/laserbrain/attention.json is PACKAGE DATA: it goes out inside the wheel,
 # so it is the table every pip-installed agent actually schedules against. This script
 # wrote OUT only. On 2026-08-04 a recalibration moved the rates, OUT changed, and the
 # shipped copy did not — the two had been byte-identical five minutes earlier and nothing
@@ -90,8 +101,15 @@ OUT = pathlib.Path(__file__).resolve().parent / 'attention.json'
 #
 # Byte-identical is the right assertion, not "within tolerance". These are not two
 # measurements that ought to agree; they are one artifact stored twice.
-SHIPPED = (pathlib.Path(__file__).resolve().parent.parent
-           / 'laserbrain-sdk' / 'laserbrain' / 'attention.json')
+# Renamed by the same reorg (laserbrain-sdk/ -> python/) and likewise never updated here,
+# so SHIPPED.parent.exists() was False and _shipped_state returned 'skip' on every run: the
+# byte-identical guard this comment argues for was silently switched off. It is the exact
+# drift it was written to catch, and it happened - the shipped copy is calibrated
+# 2026-08-15 and the source copy 2026-08-20.
+SHIPPED = next((c for c in (_HERE.parent / 'python' / 'laserbrain' / 'attention.json',
+                            _HERE.parent / 'laserbrain-sdk' / 'laserbrain' / 'attention.json')
+                if c.parent.exists()),
+               _HERE.parent / 'python' / 'laserbrain' / 'attention.json')
 
 
 def _shipped_state(text):
@@ -107,7 +125,7 @@ def _shipped_state(text):
     if not SHIPPED.exists():
         return 'fail', f'{SHIPPED} is missing — the wheel would ship without its table'
     return ('ok', '') if SHIPPED.read_text() == text else (
-        'fail', f'{SHIPPED.name} in the SDK differs from lasermind/{OUT.name}')
+        'fail', f'{SHIPPED.name} in the SDK differs from {OUT.parent.name}/{OUT.name}')
 
 # Edges in seconds. Finer at the short end because that is where a scheduler has to make
 # its decision, and there is no point resolving beyond half an hour -- past that the advice

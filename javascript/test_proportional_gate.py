@@ -43,7 +43,12 @@ import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
-GEAR = HERE.parent / 'lasergear'
+# The hooks live in python/laserbrain/hooks/ here and in lasergear/ in the working tree.
+# Naming only the latter meant GATE pointed at nothing and the import three lines down died,
+# so this suite has not run since the reorg.
+GEAR = next((c for c in (HERE.parent / 'python' / 'laserbrain' / 'hooks',
+                         HERE.parent / 'lasergear') if (c / 'lb_gate.py').exists()),
+            HERE.parent / 'python' / 'laserbrain' / 'hooks')
 GATE = GEAR / 'lb_gate.py'
 sys.path.insert(0, str(GEAR))
 

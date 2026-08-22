@@ -25,7 +25,14 @@ import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / 'laserbrain-sdk'))
+# The SDK is python/ in this repo and laserbrain-sdk/ in the working tree. Naming only the
+# latter made this a no-op on a missing directory, so `from laserbrain import attention`
+# bound to whatever site-packages held — the PUBLISHED build — and the suite tested the
+# wheel while reporting on the working tree.
+sys.path.insert(0, str(next((c for c in (HERE.parent / 'python',
+                                         HERE.parent / 'laserbrain-sdk')
+                             if (c / 'laserbrain' / '__init__.py').exists()),
+                            HERE.parent / 'python')))
 
 from laserbrain import attention as A                          # noqa: E402
 
@@ -205,7 +212,9 @@ print('the calibrator refuses to go stale silently')
 _LIVE_ENV = {k: v for k, v in os.environ.items()
              if k not in ('LASERBRAIN_HOME', 'LASERBRAIN_STATE_DIR', 'LASERBRAIN_DRIFT_LOG')}
 cal = HERE / 'calibrate_attention.py'
-src_json = HERE / 'attention.json'
+src_json = next((c for c in (HERE.parent / 'json' / 'attention.json',
+                             HERE / 'attention.json') if c.exists()),
+                HERE.parent / 'json' / 'attention.json')
 if not (cal.exists() and src_json.exists()):
     check('calibrate_attention.py and attention.json present', False)
 else:
@@ -256,8 +265,13 @@ import sys as _sys                                               # noqa: E402
 
 _HERE = _pl.Path(__file__).resolve().parent
 _CAL = _HERE / 'calibrate_attention.py'
-_OUT = _HERE / 'attention.json'
-_SHIPPED = _HERE.parent / 'laserbrain-sdk' / 'laserbrain' / 'attention.json'
+_OUT = next((c for c in (_HERE.parent / 'json' / 'attention.json',
+                         _HERE / 'attention.json') if c.exists()),
+            _HERE.parent / 'json' / 'attention.json')
+_SHIPPED = next((c for c in (_HERE.parent / 'python' / 'laserbrain' / 'attention.json',
+                             _HERE.parent / 'laserbrain-sdk' / 'laserbrain' / 'attention.json')
+                 if c.parent.exists()),
+                _HERE.parent / 'python' / 'laserbrain' / 'attention.json')
 
 print()
 print('the packaged copy is held to the calibrated one')
