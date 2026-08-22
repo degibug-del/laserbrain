@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.54.1 - 2026-08-21
+
+### what a review of 0.54.0 found in 0.54.0
+
+An adversarial review of the eleven commits behind 0.54.0: 33 findings confirmed, 13
+refuted. The ones that mattered were introduced by that release.
+
+**A fix that reported success and did nothing.** The `agent_risk` docstring said gaps of 8
+or more steps are "0.3% of the sample" against a table shipped in the same wheel saying
+7.68% — wrong by twenty-five times, on the figure the argument leans on. 0.54.0 listed it
+as fixed. It was not: the edit was written against six-space indentation on a four-space
+file, `str.replace` returned the string unchanged, and nothing asserted the anchor. Fixed,
+with the assertion.
+
+**Two defects in 0.54.0's own repair.** `dist_all` recorded the RAW distance argument while
+`dist_hist`, the audit chain and `laserscore` all normalise through `_asdist` — so a caller
+passing `'9'` as a string, which every other path accepts and which the MCP and adapter
+paths naturally produce, left `dist_all` empty. `run_pace` then took its `else 0` arm and
+the oscillation branch answered *"the distance is not falling"* to a run that had closed 9
+to 1: the precise false counsel the whole-run measure was added to remove, reintroduced by
+the line that records it. Separately `run_pace` measured from `dist_all[0]`, which charges a
+setpoint change as lost ground — close a little, be handed a harder goal, close a lot on
+that, and the run reads as going backwards. It measures from the run's worst point now.
+
+Both are mutation-tested, and the invariant that all four distance series agree for the same
+input finally has a test. It had none, which is how the divergence shipped.
+
+**A mis-shaped extractor is loud again.** `_unpack` accepted `len(r) >= 4` and silently
+dropped the tail of a five-value return, feeding a wrong field into `check()` where the
+original `g, p, d = ex(x)` raised. Extractors are user code; they should hear about it.
+
+**The network claim now covers what it names.** `test_no_network.py` globbed
+non-recursively and so skipped `laserbrain/hooks/` — exactly the modules SECURITY.md's
+sentence lists, and the ones that run on every tool call. 25 of 30 modules were checked; all
+30 are now.
+
+Nothing in the verdict logic changed except the two corrections above, and no threshold
+moved. `grammar.json` untouched.
+
 ## 0.54.0 - 2026-08-21
 
 ### fields the signatures promised, and guards that were only pretending to run
@@ -48,12 +87,13 @@ argument leans on.
 
 ### the suites
 
-One of those nine was very nearly not fixed at all: the `agent_risk` docstring edit was
-written against the wrong indentation, so `str.replace` returned the string unchanged and
-reported success. It was caught by a review of this release and is fixed now — but it is
-worth recording that the failure mode this entry is largely about was committed once more
-in the commit that removes it, and that only an assertion on the anchor would have caught
-it at the time.
+One of those nine did not actually ship in this release, and the entry is left standing
+with this correction rather than quietly edited. The `agent_risk` docstring fix was written
+against the wrong indentation; `str.replace` returned the string unchanged, the script
+reported success, and 0.54.0 went to PyPI still saying "0.3%". Fixed in 0.54.1. The failure
+mode this entry is largely about was therefore committed once more inside the commit that
+removes it, and only an assertion on the anchor would have caught it — which is what every
+other edit in that script had and this one did not.
 
 `test_carried_fields.py` and `test_no_network.py` are new; both assert on observable
 behaviour rather than plumbing, because a test that checks "`parent_goal` was forwarded"
