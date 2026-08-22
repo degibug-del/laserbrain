@@ -1566,8 +1566,27 @@ class _Run:
                 # Closing it lexically means a threshold saying "too close to the ground is
                 # suspicious", which inverts what the instrument rewards and is a calibration
                 # change on three points — the exact mistake the paragraph above refuses.
-                # It needs either a semantic similarity (pass sim=) or more declarations in
-                # the corpus, not a cleverer token rule.
+                # THE SEMANTIC ROUTE WAS THEN MEASURED, 2026-08-22, and does not rescue it
+                # either. all-MiniLM-L6-v2 on child~parent orders the cases correctly but
+                # with a margin too thin to cut:
+                #
+                #     0.5167  legit    "check which statement lines have no matching entry"
+                #     0.2274  legit    "escaped-quote handling" under "benchmark the parser build"
+                #     0.1771  exploit  "buy groceries"
+                #     0.1187  exploit  "write a poem about the sea"
+                #     0.1012  exploit  "refactor the ORM layer"
+                #
+                # 0.05 separates the weakest legitimate case from the strongest exploit, on
+                # five hand-made points. And reusing goal_min (0.30) rather than inventing a
+                # constant — the only choice that moves no calibration — rejects
+                # "escaped-quote handling" too, so a user who supplies sim= would get WORSE
+                # behaviour on exactly the case that refuted the lexical version.
+                #
+                # So it needs more declarations in the corpus. Not a cleverer token rule,
+                # and not a better embedding: more evidence. Until then the hole is
+                # documented rather than closed, which is the honest state and is why
+                # `parent_overlap` is recorded on every rejection above — that field is what
+                # will eventually make the choice on data instead of on five examples.
                 self._rejected_parent = None if p_anchor >= self.cal.goal_min else p_anchor
                 if p_anchor >= self.cal.goal_min:
                     return emit('excursion', False,

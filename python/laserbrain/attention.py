@@ -216,9 +216,20 @@ def agent_risk(steps):
                     'n': b.get('n', 0),
                     'drift': b.get('drift', 0),
                     'known': b.get('rate') is not None and not censored,
-                    'censored': censored}
+                    'censored': censored,
+                    # THE VINTAGE OF THIS BLOCK, when it is not the table's own.
+                    #
+                    # agent_clock is built from the session store, which records a verdict
+                    # only when the agent was told one. Under a blind arm every check lands
+                    # unreadable, and rather than overwrite a real measurement with "unknown"
+                    # the calibrator carries the last block that had readable pairs forward.
+                    # That block can therefore be much older than the table around it — and
+                    # describe() prints the TABLE's dates, so without this a caller reading
+                    # 2026-08-22 beside these numbers would be wrong by a week and have no
+                    # way to tell. None means the block is this table's own measurement.
+                    'carried_from': AGENT.get('carried_written')}
     return {'band': None, 'rate': None, 'n': 0, 'drift': 0, 'known': False,
-            'censored': censored}
+            'censored': censored, 'carried_from': AGENT.get('carried_written')}
 
 
 def describe():
@@ -240,6 +251,13 @@ def describe():
                      f"{p.get('readings_total')} readings, written {p.get('written')}")
         if p.get('caveat'):
             lines.append(f"  {p['caveat']}")
+    # The agent-clock block may not share the dates printed above it — say so where they are
+    # printed, not only in the JSON, or the corpus line implies a currency this block lacks.
+    _cw = AGENT.get('carried_written')
+    if _cw:
+        lines.append(f"\n  the agent-clock rows are carried from the calibration written "
+                     f"{_cw} (corpus to {AGENT.get('carried_corpus_to', '?')}); this corpus "
+                     f"had too few readable pairs to remeasure them.")
     return '\n'.join(lines)
 
 

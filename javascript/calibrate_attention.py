@@ -501,7 +501,8 @@ def _agent_clock_or_last():
     if powered:
         return fresh                       # the corpus can see it; use what was measured
     try:
-        prev = json.loads(OUT.read_text()).get('agent_clock') or {}
+        _whole = json.loads(OUT.read_text())
+        prev = _whole.get('agent_clock') or {}
     except Exception:
         return fresh                       # nothing to carry — thin is better than absent
     if not isinstance(prev, dict):
@@ -512,6 +513,15 @@ def _agent_clock_or_last():
     if not [b for b in prev.get('bands', []) if not b.get('underpowered')]:
         return fresh                       # the previous one was thin too
     prev = dict(prev)
+    # DATES, NOT PROSE. `carried_from` said "the last calibration with readable pairs",
+    # which a caller cannot resolve into a vintage — so the block's staleness was
+    # unmeasurable, and describe() prints the TABLE's dates three lines above it, implying
+    # they apply. Copy the source calibration's own provenance so the age of this block is a
+    # fact rather than a sentence. Carried forward unchanged once set: the vintage belongs
+    # to the measurement, not to the run that re-carried it.
+    _src = (_whole.get('provenance') or {}) if isinstance(_whole, dict) else {}
+    prev.setdefault('carried_written', prev.get('carried_written') or _src.get('written'))
+    prev.setdefault('carried_corpus_to', prev.get('carried_corpus_to') or _src.get('corpus_to'))
     prev['carried_from'] = prev.get('carried_from') or 'the last calibration with readable pairs'
     prev['carried_because'] = (
         f'this corpus yielded {fresh.get("pairs", 0)} readable pair(s) — every band '

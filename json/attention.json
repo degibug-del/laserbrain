@@ -108,7 +108,9 @@
     "censored_share": 0.0768,
     "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 7.68% of the sample (181 of 2356). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose.",
     "carried_from": "the last calibration with readable pairs",
-    "carried_because": "this corpus yielded 6 readable pair(s) \u2014 every band underpowered. Measured pairs are counted only where a verdict was actually read; blind-arm checks are censored at the source and excluded."
+    "carried_because": "this corpus yielded 6 readable pair(s) \u2014 every band underpowered. Measured pairs are counted only where a verdict was actually read; blind-arm checks are censored at the source and excluded.",
+    "carried_written": "2026-08-15",
+    "carried_corpus_to": "2026-08-16"
   },
   "overhead": {
     "what": "Share of an agent's tool calls that are laserbrain itself. A cost, not a benefit \u2014 measured so a claim about saved tokens has something to clear.",

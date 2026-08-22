@@ -97,5 +97,23 @@ show('and agent_risk answers in it well past the old cap',
 _desc = A.describe() or ''
 show('describe() renders', bool(_desc.strip()), f'{len(_desc)} chars')
 
+# ── a carried block declares its own vintage ──────────────────────────────────
+# agent_clock is built from the session store, which records a verdict only when the agent
+# was told one. Under a blind arm the calibrator carries the last readable block forward
+# rather than overwrite a real measurement with "unknown" — so those rows can be much older
+# than the table around them. describe() prints the TABLE's dates, so a block that does not
+# share them has to say so, in both the machine-readable and the human-readable path.
+_carried = AC.get('carried_written')
+if _carried:
+    show('a carried block carries a date, not prose', bool(_carried), _carried)
+    show('  agent_risk exposes it', A.agent_risk(4).get('carried_from') == _carried,
+         repr(A.agent_risk(4).get('carried_from')))
+    show('  and describe() says so', 'carried from the calibration' in (A.describe() or ''),
+         'the corpus line above it would otherwise imply these rows share its dates')
+    show('  the vintage predates the table it sits in',
+         _carried <= (PROV.get('written') or ''), f"{_carried} vs {PROV.get('written')}")
+else:
+    print('  skip  carried-block vintage   this agent_clock is the table\'s own measurement')
+
 print('\n' + ('PROSE AGREES WITH THE TABLE ✓' if ok else 'SOME FAILED ✗'))
 raise SystemExit(0 if ok else 1)
