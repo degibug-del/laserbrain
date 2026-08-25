@@ -178,7 +178,8 @@ class Operator:
     routable = False
 
     def __init__(self, authorize=None, name: str = 'operator', harness=None,
-                 key: str | None = None, api: str | None = None, run_id: str | None = None):
+                 key: str | None = None, api: str | None = None, run_id: str | None = None,
+                 pep=None):
         """`harness` wires the hands to the instrument. Optional, and off by default.
 
         Give it a Harness and this operator will not take an irreversible or outward action
@@ -200,6 +201,11 @@ class Operator:
         way in both cases: an operator has no goal, no progress and no distance to spell.
         Inventing them would be the operator marking its own homework, which is the exact
         failure the fixed reference exists to prevent.
+
+        ``pep`` is an optional :class:`GrimdallPEP` bridge that adds payload-level enforcement
+        for every tool call. When provided, the verdict band from the harness drives the
+        grimdall policy tier in real time. When ``None`` (the default) behaviour is
+        completely unchanged.
         """
         self.name = name
         self._authorize = authorize
@@ -207,6 +213,7 @@ class Operator:
         self._key = key
         self._api = api
         self._run_id = run_id
+        self.pep = pep
         self.log: list[Event] = []
         self.asked = 0
         self.refused = 0
@@ -233,6 +240,17 @@ class Operator:
 
         a = Act(kind=kind, target=target, reversible=reversible, outward=outward)
 
+        # ── grimdall PEP seam ───────────────────────────────────────────────────────
+        # If a GrimdallPEP bridge is wired, sync the tier from the harness verdict and
+        # route the tool call through grimdall payload-level enforcement. This sits
+        # BEFORE the authorizer check so that even authorised actions are evaluated.
+        if self.pep is not None:
+            v = getattr(self._harness, 'last', None) if self._harness is not None else None
+            self.pep.sync_from(v)
+            fn = self.pep.wrap(do)
+        else:
+            fn = do
+
         # ── the sixth join ──────────────────────────────────────────────────────────────
         #
         # BEFORE the authorizer, not after, and that order is the point. Asking a human to
@@ -242,7 +260,7 @@ class Operator:
         # ground is what the harness holds.
         #
         # Reversible, inward acts are untouched. A drifting agent may still read a file.
-        if self._harness is not None and a.needs_authorization:
+        if fn is not None and self._harness is not None and a.needs_authorization:
             v = getattr(self._harness, 'last', None)
             if v is None:
                 # NO READING IS NOT A GOOD READING. An operator wired to a harness that has
@@ -303,7 +321,7 @@ class Operator:
                 return self._refuse(a, 'not authorized')
 
         try:
-            out = do(**kw)
+            out = fn(**kw)
         except Exception as e:
             self._record(a, ok=False, note=f'{type(e).__name__}: {e}')
             raise
