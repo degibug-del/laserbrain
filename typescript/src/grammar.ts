@@ -269,7 +269,7 @@ export default {
       "added": "2026-07-31"
     }
   },
-  "content_hash": "ec799fa8743df048",
+  "content_hash": "6a58931785384ef2",
   "content_hash_what": "sha256 of this FILE's own lines, excluding the three that carry the version and these hashes. Deliberately not a hash of re-serialised JSON: Python and JavaScript disagree about identical content \u2014 Python escapes non-ASCII by default and writes 1.0 where JavaScript writes 1 \u2014 so a cross-language content hash compares serialisers rather than content. Both attempts failed that way before this one. Bytes are bytes. Exists because grammar 1.6.0 came to mean two different documents on 2026-07-28: seven additions under one version, canonical and live both announcing 1.6.0 with different content, while sync-grammar --check compared the copies to each other and passed.",
   "ceiling_patterns": {
     "what": "Two phrase lists separating CAUSE-CLAIMS from OBSERVATIONS in an agent's free-text fields (doing, next, blocked). A cause-claim asserts why something happened or what will happen; an observation reports what was seen. Nisbett & Wilson (1977): people report causes for their own behaviour confidently and wrongly, and an agent has the same ceiling. The same distinction the browser instrument at phronesis.world/field/ceiling draws for people.",
@@ -929,6 +929,7 @@ export default {
       "ungrammatical",
       "topic-drift",
       "echo-spiral",
+      "oscillating",
       "deliberation-stall",
       "goal-drift",
       "stalled",
@@ -946,6 +947,7 @@ export default {
         "topic-drift",
         "goal-drift",
         "echo-spiral",
+        "oscillating",
         "self-report:stuck",
         "self-report:circling"
       ],
@@ -953,6 +955,7 @@ export default {
         "ungrammatical",
         "topic-drift",
         "echo-spiral",
+        "oscillating",
         "deliberation-stall",
         "goal-drift",
         "stalled",
@@ -962,7 +965,7 @@ export default {
     },
     "means": {
       "deep": "only the hard, unambiguous drifts return it \u2014 it may recurse through stalls and momentary agreement, because an explorer needs room.",
-      "balanced": "also returns on the mid drifts (echo, self-report), tolerates a stall.",
+      "balanced": "also returns on the mid drifts (echo, cycles, self-report), tolerates a stall.",
       "tight": "returns on any drift at all."
     },
     "added": "2026-07-29",

@@ -19,10 +19,13 @@
  */
 import { spawn } from 'node:child_process'
 import { readFileSync, mkdtempSync } from 'node:fs'
+// fileURLToPath, not .pathname: on Windows a file:// URL's pathname is '/C:/...'
+// and every join off it resolves to nothing. Reported 2026-08-25.
+import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const HERE = new URL('.', import.meta.url).pathname
+const HERE = fileURLToPath(new URL('.', import.meta.url))
 const vectors = JSON.parse(readFileSync(join(HERE, '../../json/drift-vectors.json'), 'utf8'))
 const HOME = mkdtempSync(join(tmpdir(), 'lb-parity-'))
 

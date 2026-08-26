@@ -8,11 +8,12 @@
  * Nothing is edited by hand — run this after any grammar or drift.ts change.
  */
 import { readFileSync, writeFileSync, copyFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'   // .pathname gives '/C:/...' on Windows
 
 // Point this at your checkout of the worker. Absolute paths do not belong in a
 // public repo, and the vendor step is only run by a maintainer.
 const REPO = process.env.LASERBRAIN_WORKER_SRC
-  || new URL('../phronesis-world/workers/laserbrain-mcp-remote', import.meta.url).pathname
+  || fileURLToPath(new URL('../phronesis-world/workers/laserbrain-mcp-remote', import.meta.url))
 const here = new URL('./src/', import.meta.url)
 
 copyFileSync(`${REPO}/src/grammar.json`, new URL('grammar.json', here))

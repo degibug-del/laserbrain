@@ -2231,12 +2231,29 @@ class _Dialogue:
         return emit('advancing', False, f'On track — closing on the goal (dist {d}).', echo, self_echo)
 
 
-_ALL_MODES = ['ungrammatical', 'topic-drift', 'echo-spiral', 'deliberation-stall', 'goal-drift', 'stalled', 'self-report:stuck', 'self-report:circling']
-_DEPTH = {
-    'deep': {'ungrammatical', 'topic-drift', 'goal-drift'},
-    'balanced': {'ungrammatical', 'topic-drift', 'goal-drift', 'echo-spiral', 'self-report:stuck', 'self-report:circling'},
-    'tight': set(_ALL_MODES),
+# Read from the grammar, not typed here — the same rule _STOP and _STEM follow above, and
+# for the same reason. These two were hand-kept copies of grammar.json's modulation block,
+# and they had already drifted: `oscillating` went into the SDK, the MCP server and the
+# grammar on 2026-07-27 and never reached this list, so _style_return returned False for it
+# at EVERY depth including `tight` — which grammar.json describes as "returns on any drift
+# at all". A cycling agent was the one thing modulate could not act on. Caught 2026-08-25 by
+# a collaborator reading the tree, not by any gate.
+#
+# The literals stay as a fallback on the same terms as the normalizer's: an instrument that
+# refuses to start because a data file moved is worse than one that starts on its last
+# known-good constants.
+_MODULATION = _G.get('modulation') or {}
+_FALLBACK_MODES = ['ungrammatical', 'topic-drift', 'echo-spiral', 'oscillating',
+                   'deliberation-stall', 'goal-drift', 'stalled',
+                   'self-report:stuck', 'self-report:circling']
+_FALLBACK_DEPTH = {
+    'deep': ['ungrammatical', 'topic-drift', 'goal-drift'],
+    'balanced': ['ungrammatical', 'topic-drift', 'goal-drift', 'echo-spiral', 'oscillating',
+                 'self-report:stuck', 'self-report:circling'],
+    'tight': _FALLBACK_MODES,
 }
+_ALL_MODES = list(_MODULATION.get('modes') or _FALLBACK_MODES)
+_DEPTH = {k: set(v) for k, v in (_MODULATION.get('depths') or _FALLBACK_DEPTH).items()}
 PRESETS = {
     'deep-search': [
         {'role': 'explorer', 'recurse': 'deep'},

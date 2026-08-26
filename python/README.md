@@ -1,10 +1,12 @@
 # laserbrain
 
-**AI agents are made up of language. laserbrain is an automatic grammatical control layer to reduce
-agent drift.**
+**AI agents are made up of language. laserbrain is a goal-alignment harness that asserts any
+user-directed context in order to interrupt agentic context misalignment during a task.**
 
-It scores an agent's goal before execution, then checks each step against that fixed
-reference so the agent can detect drift, spiraling, and when to stop. It works across tools.
+The context is frozen where the agent cannot revise it — it moves when you speak, and never
+when the agent decides it should. Every step after is asserted against it, and over the line
+the agent is interrupted before its next tool call rather than told afterwards. Local, in
+milliseconds: no network call, no telemetry.
 
 An agent watching only itself provably can't catch its own drift: each step looks
 fine next to the last while it wanders far from where it began. laserbrain is a
