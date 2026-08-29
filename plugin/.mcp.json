@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "laserbrain": {
+      "type": "http",
+      "url": "https://api.phronesis.world/mcp"
+    }
+  }
+}

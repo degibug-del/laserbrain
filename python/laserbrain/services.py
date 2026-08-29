@@ -19,7 +19,7 @@ import json
 import os
 import pathlib
 
-API = os.environ.get('LASERBRAIN_API', 'https://laserbrain-mcp.degibug.workers.dev')
+API = os.environ.get('LASERBRAIN_API', 'https://api.phronesis.world')
 _HEAD = {'content-type': 'application/json',
          'accept': 'application/json, text/event-stream',
          'user-agent': 'laserbrain-sdk'}

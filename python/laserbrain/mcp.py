@@ -318,7 +318,7 @@ def _capabilities(args: dict) -> dict:
             'why': 'these are calls to a server, and this server is your own machine',
             'tools': ['read_field', 'speak_to_field', 'ask_alice', 'analyze_language',
                       'compare_phrasings', 'remember_self', 'resume_self', 'forget_self'],
-            'where': 'https://laserbrain-mcp.degibug.workers.dev/mcp',
+            'where': 'https://api.phronesis.world/mcp',
         },
         'note': 'The check is a pure local function. It runs with the network unplugged '
                 'and keeps working if the hosted service disappears.',
@@ -355,7 +355,7 @@ def _read_text(args: dict) -> dict:
 # WHAT IS STILL NOT HERE, and why the count does not reach 28: ask_alice, analyze_language,
 # compare_phrasings, remember_self, resume_self and forget_self reach a hosted service.
 # Verified by blocking sockets and calling them — six connection attempts to
-# laserbrain-mcp.degibug.workers.dev:443. This server's defining property is that it runs
+# api.phronesis.world:443. This server's defining property is that it runs
 # with the network unplugged, so they stay in `not_here` with a pointer to where they live.
 # Serving them would make the README's first line false.
 

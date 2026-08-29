@@ -51,7 +51,7 @@ To reverse it, restore `settings.json.before-laserbrain`.
 **Hosted MCP**, if you would rather not install anything — needs a free key:
 
 ```
-https://laserbrain-mcp.degibug.workers.dev/mcp
+https://api.phronesis.world/mcp
 ```
 
 ---

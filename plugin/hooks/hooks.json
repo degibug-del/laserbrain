@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude python3 -m laserbrain.hooks.lb_gate || exit 0"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude python3 -m laserbrain.hooks.lb_coverage || exit 0"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude python3 -m laserbrain.hooks.lb_coverage || exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

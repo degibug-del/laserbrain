@@ -1,0 +1,12 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "laserbrain",
+  "owner": { "name": "phronesis", "url": "https://phronesis.world" },
+  "plugins": [
+    {
+      "name": "laserbrain",
+      "source": "./plugin",
+      "description": "A runtime goal-alignment harness: the goal you gave the agent, frozen where the agent cannot revise it, and every step checked against it."
+    }
+  ]
+}

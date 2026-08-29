@@ -826,6 +826,139 @@ def load_session(ev):
         return sid, None
 
 
+# ── the drift gate ──────────────────────────────────────────────────────────────────
+#
+# WHAT WAS MISSING, AND FOR HOW LONG. Until 2026-08-27 this file had exactly two ways to
+# refuse: the claim gate (another agent owns that path) and the coverage gate (you have not
+# checked recently enough). Neither reads the VERDICT. An agent could call check_state, be
+# told `goal-drift` in as many words, and proceed straight to its next write — because it
+# had satisfied the gate by checking, and checking was the whole test.
+#
+# That is a real distance between what the instrument measures and what it enforces. The
+# detector's claim is about the relationship between a spelled goal and the goal a run
+# began with; the enforcement was about how often you spoke. Observed live in session
+# 18d090f0 on 2026-08-27: a check returned {"drifting": true, "reason": "goal-drift",
+# "phi": 0.54} and the very next tool call ran unopposed.
+#
+# WHY IT SHIPS IN SHADOW MODE, AND WHY THAT IS NOT TIMIDITY. Published precision on
+# goal-drift is 14.6%. A gate that blocks on a signal wrong six times in seven does not
+# make the product stronger, it makes it unusable — and it would be exactly the overclaim
+# laserbrain exists to argue against, committed by laserbrain. So the default computes the
+# decision, records it, says so on stderr, and blocks nothing. What accumulates is the one
+# number nobody has: how often this would have stopped real work that was fine.
+#
+#     LASERBRAIN_GATE_ON_DRIFT=off      not evaluated at all
+#     LASERBRAIN_GATE_ON_DRIFT=shadow   evaluated, logged, warned, NOT enforced   (default)
+#     LASERBRAIN_GATE_ON_DRIFT=deny     enforced
+#
+# HARD VERDICTS ONLY. `stalled` and `oscillating` are soft by construction elsewhere in
+# this system — drift.ts calls them a watch until sustained — and a gate that treats a
+# watch as a stop discards that distinction. Only the two verdicts that fire immediately
+# on their own evidence can refuse anything here.
+#
+# THE ESCAPE IS THE POINT. A refusal that cannot be lifted turns one false positive into a
+# dead session. Three things clear it, all of them cheap: check_state again with the goal
+# you were actually given (it is in ALWAYS_ALLOW, so it can never itself be refused);
+# reset_task if the user genuinely redirected you; or pass parent_goal if this is a
+# sub-task of a goal you have not abandoned. The gate reads only the LATEST check, so any
+# of the three clears it on the next reading rather than after a cooldown.
+HARD_VERDICTS = ('goal-drift', 'ungrammatical')
+
+
+def gate_on_drift_mode():
+    """off | shadow | deny. Unset means shadow — evaluated and logged, never enforced."""
+    v = (os.environ.get('LASERBRAIN_GATE_ON_DRIFT') or 'shadow').strip().lower()
+    return v if v in ('off', 'shadow', 'deny') else 'shadow'
+
+
+def _ground_of_run(sess, run):
+    """The goal this run STARTED with, recovered from the session's own check history.
+
+    The per-check record stores the goal that was spelled and the verdict it drew, but not
+    the ground it was measured against — so the ground is read back as the goal of the
+    lowest-numbered step carrying the same run id. Returns None when the run's first check
+    has aged out of the file, and the caller then simply omits the comparison rather than
+    guessing at it: a refusal that misquotes the goal it is enforcing is worse than one
+    that admits it cannot show it.
+    """
+    first, best = None, None
+    for c in (sess.get('checks') or []):
+        if c.get('run') != run:
+            continue
+        n = c.get('run_step')
+        n = int(n) if isinstance(n, int) or (isinstance(n, str) and str(n).isdigit()) else None
+        if n is None:
+            continue
+        if best is None or n < best:
+            best, first = n, c.get('goal')
+    return first
+
+
+def drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm):
+    """Refuse — or, by default, merely record — a side-effecting call made while the last
+    reading was a hard drift verdict.
+
+    Returns None. Calls deny() and exits only in `deny` mode.
+    """
+    mode = gate_on_drift_mode()
+    if mode == 'off':
+        return
+
+    checks = sess.get('checks') or []
+    if not checks:
+        return
+    last = checks[-1]
+    reason = str(last.get('reason') or '')
+    if reason not in HARD_VERDICTS:
+        return                      # includes every clean reading, and every soft one
+
+    # Reads are never refused here, for the same reason the coverage gate's middle band
+    # exists: an agent that has drifted works out where it is by looking. The claim being
+    # enforced is about ACTING on an unspelled position, and a grep is not that.
+    tool = (_tool_of(ev) or '').lower()
+    if any(t in tool for t in ALWAYS_ALLOW):
+        return
+    if any(r in tool for r in READ_ONLY) and not any(w in tool for w in WRITE_TOOLS):
+        return
+
+    phi = last.get('phi')
+    gs = last.get('goal_score')
+    ground = _ground_of_run(sess, last.get('run'))
+    spelled = last.get('goal')
+
+    detail = f'your last check_state returned {reason}'
+    if isinstance(phi, (int, float)):
+        detail += f' (Φ={phi:.2f}'
+        detail += f', overlap {gs:.2f})' if isinstance(gs, (int, float)) else ')'
+
+    record_refusal(sid, f'drift-{mode}', tool, since, cov, floor, block_after, arm)
+
+    if mode == 'shadow':
+        # STDERR and exit 0 — see warn(). A shadow that used deny()'s JSON shape would
+        # silently become the enforcement it exists to defer.
+        warn(f'laserbrain drift gate (shadow): would have refused this {tool or "call"} — '
+             f'{detail}. Not blocking, and this is logged. Precision on {reason} is 14.6%, '
+             f'so the log is how that number gets replaced with one measured on your work. '
+             f'Set LASERBRAIN_GATE_ON_DRIFT=deny to enforce.')
+        return
+
+    lines = [f'laserbrain drift gate: {detail}.']
+    if ground and spelled and ground != spelled:
+        lines += [f'  the goal this run started with:  {ground}',
+                  f'  the goal you just spelled:       {spelled}']
+    lines += [
+        'Refusing calls that change something — reads are still passing.',
+        'THIS CALL DID NOT RUN. Nothing was written, executed or sent.',
+        'Three things clear this, and check_state can never itself be refused:',
+        '  · check_state with the goal you were actually given',
+        '  · reset_task, if the user redirected you',
+        '  · pass parent_goal, if this serves a larger goal you have not abandoned',
+        f'(Enforcement is on because LASERBRAIN_GATE_ON_DRIFT=deny. Measured precision on '
+        f'{reason} is 14.6% — unset the variable to return to shadow mode.)',
+    ]
+    deny('\n'.join(lines))
+
+
 def main():
     # The gate demands a check_state that only the MCP server can answer. If that server
     # is down — crashed, restarting, misconfigured — the demand is unsatisfiable and the
@@ -884,6 +1017,11 @@ def main():
     record_arm(sid, arm, STATE_DIR)     # append-only; the session file loses this race
     block_after = BLOCK_AFTER
     floor = min_coverage()
+
+    # Read the VERDICT, not just the cadence. Placed here because the coverage logic below
+    # returns early whenever coverage is fine — which is the common case, and is exactly
+    # when a drifting agent is least likely to be stopped by anything else.
+    drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm)
     if arm == 'relaxed' and 'LASERBRAIN_MIN_COVERAGE' not in os.environ:
         floor = RELAXED_MIN_COVERAGE
         # THE SESSION ARM DECIDES WHETHER TO SWEEP; THE GAP PROBE DECIDES HOW FAR.

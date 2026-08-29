@@ -21,6 +21,18 @@ no network call, no telemetry.
 pip install laserbrain
 ```
 
+## There is also a TypeScript package, and it is smaller
+
+`npm install laserbrain` is the same detector — byte-identical verdicts, the same grammar —
+and **only** the detector. It has no `Operator`, no `PreToolUse` hook, no LangGraph or CrewAI
+adapters, no context store. Its version number is higher (2.x against this package's 0.x),
+which reads backwards; the two lines are independent because these are different surfaces at
+different maturity, and forcing them to agree would make the number mean nothing.
+
+Use the TypeScript package to **score** a step in a TS codebase. Use this one to **stop** an
+agent.
+
+
 ## The same rule, outside Python
 
 laserbrain checks an agent against a goal fixed before it started. The failure it exists

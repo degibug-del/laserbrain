@@ -1,7 +1,7 @@
 {
   "name": "laserbrain",
   "version": "2.1.0",
-  "description": "A goal-alignment harness for AI agents \u2014 holds the goal your agent stated first, frozen where it cannot revise it, and checks every later step against it. No model, no network, no key.",
+  "description": "The laserbrain detector for TypeScript \u2014 holds the goal your agent stated first, frozen where it cannot revise it, and checks every later step against it. Detector only: no Operator, no PreToolUse hook, no framework adapters \u2014 those are in the Python package.",
   "keywords": [
     "agent",
     "agents",

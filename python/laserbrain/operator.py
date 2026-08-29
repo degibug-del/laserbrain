@@ -417,7 +417,7 @@ class Operator:
         """
         import json as _json
         import urllib.request
-        api = self._api or 'https://laserbrain-mcp.degibug.workers.dev'
+        api = self._api or 'https://api.phronesis.world'
         body = _json.dumps({
             'run_id': self._run_id, 'kind': a.kind, 'target': a.target,
             'reversible': a.reversible, 'outward': a.outward,

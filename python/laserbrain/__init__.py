@@ -35,9 +35,19 @@ from pathlib import Path as _Path
 
 __all__ = ['Harness', 'Team', 'Verdict', 'PRESETS', 'norm', 'laserscore', 'context_id',
            'verify_audit', 'ground_score', 'MAX_DEPTH']
-__version__ = '0.55.0'
+__version__ = '0.57.0'
 MAX_DEPTH = 50   # nesting deeper than this is a drift signal, not a decomposition
-API_DEFAULT = 'https://laserbrain-mcp.degibug.workers.dev'
+# THE API'S OWN NAME, since 0.57.0. This was laserbrain-mcp.degibug.workers.dev — a personal
+# handle, printed in every error that told someone where to get a key.
+#
+# THE OLD HOST IS NOT GOING AWAY. Every version of this package before 0.57.0 has it baked in,
+# and an installed package is not something anyone can reach out and change. It answers, it is
+# on the same grammar, and check-worker-deployed.mjs fails the site build if either host stops
+# — a gate written on 2026-08-28 after a routes block silently disabled the workers.dev
+# subdomain and nothing noticed for hours.
+#
+# LASERBRAIN_API still overrides this, which is how you point at a local worker.
+API_DEFAULT = 'https://api.phronesis.world'
 
 
 # ── provenance: a tamper-evident, hash-chained ledger of every check ───────────
@@ -2373,7 +2383,28 @@ __all__ += ['guard', 'langgraph_node', 'crewai_step_callback', 'middleware']
 # harness stays a pure function of goal, progress and distance, computable with every
 # socket blocked. Bundling the field gives you the weather in the same install; it does
 # not make the detector depend on a hub being up.
-from .field import (                                            # noqa: E402
+# ── the field, no longer advertised ────────────────────────────────────────────
+#
+# STILL IMPORTABLE, DELIBERATELY NOT IN __all__ as of 0.56.0. These names remain reachable
+# so nothing that imported them breaks; they are simply no longer part of what this package
+# says it offers.
+#
+# WHY. laserfield is a weather simulation driven by real atmospheric data, and it is a
+# separate project — its own repo, its own licence, its own daemon. It was bundled here
+# because the two share a prefix and a lineage, not because the harness needs it. The note
+# above already says the detector never depended on it. This finishes the same thought at
+# the packaging level.
+#
+# WHAT SETTLED IT. FieldGround was exported, documented on phronesis.world/laserbrain/toolkit
+# as a capability, and called by nothing anywhere — its only callers on the author's machine
+# were its own tests. An advertised API with no callers is a claim the package cannot keep,
+# and this project has spent enough of 2026 finding those.
+#
+# It measures how far the WEATHER has moved since you grounded, which field.py is careful to
+# distinguish from how far your task is from done. That is a real quantity and it belongs to
+# an embodied agent regulating against ambient conditions, which is laserbot's territory, not
+# a software harness's.
+from .field import (                                            # noqa: E402,F401
     read_field, speak_to_field, field_vocabulary, FieldGround, VOCABULARY,
 )
 from .vocab import embedding_similarity                          # noqa: E402
@@ -2386,8 +2417,7 @@ from .observe import Observer                                    # noqa: E402
 # still imports, and the only symptom is that three of them are invisible.
 from .catches import (catches, Catch, Event, residue, contaminated,  # noqa: E402
                       stale_gate, unfalsified, instrument_blind, unrun)
-__all__ += ['read_field', 'speak_to_field', 'field_vocabulary', 'FieldGround', 'VOCABULARY',
-            'embedding_similarity', 'Observer', 'catches', 'Catch', 'Event', 'Calibration',
+__all__ += ['embedding_similarity', 'Observer', 'catches', 'Catch', 'Event', 'Calibration',
             'residue', 'contaminated', 'stale_gate',
             'unfalsified', 'instrument_blind', 'unrun']
 

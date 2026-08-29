@@ -643,7 +643,7 @@ function resumeShared(L, goal) {
 // laserbrain you got depended on whether you attached over stdio or over HTTP.
 // The eight below live on the Worker and are reached rather than reimplemented —
 // a second implementation of ask_alice is a second thing that can disagree.
-const REMOTE = process.env.LASERBRAIN_API || 'https://laserbrain-mcp.degibug.workers.dev'
+const REMOTE = process.env.LASERBRAIN_API || 'https://api.phronesis.world'
 let _sid = null
 async function remote(tool, args = {}, ms = 60000) {
   const head = {

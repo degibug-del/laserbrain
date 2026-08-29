@@ -1,0 +1,9 @@
+{
+  "name": "laserbrain",
+  "description": "Holds the goal you gave your agent, frozen where the agent cannot revise it, and checks every step against it. The detector runs offline under MIT; the hosted check needs no key.",
+  "version": "0.1.0",
+  "author": { "name": "phronesis", "url": "https://phronesis.world/laserbrain" },
+  "homepage": "https://phronesis.world/laserbrain",
+  "license": "MIT",
+  "keywords": ["drift", "goal-alignment", "harness", "guardrail", "agent"]
+}
