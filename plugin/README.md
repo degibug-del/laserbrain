@@ -21,8 +21,9 @@ reference is worth more than the feeling.
 
 ## What needs one more step
 
-The **hooks** — `lb_gate` (PreToolUse) and `lb_coverage` (PostToolUse, UserPromptSubmit) — are
-the half that *enforces* rather than reports. They need the Python package:
+The **hooks** — `lb_gate` and `lb_safety` (PreToolUse), `lb_coverage` (PostToolUse,
+UserPromptSubmit) — are the half that *enforces* rather than reports. They need the Python
+package:
 
 ```bash
 pip install laserbrain
@@ -42,7 +43,11 @@ does nothing yet and a plugin that bricks your session.
 ## What the gate actually enforces
 
 `lb_gate` refuses side-effecting tool calls when you have gone too long without checking
-state, or when run-wide coverage falls below its floor. As of 2026-08-27 it also reads the
+state, or when run-wide coverage falls below its floor. `lb_safety` is separate and
+narrower: it refuses destructive commands — recursive force deletes, history rewrites,
+and the like — regardless of coverage. It shipped with the plugin from 2026-08-29;
+before that the plugin wired the goal-drift gate and left the destruction guard out,
+which is the wrong half to omit. As of 2026-08-27 it also reads the
 **verdict** — but in shadow mode by default: it records what it would have refused and blocks
 nothing.
 

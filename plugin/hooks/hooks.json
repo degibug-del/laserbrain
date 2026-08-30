@@ -1,4 +1,34 @@
 {
+  "_comment": [
+    "WHY EACH COMMAND LOOKS LIKE THIS.",
+    "",
+    "1. THE INTERPRETER IS RESOLVED, NOT NAMED. These read `python3` only. That is the",
+    "   right name on most Linux and macOS installs and the wrong one on Windows and on",
+    "   any environment where the interpreter is `python`. Because the whole command is",
+    "   guarded with `|| exit 0`, a missing `python3` did not error — the hook silently",
+    "   did nothing, which is the worst failure a guard can have. `command -v python3 ||",
+    "   command -v python` tries both.",
+    "",
+    "2. IT FAILS OPEN, ON PURPOSE. No interpreter, or laserbrain not installed, exits 0",
+    "   and permits the call. A hook that denies because it could not load itself would",
+    "   brick every tool call in the session. Verified: exit 0 in both cases.",
+    "",
+    "3. THE IMPORT PROBE IS A SEPARATE SPAWN, ALSO ON PURPOSE. Running the module",
+    "   directly would print a ModuleNotFoundError traceback into the host's stderr on",
+    "   every single tool call for anyone who installed the plugin without the package.",
+    "   Redirecting the real run's stderr instead would silence lb_gate's own warnings,",
+    "   which travel on stderr by design.",
+    "",
+    "4. lb_safety IS HERE. It was missing until 2026-08-29, so everyone who installed",
+    "   this plugin got the coverage gate and no destructive-command guard. It is the",
+    "   hook that refuses `rm -rf`, force pushes and the like. Shipping the gate that",
+    "   governs goal drift while omitting the one that governs destruction is the wrong",
+    "   half to leave out.",
+    "",
+    "5. DENIAL DOES NOT TRAVEL BY EXIT CODE. It is stdout JSON —",
+    "   hookSpecificOutput.permissionDecision — so `|| exit 0` cannot suppress a real",
+    "   block. See lb_gate.py:712."
+  ],
   "hooks": {
     "PreToolUse": [
       {
@@ -6,7 +36,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude python3 -m laserbrain.hooks.lb_gate || exit 0"
+            "command": "LB_PY=$(command -v python3 || command -v python) && [ -n \"$LB_PY\" ] && \"$LB_PY\" -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude \"$LB_PY\" -m laserbrain.hooks.lb_gate || exit 0"
+          },
+          {
+            "type": "command",
+            "command": "LB_PY=$(command -v python3 || command -v python) && [ -n \"$LB_PY\" ] && \"$LB_PY\" -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude \"$LB_PY\" -m laserbrain.hooks.lb_safety || exit 0"
           }
         ]
       }
@@ -17,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude python3 -m laserbrain.hooks.lb_coverage || exit 0"
+            "command": "LB_PY=$(command -v python3 || command -v python) && [ -n \"$LB_PY\" ] && \"$LB_PY\" -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude \"$LB_PY\" -m laserbrain.hooks.lb_coverage || exit 0"
           }
         ]
       }
@@ -27,7 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude python3 -m laserbrain.hooks.lb_coverage || exit 0"
+            "command": "LB_PY=$(command -v python3 || command -v python) && [ -n \"$LB_PY\" ] && \"$LB_PY\" -c 'import laserbrain' 2>/dev/null && LASERBRAIN_AGENT=claude \"$LB_PY\" -m laserbrain.hooks.lb_coverage || exit 0"
           }
         ]
       }
