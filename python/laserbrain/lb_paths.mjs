@@ -17,7 +17,18 @@
 import { homedir } from 'os'
 import { join } from 'path'
 
-export const lbHome = () => process.env.LASERBRAIN_HOME || null
+// `~` is expanded here because lb_paths.py:43 expands it — `pathlib.Path(h).expanduser()`.
+// Without this the same LASERBRAIN_HOME resolved two ways: Python to
+// /Users/you/lbtest/config, JS to a literal directory named "~". mcp-server.mjs:138
+// names the stake: four files resolve the link log independently and must land on the
+// same file, and when they do not, two agents sharing a channel each write to a
+// different log and read an empty one — which "presents exactly as the other agent
+// having said nothing."
+const expandTilde = (v) => (v && v.startsWith('~')
+  ? join(process.env.HOME || homedir(), v.slice(1))
+  : v)
+
+export const lbHome = () => expandTilde(process.env.LASERBRAIN_HOME) || null
 
 export const configDir = () => {
   const h = lbHome()
