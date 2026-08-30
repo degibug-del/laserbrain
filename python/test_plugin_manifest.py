@@ -18,6 +18,7 @@ first-run experience is a 401.
 Run:  python3 test_plugin_manifest.py
 """
 import json
+import re
 import pathlib
 import subprocess
 import sys
@@ -83,24 +84,45 @@ show('all three events are wired',
      set(hooks) == {'PreToolUse', 'PostToolUse', 'UserPromptSubmit'}, str(sorted(hooks)))
 cmds = [h['command']
         for groups in hooks.values() for g in groups for h in g.get('hooks', [])]
+
+
+def modname(c):
+    """The module a command runs.
+
+    Was `.split()[0]`, which broke the moment the command stopped ending in whitespace:
+    the if/then form ends the invocation with `;`, so every name came back as `lb_gate;`
+    and three assertions failed for a formatting reason rather than a real one.
+    """
+    m = re.search(r'laserbrain\.hooks\.([A-Za-z_][A-Za-z0-9_]*)', c)
+    return m.group(1) if m else c[:30]
+
+
 # Was `len(cmds) == 3`, which encoded the state where lb_safety was not wired at all.
 # A count is the wrong assertion here: it passed while the destructive-command guard was
 # missing from every install, and it would have failed the fix. Name the modules instead.
-wired = sorted({c.split('laserbrain.hooks.')[-1].split()[0] for c in cmds if 'laserbrain.hooks.' in c})
+wired = sorted({modname(c) for c in cmds if 'laserbrain.hooks.' in c})
 show('all three hook modules are wired, safety included',
      wired == ['lb_coverage', 'lb_gate', 'lb_safety'], str(wired))
 show('lb_gate and lb_safety both run on PreToolUse',
-     sorted(h['command'].split('laserbrain.hooks.')[-1].split()[0]
+     sorted(modname(h['command'])
             for g in hooks.get('PreToolUse', []) for h in g.get('hooks', []))
      == ['lb_gate', 'lb_safety'], 'PreToolUse')
 for c in cmds:
-    name = c.split('laserbrain.hooks.')[-1].split()[0] if 'laserbrain.hooks.' in c else c[:30]
-    show(f'{name} is guarded', "import laserbrain' 2>/dev/null &&" in c and '|| exit 0' in c, c[:90])
+    name = modname(c)
+    # Fails open: every branch reaches exit 0. Denial travels as stdout JSON
+    # (lb_gate.py:712), so exiting 0 cannot suppress a real block.
+    show(f'{name} fails open', c.rstrip().endswith('exit 0'), c[-40:])
     # `python3` is the wrong name on Windows and anywhere the interpreter is `python`.
-    # Combined with the || exit 0 guard that did not error, it made the hook silently
-    # do nothing — the worst failure a guard can have. Resolve, do not name.
     show(f'{name} resolves the interpreter',
          'command -v python3 || command -v python' in c, c[:64])
+    # The case that actually happens is a python3 that EXISTS and cannot import
+    # laserbrain — venv, pipx, conda. Every mcp-server.mjs has read this variable since
+    # line 689; the hooks were the one component that ignored it.
+    show(f'{name} honours LASERBRAIN_PYTHON', 'LASERBRAIN_PYTHON' in c, c[:60])
+    # The old form ended in `|| exit 0`, so a missing package produced no output at all
+    # and nothing distinguished it from a quiet session.
+    show(f'{name} says so when it cannot load',
+         'laserbrain hooks are inert' in c and '>&2' in c, c[:60])
 
 print('\n  the guard actually works, against a module that truly does not exist')
 bare = subprocess.run([sys.executable, '-m', 'definitely_not_installed_xyz'],

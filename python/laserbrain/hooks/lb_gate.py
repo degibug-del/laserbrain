@@ -492,9 +492,14 @@ STATE_DIR = pathlib.Path(os.environ.get('LASERBRAIN_STATE_DIR')
 # search_tool: MCP schema discovery — read-only; blocking it deadlocks an agent that needs
 # the schema before it can call check_state through use_tool.
 ALWAYS_ALLOW = (
-    'check_state', 'reset_task', 'get_history', 'read_field', 'field_vocabulary',
-    'speak_to_field', 'link_read', 'link_whoami', 'link_write', 'drift_grammar',
-    'search_tool',  # MCP schema discovery; not a side-effect tool
+    'check_state', 'reset_task', 'get_history', 'link_read', 'link_whoami',
+    'link_write', 'drift_grammar',
+    # MCP schema discovery, under every spelling a host has used. Matching is a substring
+    # test against the lowercased tool name, so 'search_tool' does NOT match Claude Code's
+    # 'ToolSearch' — the two words are in the other order. That miss was live: refusals.jsonl
+    # records tool='toolsearch' at stage='hard' 9 times, which is exactly the deadlock the
+    # comment below was written to prevent, happening because the entry did not match.
+    'search_tool', 'toolsearch', 'tool_search',
 )
 
 
