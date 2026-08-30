@@ -17,7 +17,7 @@ from the inside; you need an outside anchor.
 The grammar never changes. Recall it, or fetch it (free, findable):
 
 ```bash
-curl -s https://phronesis.world/api/laserbrain/grammar
+curl -s https://api.phronesis.world/v1/grammar
 ```
 
 It is a JSON schema: `goal`, `doing`, `progress` (advancing | stuck | circling),

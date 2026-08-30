@@ -72,7 +72,10 @@ mcp = manifests.get('.mcp.json', {}).get('mcpServers', {})
 show('one server, named laserbrain', list(mcp) == ['laserbrain'], str(list(mcp)))
 entry = mcp.get('laserbrain', {})
 show('it is the http transport', entry.get('type') == 'http', repr(entry.get('type')))
-show('it points at the hosted worker', 'workers.dev' in (entry.get('url') or ''), repr(entry.get('url')))
+# Was 'workers.dev', which is degibug.workers.dev — a personal subdomain. 0.57.0 moved the
+# default to the API's own name, and this assertion is what stops it drifting back.
+show('it points at the hosted worker',
+     'api.phronesis.world' in (entry.get('url') or ''), repr(entry.get('url')))
 
 print('\n  every hook fails open — the load-bearing property')
 hooks = manifests.get('hooks/hooks.json', {}).get('hooks', {})
