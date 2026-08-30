@@ -45,7 +45,7 @@ jobs:
       # is a test nobody is running.
       - uses: actions/checkout@v4
         with:
-          repository: degibug-del/lasergear
+          repository: degibug-del/laserbrain-instructions
           path: .lasergear
 
       - name: pytest

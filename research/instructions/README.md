@@ -1,6 +1,7 @@
 # instructions — phronesis's own methods, and the corpus reader
 
-Absorbed from `degibug-del/lasergear` at `c157bdbd5` on 2026-08-30.
+Absorbed from `degibug-del/laserbrain-instructions` at `c157bdbd5` on 2026-08-30.
+That repository was named `lasergear` at that commit; it was renamed the same day.
 
 lasergear held twelve files. Nine were the hook modules, `hosts.json` and a shared
 markdown note, all of which already live in this repository — the hooks at

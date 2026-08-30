@@ -7,7 +7,7 @@ __pycache__/
 .venv/
 
 # research/ carries the ALGORITHMS only. Measurement output — the session corpus,
-# traces, calibration tables — stays in degibug-del/lasermind and out of here.
+# traces, calibration tables — stays in degibug-del/laserbrain-corpus and out of here.
 research/sessions/
 research/traces/
 research/attention.json
@@ -16,7 +16,7 @@ research/grammar.json
 
 # research/ carries the ALGORITHMS only. Measurement output — the session corpus, the
 # traces, the calibration tables — and the tests coupled to them stay in
-# degibug-del/lasermind. Merged 2026-08-29; this line is why the merge is partial.
+# degibug-del/laserbrain-corpus. Merged 2026-08-29; this line is why the merge is partial.
 research/sessions/
 research/traces/
 research/attention.json

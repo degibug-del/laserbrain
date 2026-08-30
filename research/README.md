@@ -1,10 +1,10 @@
 # research — the algorithms
 
-The measurement and study code from `degibug-del/lasermind`, merged here on 2026-08-29
+The measurement and study code from `degibug-del/laserbrain-corpus`, merged here on 2026-08-29
 with `git subtree add --prefix=research`, so its history came with it.
 
 **Algorithms only. No data.** The session corpus, the traces, `attention.json` and
-`corpus-facts.json` stay in lasermind, and so do the twenty tests that read them. What is
+`corpus-facts.json` stay in laserbrain-corpus, and so do the twenty tests that read them. What is
 here is the code: the calibrators, the graders, the benchmarks, the study harnesses, and
 the eighteen tests that pass standalone.
 
@@ -22,4 +22,4 @@ worth anything to them.
 
     python3 test_<name>.py
 
-Eighteen pass with nothing but this checkout. Anything needing the corpus is in lasermind.
+Eighteen pass with nothing but this checkout. Anything needing the corpus is in laserbrain-corpus.
