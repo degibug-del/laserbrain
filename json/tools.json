@@ -1,0 +1,45 @@
+{
+  "what": "Which tools each laserbrain transport must expose. The stdio server and the hosted Worker are separate implementations with separate hand-maintained tool lists, and nothing compared them: local had 32, hosted had 15, and the gap was found by counting rather than by any check.",
+  "universal": {
+    "what": "Must exist on BOTH the stdio server and the hosted Worker. A divergence here is a bug.",
+    "tools": [
+      "analyze_language",
+      "ask_alice",
+      "check_dialogue",
+      "check_state",
+      "compare_phrasings",
+      "drift_grammar",
+      "forget_self",
+      "get_history",
+      "modulate",
+      "phronesis",
+      "read_text",
+      "remember_self",
+      "reset_dialogue",
+      "reset_task",
+      "resume_self"
+    ]
+  },
+  "local_only": {
+    "what": "Cannot run in a Worker. Each needs a local filesystem or a Python runtime, so the hosted transport does not and cannot serve them. Listed with the reason so the absence is a stated fact rather than an unexplained gap.",
+    "tools": {
+      "attention": "reads the calibration table from disk",
+      "capabilities": "reads the working tree to report what is installed",
+      "explore": "reads the repository",
+      "find_bugs": "reads the repository",
+      "laserscore": "reads the local drift log",
+      "link_read": "the link log is a local file",
+      "link_whoami": "the link log is a local file",
+      "link_write": "the link log is a local file",
+      "mark_verdict": "writes to the local verdict ledger",
+      "review_verdicts": "reads the local verdict ledger",
+      "similarity": "loads a sentence-transformer model; a Worker has no Python runtime",
+      "store_find": "laserstore is a local directory",
+      "store_list": "laserstore is a local directory",
+      "store_vend": "laserstore is a local directory",
+      "supercode": "manages local agent processes",
+      "trailscore": "reads the local drift log",
+      "write_grounded": "writes files"
+    }
+  }
+}
