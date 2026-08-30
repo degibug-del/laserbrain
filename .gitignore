@@ -5,3 +5,40 @@ __pycache__/
 *.egg-info/
 *.tgz
 .venv/
+
+# research/ carries the ALGORITHMS only. Measurement output — the session corpus,
+# traces, calibration tables — stays in degibug-del/lasermind and out of here.
+research/sessions/
+research/traces/
+research/attention.json
+research/corpus-facts.json
+research/grammar.json
+
+# research/ carries the ALGORITHMS only. Measurement output — the session corpus, the
+# traces, the calibration tables — and the tests coupled to them stay in
+# degibug-del/lasermind. Merged 2026-08-29; this line is why the merge is partial.
+research/sessions/
+research/traces/
+research/attention.json
+research/corpus-facts.json
+research/grammar.json
+research/test_attention.py
+research/test_corpus_clean.py
+research/test_grammar_conformance.py
+research/test_host_wiring.py
+research/test_join.py
+research/test_judgment_lands.py
+research/test_judgment_parity.py
+research/test_judgment_recorded.py
+research/test_lanes.py
+research/test_laserscore_conformance.py
+research/test_offer_is_current.py
+research/test_one_root.py
+research/test_probe.py
+research/test_proportional_gate.py
+research/test_reground.py
+research/test_safety.py
+research/test_thresholds_still_fit.py
+research/test_verdict_parity.py
+research/test_verdict_recording.py
+research/test_version_agrees.py
