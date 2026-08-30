@@ -16,7 +16,7 @@ So: one canonical file, and everything else must equal it.
     lasermind/grammar.json                              canonical — the server READS it
     phronesis-world/functions/api/laserbrain/*.json     synced copy — a static deploy
                                                         cannot read another repo
-    https://phronesis.world/api/laserbrain/grammar      what the world actually gets
+    https://api.phronesis.world/v1/grammar             what the world actually gets
 
 The live check is the one that matters and the one that can be skipped honestly: if the
 network is down it says so rather than passing. A conformance test that quietly does not
@@ -43,8 +43,9 @@ _testhome.isolate()
 
 HERE = pathlib.Path(__file__).parent
 CANON = HERE / 'grammar.json'
-COPY = pathlib.Path.home() / 'phronesis-world' / 'functions' / 'api' / 'laserbrain' / 'grammar.json'
-LIVE = 'https://phronesis.world/api/laserbrain/grammar'
+COPY = (pathlib.Path.home() / 'phronesis-world' / 'workers' / 'laserbrain-mcp-remote'
+        / 'src' / 'grammar.json')
+LIVE = 'https://api.phronesis.world/v1/grammar'
 
 ok = True
 
@@ -91,7 +92,7 @@ if COPY.exists():
     copy = json.loads(COPY.read_text())
     show('the site copy is byte-equal to canonical', copy == canon, diff(canon, copy))
 else:
-    show('the site copy exists', False, f'missing: {COPY}')
+    show('the served copy exists', False, f'missing: {COPY}')
 
 # ── what the world actually receives ────────────────────────────────────────
 # The deployed answer is the only one a reader can check, so a mismatch here is the real
@@ -108,8 +109,12 @@ except (urllib.error.URLError, TimeoutError, OSError) as e:
 
 # ── and the server reads rather than restates ───────────────────────────────
 server = (HERE / 'mcp-server.mjs').read_text()
+# Assert the PROPERTY, not one spelling of it. This checked for a literal unguarded
+# readFileSync expression, so hardening the load — two lookup paths and a built-in
+# floor, so a missing grammar no longer crashes the server at import — broke the check
+# while improving the thing it was guarding. A test that fails on a fix is not a test.
 show('mcp-server.mjs READS grammar.json instead of restating it',
-     "readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'grammar.json')" in server)
+     "join(_dir, 'grammar.json')" in server and 'JSON.parse(readFileSync(_p' in server)
 show('and holds no second literal version string',
      "laserbrain_grammar: '" not in server)
 
