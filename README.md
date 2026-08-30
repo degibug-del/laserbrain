@@ -12,15 +12,60 @@ milliseconds, over one `grammar.json` that every implementation reads.
 
 ---
 
+## Try it with nothing installed
+
+`POST /v1/check` takes a sequence of goals and returns a verdict per step. No key, no
+account, no signup. Send goals only and the two self-reported terms stay fixed, which
+leaves the anchored goal term as the only thing moving:
+
+```bash
+curl -s -X POST https://api.phronesis.world/v1/check \
+  -H 'content-type: application/json' \
+  -d '{"steps":[{"goal":"add rate limiting to the login endpoint"},
+                {"goal":"throttle repeated sign-in attempts"},
+                {"goal":"add a token bucket to the login endpoint"}]}'
+```
+
+Read `goal_score` per step: 1.0 on-goal, 0.0 swapped, fractional between. That request is
+also the experiment worth running first, because it tells you whether the instrument suits
+your team's vocabulary. It scores stem overlap, so a paraphrase of your own goal reads as a
+swap — the middle step above returns 0.0. If `goal_score` collapses on wording you consider
+identical, you have learned that before installing anything.
+
+---
+
 ## Install
 
 **Python** — the complete product: harness, enforcement hooks, MCP server, audit chain.
 
 ```bash
 pip install laserbrain
-laserbrain install          # wires the MCP server + hooks into your agent
+laserbrain check --goal "write a poem" --against "build a parser"
 laserbrain demo             # watch an agent drift off-goal and get returned
+laserbrain install          # wires the MCP server + hooks into your agent
 ```
+
+**Claude Code plugin** — the enforced-cadence path, and the one that actually works.
+Discipline alone measured 6% coverage. The gate holds a 20% floor, because an agent that
+has drifted is the one that will not remember to check.
+
+```
+/plugin marketplace add degibug-del/laserbrain
+/plugin install laserbrain
+```
+
+It ships the MCP server and three hooks: `lb_gate` refuses side-effecting tool calls when
+coverage falls, `lb_safety` refuses destructive commands, `lb_coverage` records. **The hooks
+are inert until the Python package is installed.** They are guarded, so a missing package is
+silent rather than fatal, and they say so once on stderr naming the interpreter they tried.
+Run both:
+
+```bash
+pip install laserbrain          # this is what arms the hooks
+```
+
+If the interpreter holding the package is not the first `python3` on PATH — a venv, pipx or
+conda — set `LASERBRAIN_PYTHON` to it.
 
 **TypeScript**
 
@@ -48,11 +93,16 @@ cd ../javascript && node test/parity.mjs    # 138 comparisons, driven over stdio
 `laserbrain install` backs up `~/.claude/settings.json` first and prints the undo line.
 To reverse it, restore `settings.json.before-laserbrain`.
 
-**Hosted MCP**, if you would rather not install anything — needs a free key:
+**Hosted MCP**, if you would rather not install anything:
 
 ```
 https://api.phronesis.world/mcp
 ```
+
+No key. Eleven of the fifteen tools run keyless, `check_state` among them. The four that
+touch stored memory — `remember_self`, `resume_self`, `forget_self`, `ask_alice` — take a
+key as a tool argument. This line used to say the hosted MCP needs a free key, which was
+not true.
 
 ---
 
