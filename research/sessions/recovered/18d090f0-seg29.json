@@ -1,0 +1,73 @@
+{
+  "steps": 34,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 3,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 10,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 14,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 18,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 22,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 28,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 32,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+      "progress": "advancing",
+      "distance": 1
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Unblock the precision number: reconcile the coverage thresholds and get an honest precision figure from the laserbrain corpus",
+  "id": "18d090f0-seg29"
+}

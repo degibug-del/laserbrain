@@ -1,0 +1,129 @@
+{
+  "steps": 3148,
+  "checks": [],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 359,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 371,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 454,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 506,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 594,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 640,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 668,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1008,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2230,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2403,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2433,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2618,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2632,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2633,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2792,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2797,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2829,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2854,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2928,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 2947,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": null,
+  "id": "ba542312-seg01"
+}

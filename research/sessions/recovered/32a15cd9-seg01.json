@@ -1,0 +1,21 @@
+{
+  "steps": 122,
+  "checks": [],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 8,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 69,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": null,
+  "id": "32a15cd9-seg01"
+}

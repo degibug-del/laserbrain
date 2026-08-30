@@ -1,0 +1,210 @@
+{
+  "steps": 115,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 8
+    },
+    {
+      "step": 4,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 7
+    },
+    {
+      "step": 7,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 13,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 17,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 21,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 26,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 29,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 36,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 43,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 49,
+      "drifting": true,
+      "reason": "stalled",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 55,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 61,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 67,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 73,
+      "drifting": true,
+      "reason": "stalled",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 79,
+      "drifting": true,
+      "reason": "self-report:stuck",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "stuck",
+      "distance": 2
+    },
+    {
+      "step": 85,
+      "drifting": true,
+      "reason": "stalled",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 89,
+      "drifting": true,
+      "reason": "stalled",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 95,
+      "drifting": true,
+      "reason": "stalled",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 101,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 107,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 0
+    },
+    {
+      "step": 113,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+      "progress": "advancing",
+      "distance": 0
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 40,
+      "what": "a check suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 77,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 88,
+      "what": "a check suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 103,
+      "what": "a check suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Fix the four mobile bugs on phronesis.world at 375px (billboard overlap, header overflow, wordmark weld, tap targets) and add a 375px viewport pass to the site guards",
+  "id": "18d090f0-seg23"
+}

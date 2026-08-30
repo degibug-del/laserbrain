@@ -1,0 +1,33 @@
+{
+  "steps": 13,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Make laserbrain's coverage automatic so dogfood.py can produce a real detection result instead of withholding one",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 3,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Make laserbrain's coverage automatic so dogfood.py can produce a real detection result instead of withholding one",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 12,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Audit whether laserbrain is thoroughly tested and close the gaps found",
+      "progress": "advancing",
+      "distance": 5
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Make laserbrain's coverage automatic so dogfood.py can produce a real detection result instead of withholding one",
+  "id": "18d090f0-seg07"
+}

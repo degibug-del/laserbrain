@@ -1,0 +1,80 @@
+{
+  "steps": 48,
+  "checks": [
+    {
+      "step": 9,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Unfreeze laserbrain's vocabulary and calibration without breaking the fixed-reference theorem",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 21,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unfreeze laserbrain's vocabulary and calibration without breaking the fixed-reference theorem",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 30,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Unfreeze laserbrain's vocabulary and calibration without breaking the fixed-reference theorem",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 39,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Unfreeze laserbrain's vocabulary and calibration without breaking the fixed-reference theorem",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 48,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Work through the laserbrain ecosystem list: parity test, cli coverage, why() on verdicts, publish prep",
+      "progress": "advancing",
+      "distance": 5
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 12,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 15,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 16,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 45,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 47,
+      "what": "a test suite failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Unfreeze laserbrain's vocabulary and calibration without breaking the fixed-reference theorem",
+  "id": "18d090f0-seg08"
+}

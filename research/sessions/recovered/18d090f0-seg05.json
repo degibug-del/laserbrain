@@ -1,0 +1,25 @@
+{
+  "steps": 7,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "preregister the token-recycling study \u2014 does resuming through a compressed ground cost fewer net tokens than re-sending context",
+      "progress": "advancing",
+      "distance": 7
+    },
+    {
+      "step": 3,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "preregister the token-recycling study \u2014 does resuming through a compressed ground cost fewer net tokens than re-sending context",
+      "progress": "advancing",
+      "distance": 3
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "preregister the token-recycling study \u2014 does resuming through a compressed ground cost fewer net tokens than re-sending context",
+  "id": "18d090f0-seg05"
+}

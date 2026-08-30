@@ -1,0 +1,25 @@
+{
+  "steps": 5,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Build the native iOS surface for drift: Game Center, native server browser, haptics, iCloud sync",
+      "progress": "advancing",
+      "distance": 7
+    },
+    {
+      "step": 5,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Rebuild DRIFT natively for iOS in SpriteKit, starting from the particle field and attractor core",
+      "progress": "advancing",
+      "distance": 8
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Build the native iOS surface for drift: Game Center, native server browser, haptics, iCloud sync",
+  "id": "18d090f0-seg35"
+}

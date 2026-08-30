@@ -1,0 +1,153 @@
+{
+  "steps": 84,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+      "progress": "advancing",
+      "distance": 8
+    },
+    {
+      "step": 4,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 10,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 16,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 20,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 26,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 32,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 38,
+      "drifting": true,
+      "reason": "self-report:stuck",
+      "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+      "progress": "stuck",
+      "distance": 3
+    },
+    {
+      "step": 42,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Fix the drift title screen so the class and mode menu renders",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 48,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the drift title screen so the class and mode menu renders",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 54,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the drift title screen so the class and mode menu renders",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 60,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the drift title screen so the class and mode menu renders",
+      "progress": "advancing",
+      "distance": 0
+    },
+    {
+      "step": 66,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix the drift title screen so the class and mode menu renders",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 70,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Make phronesis.world/drift land on the drift menu/startup page",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 74,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Make phronesis.world/drift land on the drift menu, and test everything",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 77,
+      "drifting": false,
+      "reason": "reground",
+      "goal": "Rename the lb_ hook files to match the current laserfield naming",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 82,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Rename the stale laserbrain directory to laserfield and update every reference",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 84,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Rename the stale laserbrain directory to laserfield and update every reference",
+      "progress": "advancing",
+      "distance": 2
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Find and fix real bugs across the recent drift multiplayer and laserbrain work",
+  "id": "18d090f0-seg33"
+}

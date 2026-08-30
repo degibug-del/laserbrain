@@ -1,0 +1,97 @@
+{
+  "steps": 37,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 5,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 7,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 9,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 11,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 13,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 16,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 21,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 26,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 30,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 36,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 2
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+  "id": "18d090f0-seg22"
+}

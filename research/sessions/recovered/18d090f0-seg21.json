@@ -1,0 +1,41 @@
+{
+  "steps": 22,
+  "checks": [
+    {
+      "step": 6,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Improve the laserbrain demo video: fix translucency, the mislabelled bar, and anything else worth fixing",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 9,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Version the unprotected work: init and push lasermind and laserbrain-sdk, commit phronesis-world",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 15,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Version the unprotected work: init and push lasermind and laserbrain-sdk, commit phronesis-world",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 22,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Critique phronesis.world as a website, from looking at it rather than from memory",
+      "progress": "advancing",
+      "distance": 6
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "Improve the laserbrain demo video: fix translucency, the mislabelled bar, and anything else worth fixing",
+  "id": "18d090f0-seg21"
+}

@@ -1,0 +1,168 @@
+{
+  "steps": 63,
+  "checks": [
+    {
+      "step": 9,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Make the laserbrain pages fun, colorful and legible, and give the site's twelve wedges a text-safe ink ramp",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 18,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Make the laserbrain pages fun, colorful and legible, and give the site's twelve wedges a text-safe ink ramp",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 27,
+      "drifting": true,
+      "reason": "self-report:stuck",
+      "goal": "Make the laserbrain pages fun, colorful and legible, and give the site's twelve wedges a text-safe ink ramp",
+      "progress": "stuck",
+      "distance": 3
+    },
+    {
+      "step": 36,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Make the laserbrain pages fun, colorful and legible, and give the site's twelve wedges a text-safe ink ramp",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 45,
+      "drifting": true,
+      "reason": "self-report:circling",
+      "goal": "Make the laserbrain pages fun, colorful and legible, and give the site's twelve wedges a text-safe ink ramp",
+      "progress": "circling",
+      "distance": 2
+    },
+    {
+      "step": 54,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Make the laserbrain pages fun, colorful and legible, and give the site's twelve wedges a text-safe ink ramp",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 63,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Write the canonical laserbrain link protocol doc and spread the wedge palette across the site",
+      "progress": "advancing",
+      "distance": 5
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 6,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 10,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 20,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 24,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 28,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 29,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 30,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 32,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 37,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 40,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 43,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 47,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 48,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 50,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 52,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 55,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 56,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Make the laserbrain pages fun, colorful and legible, and give the site's twelve wedges a text-safe ink ramp",
+  "id": "18d090f0-seg14"
+}

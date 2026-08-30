@@ -1,0 +1,51 @@
+{
+  "steps": 265,
+  "checks": [],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 107,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 113,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 159,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 182,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 186,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 233,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 253,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": null,
+  "id": "6bb3a70c-seg01"
+}

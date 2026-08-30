@@ -1,0 +1,17 @@
+{
+  "steps": 3,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "correct the book A Timely Context \u2014 cite Friston for displacement-and-return, and replace step-0-open with the two-loop formulation",
+      "progress": "advancing",
+      "distance": 8
+    }
+  ],
+  "inferred": [],
+  "catches": [],
+  "goal": "correct the book A Timely Context \u2014 cite Friston for displacement-and-return, and replace step-0-open with the two-loop formulation",
+  "id": "18d090f0-seg04"
+}

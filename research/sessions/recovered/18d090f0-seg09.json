@@ -1,0 +1,78 @@
+{
+  "steps": 66,
+  "checks": [
+    {
+      "step": 10,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Work through the laserbrain ecosystem list: parity test, cli coverage, publish prep",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 20,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Work through the laserbrain ecosystem list: parity test, cli coverage, publish prep",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 29,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Work through the laserbrain ecosystem list: parity test, cli coverage, publish prep",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 38,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Work through the laserbrain ecosystem list: parity test, cli coverage, publish prep",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 47,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Work through the laserbrain ecosystem list: parity test, cli coverage, publish prep",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 56,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Rename the weather field to laserfield and record its relationship to the harness",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 66,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Connect laserfield to laserbrain so the brain reads position instead of guessing it",
+      "progress": "advancing",
+      "distance": 1
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 4,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 17,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Work through the laserbrain ecosystem list: parity test, cli coverage, publish prep",
+  "id": "18d090f0-seg09"
+}

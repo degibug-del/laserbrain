@@ -1,0 +1,128 @@
+{
+  "steps": 64,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 7
+    },
+    {
+      "step": 4,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 6
+    },
+    {
+      "step": 7,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 14,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 17,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 20,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 26,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 31,
+      "drifting": true,
+      "reason": "self-report:stuck",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "stuck",
+      "distance": 3
+    },
+    {
+      "step": 38,
+      "drifting": true,
+      "reason": "self-report:stuck",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "stuck",
+      "distance": 3
+    },
+    {
+      "step": 42,
+      "drifting": true,
+      "reason": "stalled",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 46,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 52,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 58,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 64,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Restart the laserbrain MCP server so the goal-drift fix takes effect",
+      "progress": "advancing",
+      "distance": 5
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 59,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Fix goal-drift so it does not fire when the user redirects the agent to a new task",
+  "id": "18d090f0-seg30"
+}

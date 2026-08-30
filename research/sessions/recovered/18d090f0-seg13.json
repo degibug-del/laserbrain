@@ -1,0 +1,64 @@
+{
+  "steps": 64,
+  "checks": [
+    {
+      "step": 10,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Get DRIFT, the particle game, running natively on iOS toward an App Store submission",
+      "progress": "advancing",
+      "distance": 4
+    },
+    {
+      "step": 19,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Return to laserbrain and report its state accurately at the end of a long session",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 28,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Remove mission control from the laserbrain header",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 38,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Act on the laserbrain page critique: white theme, reorder proof and pricing up, fix stale copy",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 55,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Fix the three tandem-run corpus bugs and demonstrate laserfield as shared state between Claude and Grok",
+      "progress": "advancing",
+      "distance": 3
+    },
+    {
+      "step": 64,
+      "drifting": true,
+      "reason": "goal-drift",
+      "goal": "Make the laserbrain pages fun, colorful and legible: fix invisible colours, close the gate hole, raise the type floor, adopt the wedge palette",
+      "progress": "advancing",
+      "distance": 6
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 42,
+      "what": "build failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Get DRIFT, the particle game, running natively on iOS toward an App Store submission",
+  "id": "18d090f0-seg13"
+}

@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+retest_out/
+sessions/*.local.json
+
+# ARC-AGI benchmark output, not source. 19MB of run traces and per-run state that
+# a fresh clone regenerates by playing the games again. arc/.state is the private
+# LASERBRAIN_HOME the harness isolates itself into so benchmark runs — which are
+# pathological on purpose — cannot reach the live corpus.
+arc/.state/
+arc/runs/
+# Downloaded, not written here: the ARC-AGI-3 game sources the toolkit fetches on
+# first run, and two cloned upstream datasets. 19MB of third-party content that a
+# fresh clone re-downloads, and that this repo has no business republishing.
+arc/environment_files/
+arc/ARC-AGI/
+arc/ARC-AGI-2/

@@ -1,0 +1,87 @@
+{
+  "steps": 1193,
+  "checks": [],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 43,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 167,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 214,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 248,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 253,
+      "what": "missing file",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 345,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 366,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 390,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 400,
+      "what": "shell error",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 485,
+      "what": "python raised",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 489,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 490,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    },
+    {
+      "step": 1062,
+      "what": "a guard reported problems",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": null,
+  "id": "bbc62432-seg01"
+}

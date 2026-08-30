@@ -1,0 +1,70 @@
+{
+  "steps": 33,
+  "checks": [
+    {
+      "step": 1,
+      "drifting": false,
+      "reason": "grounded",
+      "goal": "Put a good description of laserbrain and its affiliates/subsidiaries on the website",
+      "progress": "advancing",
+      "distance": 7
+    },
+    {
+      "step": 6,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Put a good description of laserbrain and its affiliates/subsidiaries on the website",
+      "progress": "advancing",
+      "distance": 5
+    },
+    {
+      "step": 11,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Put a good description of laserbrain and its affiliates/subsidiaries on the website",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 18,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Put a good description of laserbrain and its affiliates/subsidiaries on the website",
+      "progress": "advancing",
+      "distance": 2
+    },
+    {
+      "step": 24,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Put a good description of laserbrain and its affiliates/subsidiaries on the website",
+      "progress": "advancing",
+      "distance": 1
+    },
+    {
+      "step": 30,
+      "drifting": false,
+      "reason": "advancing",
+      "goal": "Put a good description of laserbrain and its affiliates/subsidiaries on the website",
+      "progress": "advancing",
+      "distance": 1
+    }
+  ],
+  "inferred": [],
+  "catches": [
+    {
+      "step": 20,
+      "what": "weld guard failed",
+      "by": "build/guard/shell",
+      "tool": "Read"
+    },
+    {
+      "step": 25,
+      "what": "weld guard failed",
+      "by": "build/guard/shell",
+      "tool": "Bash"
+    }
+  ],
+  "goal": "Put a good description of laserbrain and its affiliates/subsidiaries on the website",
+  "id": "18d090f0-seg26"
+}
