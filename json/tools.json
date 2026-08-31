@@ -11,6 +11,7 @@
       "drift_grammar",
       "forget_self",
       "get_history",
+      "laserscore",
       "modulate",
       "phronesis",
       "read_text",
@@ -21,13 +22,12 @@
     ]
   },
   "local_only": {
-    "what": "Cannot run in a Worker. Each needs a local filesystem or a Python runtime, so the hosted transport does not and cannot serve them. Listed with the reason so the absence is a stated fact rather than an unexplained gap.",
+    "what": "Not yet on the hosted transport. Each is bridged to Python by the stdio server rather than implemented in it, so answering needs a subprocess the Worker cannot spawn. That is a fact about that server, not about the tool: laserscore moved to universal on 2026-08-30 by porting it, and the rest can follow. The note against each says what it would take, not why it is impossible.",
     "tools": {
       "attention": "reads the calibration table from disk",
       "capabilities": "reads the working tree to report what is installed",
       "explore": "reads the repository",
       "find_bugs": "reads the repository",
-      "laserscore": "reads the local drift log",
       "link_read": "the link log is a local file",
       "link_whoami": "the link log is a local file",
       "link_write": "the link log is a local file",
