@@ -2340,7 +2340,21 @@ async function _call(name, args) {
       return record(false, 'grounded', 'Ground state set — this is where you started. Continue, and check_state each step.')
     }
     const phi = displacement({ goal, progress, distance }, drift.ground)
-    if ((progress === 'stuck' || progress === 'circling') && phi > SELF_REPORT_MIN)
+    // THE GOAL ANCHOR IS TESTED FIRST, since 2026-08-30. This branch returned before
+    // goal-drift was ever evaluated, and it passes the previous verdict through by design —
+    // the warn-then-interrupt rule. So the loudest state the instrument can be in came back
+    // silent: goal fully abandoned AND the agent reporting `circling`, phi 0.85,
+    // goal_score 0.00, drifting FALSE. An agent that is lost and says so triggered nothing.
+    //
+    // The guard is goal_score, not phi. phi cannot tell these apart: it is high both when
+    // the goal has changed and when the work is merely far from where it started. Below
+    // goal_min the goal itself has moved, which is goal-drift's question, so this declines
+    // and the ladder continues to it.
+    const _sr = new Set(drift.firstGoal ?? []), _sc = new Set(toWords(goal))
+    let _si = 0; for (const w of _sc) if (_sr.has(w)) _si++
+    const _sgs = _sr.size ? _si / (new Set([..._sc, ..._sr]).size || 1) : 1
+    if ((progress === 'stuck' || progress === 'circling') && phi > SELF_REPORT_MIN
+        && _sgs >= (_CAL.goal_min ?? 0.30))
       // TWO-STRIKE, matching Python and drift.ts. This returned `true` on the FIRST
       // occurrence, so this server interrupted where the reference merely warns. Found
       // 2026-08-20 by giving it the parity suite it had never had: it is the server its

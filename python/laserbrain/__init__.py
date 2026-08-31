@@ -1463,7 +1463,20 @@ class _Run:
         phi = _displacement(goal, progress, d, self.ground, self.sim, self.cal)
         tm = _terms(goal, progress, d, self.ground, self.sim, self.cal)
         parts = ', '.join(f'{k} {("unknown" if v is None else format(v, ".2f"))}' for k, v in tm.items())
-        if progress in ('stuck', 'circling') and phi > self.cal.self_report_min:
+        # THE GOAL ANCHOR IS TESTED FIRST, since 2026-08-30. This branch returned before
+        # goal-drift was ever evaluated, and it passes the PREVIOUS verdict's drifting
+        # through by design — the warn-then-interrupt rule. So the loudest state the
+        # instrument can be in came back silent: goal fully abandoned AND the agent itself
+        # reporting `circling`, Φ 0.85, goal_score 0.00, drifting FALSE. An agent that is
+        # lost and says so could not trigger anything, and the README's own example branches
+        # on `if v.drifting:`.
+        #
+        # The guard is goal_score, not Φ. Φ cannot distinguish these: it is high both when
+        # the goal has changed and when the work is merely far from where it started. Below
+        # goal_min the goal itself has moved, and that is goal-drift's question to answer,
+        # so this branch declines and the ladder continues to it.
+        if (progress in ('stuck', 'circling') and phi > self.cal.self_report_min
+                and self._goal_score(goal) >= self.cal.goal_min):
             return emit(f'self-report:{progress}', prev,
                         f'You reported {progress} and have moved from ground. Return to your goal.' if prev
                         else f'You reported {progress}. If it holds next step, return to ground.', phi,
