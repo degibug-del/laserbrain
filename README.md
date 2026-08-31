@@ -1,14 +1,33 @@
 # laserbrain
 
-**A goal-alignment harness for AI agents.**
+**Laserbrain detects when an AI agent stops doing what it was asked to do.**
 
-Your agent states its goal on the first step. That statement is frozen where the agent
-cannot revise it, and every later step is checked against it — and the check is *forced*
-rather than left to the agent to remember, because an agent that has drifted is exactly
-the one that will not remember to check.
+The agent states its task. Laserbrain freezes that statement and asserts it during each step
+of the agent's task. If the planned work drifts from the goal, laserbrain can refuse the
+next action.
+
+The check is *forced* rather than left to the agent to remember, because an agent that has
+drifted is exactly the one that will not remember to check.
 
 No model. No network. No key. A fixed algebraic structure computed locally in single-digit
 milliseconds, over one `grammar.json` that every implementation reads.
+
+<details>
+<summary>The same thing, precisely</summary>
+
+Laserbrain is a deterministic drift detector for agent loops. At each step the agent supplies
+a tuple of goal, progress and distance. The first such tuple is frozen as the reference; every
+subsequent one is scored against it by
+
+```
+Φ = 0.5·goalJaccard + 0.3·|Δdistance|/10 + 0.2·[progress differs]
+```
+
+and resolved to one of nine verdicts, two of which are enforceable. The agent supplies the
+description and has no write access to the reference and no vote on the verdict. Computation
+is offline and closed-form: no model, no network, single-digit milliseconds.
+
+</details>
 
 ---
 
