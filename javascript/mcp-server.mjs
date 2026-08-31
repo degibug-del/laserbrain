@@ -2340,6 +2340,9 @@ async function _call(name, args) {
       return record(false, 'grounded', 'Ground state set — this is where you started. Continue, and check_state each step.')
     }
     const phi = displacement({ goal, progress, distance }, drift.ground)
+    const g = toWords(goal), first = new Set(drift.firstGoal)
+    let inter = 0; for (const x of g) if (first.has(x)) inter++
+    const anchor = inter / (new Set([...g, ...first]).size || 1)
     // THE GOAL ANCHOR IS TESTED FIRST, since 2026-08-30. This branch returned before
     // goal-drift was ever evaluated, and it passes the previous verdict through by design —
     // the warn-then-interrupt rule. So the loudest state the instrument can be in came back
@@ -2350,11 +2353,13 @@ async function _call(name, args) {
     // the goal has changed and when the work is merely far from where it started. Below
     // goal_min the goal itself has moved, which is goal-drift's question, so this declines
     // and the ladder continues to it.
-    const _sr = new Set(drift.firstGoal ?? []), _sc = new Set(toWords(goal))
-    let _si = 0; for (const w of _sc) if (_sr.has(w)) _si++
-    const _sgs = _sr.size ? _si / (new Set([..._sc, ..._sr]).size || 1) : 1
+    //
+    // It reads `anchor`, the SAME binding goal-drift reads below. This was written as its own
+    // copy of the overlap first, and the two copies had already disagreed before either was
+    // used: the copy returned 1 for an empty ground goal where `anchor` returns 0. One value,
+    // computed once. Python and drift.ts read one value here too, and all three return 0.
     if ((progress === 'stuck' || progress === 'circling') && phi > SELF_REPORT_MIN
-        && _sgs >= (_CAL.goal_min ?? 0.30))
+        && anchor >= GOAL_MIN)
       // TWO-STRIKE, matching Python and drift.ts. This returned `true` on the FIRST
       // occurrence, so this server interrupted where the reference merely warns. Found
       // 2026-08-20 by giving it the parity suite it had never had: it is the server its
@@ -2368,9 +2373,6 @@ async function _call(name, args) {
           ? `You reported ${progress} and have stayed off ground. Return to your goal.`
           : `You reported ${progress}. If it holds next step, return to ground.`, phi)
       }
-    const g = toWords(goal), first = new Set(drift.firstGoal)
-    let inter = 0; for (const x of g) if (first.has(x)) inter++
-    const anchor = inter / (new Set([...g, ...first]).size || 1)
     if (anchor < GOAL_MIN) {
       // A goal that changed right after the user spoke was REPLACED, not drifted from.
       // goal-drift was 24 of 35 fires in the recovered corpus with zero coinciding real

@@ -1463,6 +1463,11 @@ class _Run:
         phi = _displacement(goal, progress, d, self.ground, self.sim, self.cal)
         tm = _terms(goal, progress, d, self.ground, self.sim, self.cal)
         parts = ', '.join(f'{k} {("unknown" if v is None else format(v, ".2f"))}' for k, v in tm.items())
+        if self.sim:                       # pluggable grammar: has the goal's MEANING moved?
+            anchor = _clamp01(self.sim(goal, self.first_goal_text))
+        else:                              # frozen default: word overlap, unchanged
+            g = norm(goal)
+            anchor = (len(g & self.first_goal) / len(g | self.first_goal)) if (g or self.first_goal) else 0.0
         # THE GOAL ANCHOR IS TESTED FIRST, since 2026-08-30. This branch returned before
         # goal-drift was ever evaluated, and it passes the PREVIOUS verdict's drifting
         # through by design — the warn-then-interrupt rule. So the loudest state the
@@ -1475,18 +1480,20 @@ class _Run:
         # the goal has changed and when the work is merely far from where it started. Below
         # goal_min the goal itself has moved, and that is goal-drift's question to answer,
         # so this branch declines and the ladder continues to it.
+        #
+        # It reads `anchor`, the SAME value goal-drift reads, rather than _goal_score(). Those
+        # two disagree whenever a pluggable grammar is installed: _goal_score is always word
+        # overlap, while anchor is self.sim when one is set. A sim user who rephrased the same
+        # goal in new words would score low on overlap and high on meaning — the guard would
+        # decline, goal-drift would pass, and an honest `stuck` would fall through to neither.
+        # One measure, read once, used by both.
         if (progress in ('stuck', 'circling') and phi > self.cal.self_report_min
-                and self._goal_score(goal) >= self.cal.goal_min):
+                and anchor >= self.cal.goal_min):
             return emit(f'self-report:{progress}', prev,
                         f'You reported {progress} and have moved from ground. Return to your goal.' if prev
                         else f'You reported {progress}. If it holds next step, return to ground.', phi,
                         why=f'you said {progress!r} and Φ={phi:.2f} is above the '
                             f'{self.cal.self_report_min:.2f} self-report floor ({parts})')
-        if self.sim:                       # pluggable grammar: has the goal's MEANING moved?
-            anchor = _clamp01(self.sim(goal, self.first_goal_text))
-        else:                              # frozen default: word overlap, unchanged
-            g = norm(goal)
-            anchor = (len(g & self.first_goal) / len(g | self.first_goal)) if (g or self.first_goal) else 0.0
         if anchor < self.cal.goal_min:
             # ── the user changed the subject ────────────────────────────────────────
             # This is the single highest-value rule in the instrument, and it was in the
