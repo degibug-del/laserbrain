@@ -1,16 +1,32 @@
 # laserbrain
 
-**Laserbrain detects when an AI agent stops doing what it was asked to do.**
+**Laserbrain detects agent drift.**
 
-The agent states its task. Laserbrain freezes that statement and asserts it during each step
-of the agent's task. If the planned work drifts from the goal, laserbrain can refuse the
-next action.
+Drift is an agent's goal separating from the one it was given, one reasonable step at a time,
+leading to work nobody asked for.
 
-The check is *forced* rather than left to the agent to remember, because an agent that has
-drifted is exactly the one that will not remember to check.
+The agent states its task. Laserbrain freezes that statement as the reference. At each
+following step the agent states what it is now pursuing, and laserbrain scores that with the
+frozen statement. If the two have separated far enough, laserbrain refuses the next action.
 
-No model. No network. No key. A fixed algebraic structure computed locally in single-digit
-milliseconds, over one `grammar.json` that every implementation reads.
+A goal degrades when it passes between contexts. Laserbrain carries it across. The frozen
+statement comes back to the agent on every verdict, not only the ones that fire.
+
+Laserbrain supplies one thing: a fixed criterion, set before the work starts, that the agent's
+own report is scored with. All three inputs are self-reported and stay that way. A self-check
+has no criterion to compare them to. The frozen statement is the criterion.
+
+The reference cannot drift. It cannot be edited and no check updates it. It can only be
+erased and replaced, and that takes a deliberate call.
+
+The check runs on every step. Most steps score as grounded and the answer is to continue.
+
+It does not check whether the work is correct. An agent doing the wrong thing well and an
+agent doing the right thing badly score the same. It measures alignment with the stated goal
+and nothing else.
+
+No model. No key. A fixed algebraic structure computed locally in single-digit milliseconds,
+over one `grammar.json` that every implementation reads.
 
 <details>
 <summary>The same thing, precisely</summary>
