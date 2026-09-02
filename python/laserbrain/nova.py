@@ -97,9 +97,78 @@ class Nova:
         # Fingerprint of the ground, taken at the first check. Prevention is impossible in
         # Python; evidence is not.
         self._ground_fp = None
+        # Set by teach(). None means nova cannot choose and decide() says so.
+        self._rules = None
         # supercode is preloaded because supervision is something an agent does. It is a
         # skill nova calls, not a thing nova is.
         self.learn('supercode', self._supercode)
+
+    # ── choosing ────────────────────────────────────────────────────────────────
+    def teach(self, ruleset) -> 'Nova':
+        """Give nova rules for choosing a skill. Rule names ARE skill names.
+
+        That identity is the design. A ruleset for choosing is not a separate vocabulary
+        mapped onto skills — the category a context falls into IS the skill to run, so
+        there is nothing to keep in sync.
+
+        REFUSES UP FRONT if a rule names a skill nova does not have, the same reason
+        follow(strict=True) does: discovering that the rule which fired names nothing at
+        step four, after steps one to three have run, is the expensive way to find out.
+        """
+        from .rules import Ruleset
+        if not isinstance(ruleset, Ruleset):
+            raise TypeError('teach() takes a laserbrain.rules.Ruleset')
+        unknown = [r.name for r in ruleset.rules if r.name not in self.skills]
+        if unknown:
+            raise ValueError(
+                f'rules name skills nova does not have: {", ".join(sorted(unknown))} — '
+                f'known: {sorted(self.skills)}')
+        self._rules = ruleset
+        return self
+
+    def decide(self, ctx: dict | None = None):
+        """Choose the next skill from the context. Returns the laserbrain Verdict.
+
+        THIS IS THE ORGAN THAT WAS MISSING. nova could hold skills, run one by name and
+        follow a stored method. It could not choose, and choosing was `act` — external and
+        "usually a model". With a ruleset it chooses deterministically, and `.considered`
+        carries why every skill was not chosen, which is the thing a model cannot supply.
+
+        Returns a Verdict whose `category` is the skill name, or None when nothing cleared
+        the threshold. None is a real answer: no rule matched this context, and inventing a
+        choice there would be the guess this whole engine exists to avoid.
+        """
+        from .rules import classify
+        if getattr(self, '_rules', None) is None:
+            raise RuntimeError('nova has no rules — call teach(ruleset) first')
+        return classify(self._describe(ctx or {}), self._rules)
+
+    def _describe(self, ctx: dict) -> str:
+        """The context as text for the matcher to read.
+
+        THE GOAL IS DELIBERATELY NOT IN HERE, and the first version had it. Caught by running
+        it rather than reading it: with goal='ship the parser and the benchmark', rules cued
+        on `parser` and `benchmark` fired on EVERY step including the first, before anything
+        had happened, and tied at margin 0. The goal is constant for the life of the run, so
+        including it can only add a fixed bias to every decision. A chooser whose input does
+        not change is not choosing.
+
+        What goes in is what VARIES:
+
+            observation   the caller's report of what is true now. The only channel for the
+                          world, because nova cannot see it — a skill returning a string is
+                          the caller's to pass on.
+            return        the harness's advice when it says to come back. A rule can then
+                          say "when told to return, reground".
+            reason        the verdict's NAME, not its numbers. A keyword matcher cannot read
+                          a float, and putting one here would be an unusable term in every
+                          ruleset.
+        """
+        v = ctx.get('verdict') or self._last
+        parts = [str(ctx.get('observation') or ''), str(ctx.get('return') or '')]
+        if v is not None:
+            parts.append(str(getattr(v, 'reason', '') or ''))
+        return ' '.join(p for p in parts if p)
 
     # ── skills ──────────────────────────────────────────────────────────────────
     def learn(self, name: str, fn, replace: bool = False) -> 'Nova':

@@ -18,6 +18,7 @@ defects and one false claim in its own docstring. Each is an assertion here now:
 import sys
 
 from laserbrain import Nova
+from laserbrain.rules import Rule, Ruleset, why_not
 
 FAIL = []
 
@@ -193,5 +194,51 @@ c3 = nv3.run(lambda ctx: {'goal': 'ship the parser', 'distance': 5}, max_steps=3
 check('a run out of steps says max_steps', c3.get('stopped'), 'max_steps')
 check('  and is not reported as finished', c3.get('finished'), None)
 check('  having taken exactly the steps allowed', c3['steps'], 3)
+
+
+# ── nova chooses for itself ─────────────────────────────────────────────────────────────
+#
+# The organ that was missing. nova could hold skills, run one by name and follow a stored
+# method; it could not decide WHICH, and that was `act` — external and "usually a model".
+
+nv = Nova(goal='ship the parser and the benchmark')
+for _n in ('write_test', 'run_bench', 'reground'):
+    nv.learn(_n, lambda _n=_n: _n)
+nv.teach(Ruleset(name='next', threshold=1, rules=(
+    Rule(name='reground',   any=('return', 'matches', 'drift')),
+    Rule(name='run_bench',  any=('benchmark', 'measure'), none=('failing',)),
+    Rule(name='write_test', any=('test', 'coverage')),
+)))
+
+check('an empty context chooses nothing', nv.decide({}).category, None)
+check('  which is an answer, not a failure', nv.decide({}).considered != (), True)
+check('an observation selects a skill',
+      nv.decide({'observation': 'coverage is thin on the tokenizer'}).category, 'write_test')
+check('a different observation selects a different one',
+      nv.decide({'observation': 'the benchmark harness is ready to measure'}).category, 'run_bench')
+check('the harness advice can drive the choice',
+      nv.decide({'return': 'Your goal no longer matches the one you started with'}).category,
+      'reground')
+
+# THE GOAL IS NOT AN INPUT, and the first version had it. With goal='ship the parser and the
+# benchmark', rules cued on `parser` and `benchmark` fired on every step before anything had
+# happened. A chooser whose input is constant is not choosing.
+check('the goal does not leak into the decision',
+      nv.decide({}).category, None)
+
+d = nv.decide({'observation': 'coverage is thin on the tokenizer'})
+check('and it says why the others lost', why_not(d, 'run_bench'), 'no cue matched')
+
+_bad = Ruleset(name='bad', rules=(Rule(name='deploy', any=('x',)),))
+try:
+    nv.teach(_bad); check('teach refuses unknown skills', 'no error', 'ValueError')
+except ValueError as e:
+    check('teach refuses a rule naming a skill nova lacks', 'deploy' in str(e), True)
+
+_fresh = Nova(goal='x')
+try:
+    _fresh.decide({}); check('decide without rules raises', 'no error', 'RuntimeError')
+except RuntimeError:
+    check('decide before teach says so rather than guessing', True, True)
 
 print('all pass')

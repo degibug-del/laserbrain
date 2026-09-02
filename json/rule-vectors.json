@@ -1,0 +1,312 @@
+{
+ "note": "Generated FROM the TypeScript, which is the reference implementation for the Logic Engine (unlike drift, where Python is). Any Python port must reproduce these exactly.",
+ "matcher": [
+  {
+   "kw": "move",
+   "text": "we are moving quickly",
+   "pattern": "\\b(?:move(?:s|es|d|ed|ing|er|est|ly|ness)?|mov(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "move",
+   "text": "she moved it",
+   "pattern": "\\b(?:move(?:s|es|d|ed|ing|er|est|ly|ness)?|mov(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "move",
+   "text": "a mover",
+   "pattern": "\\b(?:move(?:s|es|d|ed|ing|er|est|ly|ness)?|mov(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "stop",
+   "text": "stopping now",
+   "pattern": "\\b(?:stop(?:s|es|d|ed|ing|er|est|ly|ness)?|stopp(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "stop",
+   "text": "it stopped",
+   "pattern": "\\b(?:stop(?:s|es|d|ed|ing|er|est|ly|ness)?|stopp(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "try",
+   "text": "we tried hard",
+   "pattern": "\\b(?:try(?:s|es|d|ed|ing|er|est|ly|ness)?|tri(?:es|ed|er|est|ly|ness))\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "try",
+   "text": "country roads",
+   "pattern": "\\b(?:try(?:s|es|d|ed|ing|er|est|ly|ness)?|tri(?:es|ed|er|est|ly|ness))\\b",
+   "matches": false,
+   "fires": false
+  },
+  {
+   "kw": "see",
+   "text": "I cannot see why",
+   "pattern": "\\b(?:see(?:s|es|d|ed|ing|er|est|ly|ness)?|se(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": false
+  },
+  {
+   "kw": "see",
+   "text": "I can see why",
+   "pattern": "\\b(?:see(?:s|es|d|ed|ing|er|est|ly|ness)?|se(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "see",
+   "text": "nothing to see",
+   "pattern": "\\b(?:see(?:s|es|d|ed|ing|er|est|ly|ness)?|se(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": false
+  },
+  {
+   "kw": "still",
+   "text": "stillness is the ground",
+   "pattern": "\\b(?:still(?:s|es|d|ed|ing|er|est|ly|ness)?)\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "ground",
+   "text": "grounded",
+   "pattern": "\\b(?:ground(?:s|es|d|ed|ing|er|est|ly|ness)?)\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "do",
+   "text": "it is done",
+   "pattern": "\\b(?:do(?:s|es|d|ed|ing|er|est|ly|ness)?)\\b",
+   "matches": false,
+   "fires": false
+  },
+  {
+   "kw": "play",
+   "text": "they played well",
+   "pattern": "\\b(?:play(?:s|es|d|ed|ing|er|est|ly|ness)?)\\b",
+   "matches": true,
+   "fires": true
+  },
+  {
+   "kw": "use",
+   "text": "it is useful",
+   "pattern": "\\b(?:use(?:s|es|d|ed|ing|er|est|ly|ness)?|us(?:ing|ed|er|est))\\b",
+   "matches": false,
+   "fires": false
+  },
+  {
+   "kw": "fire",
+   "text": "fires and firing",
+   "pattern": "\\b(?:fire(?:s|es|d|ed|ing|er|est|ly|ness)?|fir(?:ing|ed|er|est))\\b",
+   "matches": true,
+   "fires": true
+  }
+ ],
+ "ruleset": {
+  "name": "v",
+  "threshold": 1,
+  "rules": [
+   {
+    "name": "outage",
+    "any": [
+     "down",
+     "offline"
+    ],
+    "none": [
+     "scheduled"
+    ]
+   },
+   {
+    "name": "degraded",
+    "any": [
+     "slow",
+     "latency"
+    ],
+    "weight": 2
+   },
+   {
+    "name": "both",
+    "all": [
+     "user",
+     "impact"
+    ]
+   }
+  ]
+ },
+ "classify": [
+  {
+   "text": "the api is down",
+   "category": "outage",
+   "score": 1,
+   "margin": 1,
+   "considered": [
+    {
+     "rule": "outage",
+     "fired": true,
+     "score": 1,
+     "why": "matched: down"
+    },
+    {
+     "rule": "degraded",
+     "fired": false,
+     "score": 0,
+     "why": "no cue matched"
+    },
+    {
+     "rule": "both",
+     "fired": false,
+     "score": 0,
+     "why": "required: user, impact absent"
+    }
+   ],
+   "whyNot_outage": null
+  },
+  {
+   "text": "down for scheduled maintenance",
+   "category": null,
+   "score": 0,
+   "margin": 0,
+   "considered": [
+    {
+     "rule": "outage",
+     "fired": false,
+     "score": 0,
+     "why": "excluded: scheduled present"
+    },
+    {
+     "rule": "degraded",
+     "fired": false,
+     "score": 0,
+     "why": "no cue matched"
+    },
+    {
+     "rule": "both",
+     "fired": false,
+     "score": 0,
+     "why": "required: user, impact absent"
+    }
+   ],
+   "whyNot_outage": "excluded: scheduled present"
+  },
+  {
+   "text": "the page is slow",
+   "category": "degraded",
+   "score": 2,
+   "margin": 2,
+   "considered": [
+    {
+     "rule": "outage",
+     "fired": false,
+     "score": 0,
+     "why": "no cue matched"
+    },
+    {
+     "rule": "degraded",
+     "fired": true,
+     "score": 2,
+     "why": "matched: slow"
+    },
+    {
+     "rule": "both",
+     "fired": false,
+     "score": 0,
+     "why": "required: user, impact absent"
+    }
+   ],
+   "whyNot_outage": "no cue matched"
+  },
+  {
+   "text": "user impact is high",
+   "category": "both",
+   "score": 2,
+   "margin": 2,
+   "considered": [
+    {
+     "rule": "outage",
+     "fired": false,
+     "score": 0,
+     "why": "no cue matched"
+    },
+    {
+     "rule": "degraded",
+     "fired": false,
+     "score": 0,
+     "why": "no cue matched"
+    },
+    {
+     "rule": "both",
+     "fired": true,
+     "score": 2,
+     "why": "matched: user, impact"
+    }
+   ],
+   "whyNot_outage": "no cue matched"
+  },
+  {
+   "text": "nothing relevant here",
+   "category": null,
+   "score": 0,
+   "margin": 0,
+   "considered": [
+    {
+     "rule": "outage",
+     "fired": false,
+     "score": 0,
+     "why": "no cue matched"
+    },
+    {
+     "rule": "degraded",
+     "fired": false,
+     "score": 0,
+     "why": "no cue matched"
+    },
+    {
+     "rule": "both",
+     "fired": false,
+     "score": 0,
+     "why": "required: user, impact absent"
+    }
+   ],
+   "whyNot_outage": "no cue matched"
+  },
+  {
+   "text": "slow and down at once",
+   "category": "degraded",
+   "score": 2,
+   "margin": 1,
+   "considered": [
+    {
+     "rule": "outage",
+     "fired": true,
+     "score": 1,
+     "why": "matched: down"
+    },
+    {
+     "rule": "degraded",
+     "fired": true,
+     "score": 2,
+     "why": "matched: slow"
+    },
+    {
+     "rule": "both",
+     "fired": false,
+     "score": 0,
+     "why": "required: user, impact absent"
+    }
+   ],
+   "whyNot_outage": "it fired (score 1) but \"degraded\" scored higher at 2"
+  }
+ ]
+}
