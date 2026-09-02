@@ -169,7 +169,26 @@ class Nova:
         """
         ctx: dict = {'returns': 0, 'steps': 0}
         for _ in range(max_steps):
-            s = act(ctx) or {}
+            # THE THINKING IS ALLOWED TO FAIL, and until 2026-09-01 it was not. `act` is
+            # "usually a model" by this class's own description, so it calls a network, and a
+            # network failure was killing the loop: the caller got an exception instead of a
+            # ctx and lost every step that had already run. use() has recorded a failing skill
+            # as an Event since it shipped; the act function — the one thing in nova most
+            # likely to fail — was the only call site with no such record.
+            #
+            # RECORDED, THEN STOPPED, NOT RETRIED. nova cannot tell a transient failure from a
+            # deterministic one, and retrying an act that raises on every call would burn
+            # max_steps against the same exception. Stopping with the reason named is the
+            # answer nova can stand behind.
+            try:
+                s = act(ctx) or {}
+            except Exception as e:
+                ev = Event(kind='act', name='act', ok=False,
+                           result=f'{type(e).__name__}: {e}')
+                self.events.append(ev)
+                ctx['stopped'] = 'error'
+                ctx['error'] = f'{type(e).__name__}: {e}'
+                return ctx
             self.steps += 1
             ctx['steps'] = self.steps
             v = self._hz.check(goal=s.get('goal', self.goal),
@@ -189,7 +208,15 @@ class Nova:
                 ctx.pop('return', None)
             if s.get('done') or _asdist(s.get('distance')) == 0:
                 ctx['finished'] = True
+                ctx['stopped'] = 'done'
                 break
+        else:
+            # WHY A for/else. Running out of steps used to be reported by the ABSENCE of
+            # `finished`, which is the same shape as read_field() returning None for a dead
+            # hub and a quiet one alike — three different endings distinguished by what is
+            # missing. `stopped` names which one it was, and `finished` is kept because
+            # callers read it.
+            ctx['stopped'] = 'max_steps'
         return ctx
 
     def compose(self, agents: dict, max_steps: int = 30, on_return=None,

@@ -160,4 +160,38 @@ if FAIL:
     for f in FAIL:
         print('   ', f)
     sys.exit(1)
+
+# ── the thinking is allowed to fail ─────────────────────────────────────────────────────
+#
+# `act` is "usually a model", so it calls a network. Before 2026-09-01 an exception there
+# killed run() outright: the caller got a traceback instead of a ctx and lost every step
+# already taken. use() had recorded a failing skill as an Event since it shipped; the one
+# call most likely to fail was the one with no record.
+
+def boom(ctx):
+    if ctx['steps'] >= 2:
+        raise ConnectionError('the model did not answer')
+    return {'goal': 'ship the parser', 'progress': 'advancing', 'distance': 5}
+
+nv = Nova(goal='ship the parser')
+ctx = nv.run(boom, max_steps=10)
+check('a failing act does not kill the run', isinstance(ctx, dict), True)
+check('  the steps before it are kept', ctx['steps'], 2)
+check('  the ending is named', ctx.get('stopped'), 'error')
+check('  and the reason is carried', 'ConnectionError' in ctx.get('error', ''), True)
+check('  the failure is an event, like a failing skill',
+      [e for e in nv.events if e.kind == 'act' and not e.ok] != [], True)
+check('  it is not reported as finished', ctx.get('finished'), None)
+
+# ── how a run ended is stated, not inferred from absence ────────────────────────────────
+nv2 = Nova(goal='ship the parser')
+c2 = nv2.run(walk(n=3), max_steps=10)
+check('a completed run says done', c2.get('stopped'), 'done')
+
+nv3 = Nova(goal='ship the parser')
+c3 = nv3.run(lambda ctx: {'goal': 'ship the parser', 'distance': 5}, max_steps=3)
+check('a run out of steps says max_steps', c3.get('stopped'), 'max_steps')
+check('  and is not reported as finished', c3.get('finished'), None)
+check('  having taken exactly the steps allowed', c3['steps'], 3)
+
 print('all pass')
