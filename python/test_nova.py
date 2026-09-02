@@ -293,4 +293,55 @@ ov = Nova(goal='old')
 ov.learn('anything', _f)
 check('a skill with no declarations still runs', ov.use('anything'), None)
 
+
+# ── nova finds out whether the plan worked ──────────────────────────────────────────────
+#
+# plan() says what SHOULD work. pursue() finds out. A skill's `gives` is a promise about the
+# world, and the world is free to break it: the build succeeds and produces no wheel.
+
+_world = set()
+def _mk(nv, lying_build=True):
+    nv.learn('write_tests', lambda: _world.add('tests'),      gives={'tests'})
+    nv.learn('run_tests',   lambda: _world.add('tests_pass'), needs={'tests'}, gives={'tests_pass'})
+    nv.learn('build',       (lambda: None) if lying_build else (lambda: _world.add('wheel')),
+             needs={'tests_pass'}, gives={'wheel'})
+    nv.learn('publish',     lambda: _world.add('published'),  needs={'wheel'}, gives={'published'})
+    return nv
+
+# BELIEVING: no sense function, so nova carries on from what the skills promised. A weaker
+# mode, and the result says so per step rather than presenting belief as knowledge.
+_world.clear()
+_b = _mk(Nova(goal='publish the wheel'))
+_rb = _b.pursue(want={'published'})
+check('without sense, nova believes the skills', _rb['done'], True)
+check('  and every step is marked assumed',
+      {t['state'] for t in _rb['taken']}, {'assumed'})
+
+# CHECKING: with sense, the lie is caught.
+_world.clear()
+_c = _mk(Nova(goal='publish the wheel'))
+_rc = _c.pursue(want={'published'}, sense=lambda: set(_world), max_replans=2)
+check('with sense, a skill that lies is caught', _rc['done'], False)
+check('  every step is marked observed', {t['state'] for t in _rc['taken']}, {'observed'})
+check('  the divergence names what was promised',
+      _rc['divergences'][0]['promised_missing'], ('wheel',))
+check('  and which step broke its promise', _rc['divergences'][0]['step'], 'build')
+check('  nova re-plans rather than stopping at the first failure', len(_rc['plans']) > 1, True)
+check('  and gives up with a reason', 'never reached' in _rc['why'], True)
+
+# THE CEILING, DEMONSTRATED RATHER THAN ASSERTED. nova cannot learn that `build` lies, so it
+# re-plans into the same failing plan every time. That is the boundary between a goal-based
+# agent and a learning agent, and it is the honest thing to pin.
+check('nova cannot learn a skill lies — it repeats the same plan',
+      len(_rc['divergences']), 3)
+check('  and the work it did do is kept', sorted(_rc['state']), ['tests', 'tests_pass'])
+
+# When the skill tells the truth, the same call succeeds with no divergence.
+_world.clear()
+_t = _mk(Nova(goal='publish the wheel'), lying_build=False)
+_rt = _t.pursue(want={'published'}, sense=lambda: set(_world))
+check('an honest skill needs no re-plan', _rt['done'], True)
+check('  with nothing diverging', _rt['divergences'], ())
+check('  in one plan', len(_rt['plans']), 1)
+
 print('all pass')

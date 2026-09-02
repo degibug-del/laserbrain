@@ -188,6 +188,81 @@ class Nova:
                     f'searched {len(seen)} states to depth {max_depth} and never reached: '
                     f'{", ".join(sorted(want - start))}')
 
+    def pursue(self, want, have=(), sense=None, max_replans: int = 3, on_return=None):
+        """Plan, run the steps, and re-plan when the world disagrees with the plan.
+
+        plan() says what SHOULD work. This finds out. A skill declares `gives`, and a
+        declaration is a promise about the world that the world is free to break: the build
+        succeeds and produces no wheel, the publish returns 200 and nothing appears.
+
+        SENSE IS THE DIFFERENCE BETWEEN BELIEVING AND CHECKING. Pass `sense()` returning the
+        set of conditions currently true and nova compares what it predicted against what is
+        there. Pass nothing and it carries on from what the skills promised, which is a
+        legitimate mode and a weaker one — so the result says which it was, per step, rather
+        than presenting both as knowledge. That distinction is the same one `anchored`
+        returning 0.5 forever got wrong: a value nobody measured, reported on the same scale
+        as one that was.
+
+        Every step is checked by laserbrain, and the check is not optional here either.
+
+        Returns a dict: done, state, taken, plans, divergences, why.
+        """
+        state = frozenset(sense() if sense else have)
+        want = frozenset(want)
+        taken, plans, divergences = [], [], []
+        for _ in range(max_replans + 1):
+            p = self.plan(want, state)
+            plans.append(p)
+            if not p:
+                return {'done': False, 'state': state, 'taken': tuple(taken),
+                        'plans': tuple(plans), 'divergences': tuple(divergences),
+                        'why': p.why}
+            for name in p.steps:
+                sk = self.skills[name]
+                try:
+                    self.use(name)
+                except Exception as e:
+                    divergences.append({'step': name, 'kind': 'raised',
+                                        'detail': f'{type(e).__name__}: {e}'})
+                    break
+                self.steps += 1
+                v = self._hz.check(goal=self.goal, progress='advancing',
+                                   distance=max(0, len(want - state)))
+                self._last = v
+                if self._ground_fp is None:
+                    self._ground_fp = self._fingerprint()
+                if v.drifting:
+                    self.returns += 1
+                    if on_return:
+                        on_return(v, {'step': name, 'state': state})
+                predicted = state | sk.gives
+                if sense is None:
+                    # ASSUMED, and recorded as such. The plan continues on the skill's word.
+                    taken.append({'skill': name, 'state': 'assumed'})
+                    state = predicted
+                    continue
+                observed = frozenset(sense())
+                taken.append({'skill': name, 'state': 'observed'})
+                if observed != predicted:
+                    # THE INTERESTING CASE. The declaration and the world disagree, and the
+                    # gap is named both ways: what was promised and did not appear, and what
+                    # appeared and was not promised. Both are defects in the declaration.
+                    divergences.append({
+                        'step': name, 'kind': 'diverged',
+                        'promised_missing': tuple(sorted(predicted - observed)),
+                        'unexpected': tuple(sorted(observed - predicted)),
+                    })
+                    state = observed
+                    break
+                state = observed
+            if want <= state:
+                return {'done': True, 'state': state, 'taken': tuple(taken),
+                        'plans': tuple(plans), 'divergences': tuple(divergences), 'why': None}
+        return {'done': False, 'state': state, 'taken': tuple(taken),
+                'plans': tuple(plans), 'divergences': tuple(divergences),
+                'why': f're-planned {max_replans} times and never reached: '
+                       f'{", ".join(sorted(want - state))}'}
+
     # ── choosing ────────────────────────────────────────────────────────────────
     def teach(self, ruleset) -> 'Nova':
         """Give nova rules for choosing a skill. Rule names ARE skill names.
