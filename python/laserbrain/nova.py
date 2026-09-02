@@ -75,6 +75,30 @@ class Skill:
     calls: int = 0
     failures: int = 0
     events: list = _f(default_factory=list)
+    #: Conditions that must hold before this skill can run, and what holds after it does.
+    #: Empty by default, which means "runnable any time, changes nothing a planner can see"
+    #: — the behaviour every skill had before planning existed.
+    needs: frozenset = frozenset()
+    gives: frozenset = frozenset()
+
+
+@dataclass(frozen=True)
+class Plan:
+    """A sequence of skills, and the search that found it — or did not.
+
+    `steps` is None when nothing reaches the goal. `why` then says what was missing, because
+    a planner that answers "no" without saying which condition was unreachable has told you
+    the least useful true thing it knows.
+    """
+    steps: tuple | None
+    #: Every skill considered at every depth, with whether it applied and why not. The audit
+    #: record — the same shape the Logic Engine's `considered` has, for the same reason.
+    considered: tuple
+    expansions: int
+    why: str | None
+
+    def __bool__(self) -> bool:
+        return self.steps is not None
 
 
 class Nova:
@@ -102,6 +126,67 @@ class Nova:
         # supercode is preloaded because supervision is something an agent does. It is a
         # skill nova calls, not a thing nova is.
         self.learn('supercode', self._supercode)
+
+    # ── planning ────────────────────────────────────────────────────────────────
+    def plan(self, want, have=(), max_depth: int = 12):
+        """Find a sequence of skills that makes `want` true, starting from `have`.
+
+        THE DIFFERENCE BETWEEN THIS AND decide(). decide() maps a context to ONE skill by a
+        rule somebody wrote — a reflex. This constructs a sequence nobody wrote, by searching
+        over what the skills say they need and give. It is the first thing in nova that
+        produces behaviour which was not enumerated in advance.
+
+            nv.learn('run_tests', f, needs={'tests'},      gives={'tests_pass'})
+            nv.learn('build',     f, needs={'tests_pass'}, gives={'wheel'})
+            nv.plan(want={'wheel'})        ->  ['write_tests', 'run_tests', 'build']
+
+        BREADTH-FIRST, so the plan is the SHORTEST one and the search is deterministic.
+        Skills are tried in registration order, states are visited once, and the same request
+        returns the same plan every time. A planner that searched greedily would be faster and
+        would make the audit record a story about one path rather than a proof about all
+        shorter ones.
+
+        Returns a Plan. `Plan.steps` is None when no sequence exists, and `Plan.why` then
+        names the conditions that no skill produces — which is the planning form of "why did
+        you NOT do X", and the same question the Logic Engine answers for classification. An
+        unreachable goal is usually a missing skill, and saying which condition was never
+        produced points straight at it.
+        """
+        want, have = frozenset(want), frozenset(have)
+        # Answered before searching: a condition no skill can ever produce makes the goal
+        # unreachable from any state, and reporting that beats exhausting the space to
+        # discover it. This is the cheap half of `why`.
+        producible = frozenset().union(*(sk.gives for sk in self.skills.values())) if self.skills else frozenset()
+        impossible = want - have - producible
+        if impossible:
+            return Plan(None, tuple(), 0,
+                        f'no skill produces: {", ".join(sorted(impossible))}')
+
+        from collections import deque
+        start = have
+        seen = {start}
+        q = deque([(start, ())])
+        expanded = []
+        while q:
+            state, path = q.popleft()
+            if want <= state:
+                return Plan(path, tuple(expanded), len(expanded), None)
+            if len(path) >= max_depth:
+                continue
+            for name, sk in self.skills.items():       # registration order — determinism
+                if not sk.needs <= state:
+                    expanded.append((name, len(path), f'needs {", ".join(sorted(sk.needs - state))}'))
+                    continue
+                nxt = state | sk.gives
+                if nxt in seen:
+                    expanded.append((name, len(path), 'reaches a state already seen'))
+                    continue
+                seen.add(nxt)
+                expanded.append((name, len(path), 'applied'))
+                q.append((nxt, path + (name,)))
+        return Plan(None, tuple(expanded), len(expanded),
+                    f'searched {len(seen)} states to depth {max_depth} and never reached: '
+                    f'{", ".join(sorted(want - start))}')
 
     # ── choosing ────────────────────────────────────────────────────────────────
     def teach(self, ruleset) -> 'Nova':
@@ -171,7 +256,8 @@ class Nova:
         return ' '.join(p for p in parts if p)
 
     # ── skills ──────────────────────────────────────────────────────────────────
-    def learn(self, name: str, fn, replace: bool = False) -> 'Nova':
+    def learn(self, name: str, fn, replace: bool = False,
+              needs=(), gives=()) -> 'Nova':
         """Register a capability. Returns self so registrations can chain.
 
         Replacing an existing skill has to be asked for. The first version overwrote
@@ -186,7 +272,7 @@ class Nova:
             raise ValueError(
                 f'nova already has a skill named {name!r} with {self.skills[name].calls} '
                 f'call(s) on it. Pass replace=True if you mean to swap it.')
-        self.skills[name] = Skill(name, fn)
+        self.skills[name] = Skill(name, fn, needs=frozenset(needs), gives=frozenset(gives))
         return self
 
     def use(self, name: str, *a, **kw):

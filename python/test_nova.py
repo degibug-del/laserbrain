@@ -241,4 +241,56 @@ try:
 except RuntimeError:
     check('decide before teach says so rather than guessing', True, True)
 
+
+# ── nova composes a sequence nobody wrote ───────────────────────────────────────────────
+#
+# decide() maps a context to ONE skill by a rule somebody wrote — a reflex. plan() searches
+# over what skills declare they need and give, and builds a sequence that was never
+# enumerated. It is the first thing in nova that produces behaviour nobody wrote down.
+
+_f = lambda: None
+pv = Nova(goal='publish the wheel')
+pv.learn('write_tests', _f,                       gives={'tests'})
+pv.learn('run_tests',   _f, needs={'tests'},      gives={'tests_pass'})
+pv.learn('build',       _f, needs={'tests_pass'}, gives={'wheel'})
+pv.learn('publish',     _f, needs={'wheel'},      gives={'published'})
+pv.learn('tag',         _f, needs={'published'},  gives={'tagged'})
+
+_p = pv.plan(want={'published'})
+check('nova builds a sequence nobody declared',
+      _p.steps, ('write_tests', 'run_tests', 'build', 'publish'))
+check('  and the Plan is truthy when it found one', bool(_p), True)
+check('  with the search on the record', len(_p.considered) > 0, True)
+
+check('it skips what is already true',
+      pv.plan(want={'wheel'}, have={'tests_pass'}).steps, ('build',))
+check('a goal already met needs no steps', pv.plan(want={'tests'}, have={'tests'}).steps, ())
+
+# SHORTEST, because the search is breadth-first. A greedy planner could return
+# write_tests -> run_tests -> build -> publish -> tag for want={'published'}; BFS cannot.
+check('the plan is the shortest one', len(pv.plan(want={'published'}).steps), 4)
+
+# DETERMINISTIC. Skills are tried in registration order and states are visited once, so the
+# same request returns the same plan — which is what makes the audit record a proof rather
+# than a story about one path.
+check('the same request returns the same plan',
+      pv.plan(want={'published'}).steps == pv.plan(want={'published'}).steps, True)
+
+_u = pv.plan(want={'deployed'})
+check('an unreachable goal returns no plan', _u.steps, None)
+check('  and is falsy', bool(_u), False)
+check('  and names the condition no skill produces',
+      _u.why, 'no skill produces: deployed')
+
+# A cycle must not hang the search: two skills that undo each other.
+cv = Nova(goal='loop')
+cv.learn('up',   _f, needs={'down'}, gives={'up'})
+cv.learn('down', _f, needs={'up'},   gives={'down'})
+check('cycles terminate rather than hanging', cv.plan(want={'sideways'}, have={'up'}).steps, None)
+
+# needs/gives are optional, so every skill written before planning existed still works.
+ov = Nova(goal='old')
+ov.learn('anything', _f)
+check('a skill with no declarations still runs', ov.use('anything'), None)
+
 print('all pass')
