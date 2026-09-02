@@ -80,6 +80,10 @@ class Skill:
     #: — the behaviour every skill had before planning existed.
     needs: frozenset = frozenset()
     gives: frozenset = frozenset()
+    #: Times this skill ran without producing what `gives` claims. Not the same as `failures`,
+    #: which counts raising. A skill that returns cleanly and delivers nothing is the harder
+    #: case and the one a plan cannot survive.
+    broken: int = 0
 
 
 @dataclass(frozen=True)
@@ -156,11 +160,22 @@ class Nova:
         # Answered before searching: a condition no skill can ever produce makes the goal
         # unreachable from any state, and reporting that beats exhausting the space to
         # discover it. This is the cheap half of `why`.
-        producible = frozenset().union(*(sk.gives for sk in self.skills.values())) if self.skills else frozenset()
+        trusted = [sk for sk in self.skills.values() if not sk.broken]
+        producible = frozenset().union(*(sk.gives for sk in trusted)) if trusted else frozenset()
         impossible = want - have - producible
         if impossible:
-            return Plan(None, tuple(), 0,
-                        f'no skill produces: {", ".join(sorted(impossible))}')
+            # NAMES THE DISTRUST when that is the reason. "no skill produces: wheel" is true
+            # and misleading if a skill produces it and is no longer believed — the fix is a
+            # working build, not a new skill, and the message has to point at the right one.
+            lost = {c for c in impossible
+                    for sk in self.skills.values() if sk.broken and c in sk.gives}
+            why = f'no skill produces: {", ".join(sorted(impossible))}'
+            if lost:
+                names = sorted(sk.name for sk in self.skills.values()
+                               if sk.broken and sk.gives & lost)
+                why += (f' — {", ".join(names)} would, and is no longer trusted after '
+                        f'breaking its promise')
+            return Plan(None, tuple(), 0, why)
 
         from collections import deque
         start = have
@@ -174,6 +189,14 @@ class Nova:
             if len(path) >= max_depth:
                 continue
             for name, sk in self.skills.items():       # registration order — determinism
+                if sk.broken:
+                    # NOT TRUSTED TO DELIVER. Planning through a skill that has already
+                    # promised and not delivered is how pursue() looped three times on one
+                    # lie. This is the whole of nova's learning: one observation, remembered,
+                    # changing what it will plan.
+                    expanded.append((name, len(path),
+                                     f'excluded: broke its promise {sk.broken}x'))
+                    continue
                 if not sk.needs <= state:
                     expanded.append((name, len(path), f'needs {", ".join(sorted(sk.needs - state))}'))
                     continue
@@ -184,9 +207,18 @@ class Nova:
                 seen.add(nxt)
                 expanded.append((name, len(path), 'applied'))
                 q.append((nxt, path + (name,)))
-        return Plan(None, tuple(expanded), len(expanded),
-                    f'searched {len(seen)} states to depth {max_depth} and never reached: '
-                    f'{", ".join(sorted(want - start))}')
+        # THE EXHAUSTION MESSAGE HAS TO NAME THE DISTRUST TOO. The cheap check above only
+        # sees conditions in `want`; a skill excluded for breaking its promise usually
+        # produces an INTERMEDIATE one — `wheel` on the way to `published` — so the search
+        # runs and fails, and "never reached: published" points at the wrong thing. The fix
+        # is a working build, not a new publish step.
+        excluded = sorted({sk.name for sk in self.skills.values() if sk.broken})
+        why = (f'searched {len(seen)} states to depth {max_depth} and never reached: '
+               f'{", ".join(sorted(want - start))}')
+        if excluded:
+            why += (f' — with {", ".join(excluded)} excluded for breaking a promise'
+                    f' (nova.trust(name) to believe it again)')
+        return Plan(None, tuple(expanded), len(expanded), why)
 
     def pursue(self, want, have=(), sense=None, max_replans: int = 3, on_return=None):
         """Plan, run the steps, and re-plan when the world disagrees with the plan.
@@ -247,6 +279,11 @@ class Nova:
                     # THE INTERESTING CASE. The declaration and the world disagree, and the
                     # gap is named both ways: what was promised and did not appear, and what
                     # appeared and was not promised. Both are defects in the declaration.
+                    if predicted - observed:
+                        # Only a MISSING promise breaks trust. Unexpected extras mean the
+                        # declaration is incomplete, which is worth reporting and is not a
+                        # reason to stop believing the skill does what it says.
+                        sk.broken += 1
                     divergences.append({
                         'step': name, 'kind': 'diverged',
                         'promised_missing': tuple(sorted(predicted - observed)),
@@ -262,6 +299,19 @@ class Nova:
                 'plans': tuple(plans), 'divergences': tuple(divergences),
                 'why': f're-planned {max_replans} times and never reached: '
                        f'{", ".join(sorted(want - state))}'}
+
+    def trust(self, name: str) -> 'Nova':
+        """Believe a skill again after it broke a promise.
+
+        nova cannot tell a transient failure from a permanent one — the same reason run()
+        does not retry a failing act. So distrust is recorded and never expires, and undoing
+        it is a decision somebody makes rather than a timer. `report()` shows which skills
+        are distrusted so the decision has something to stand on.
+        """
+        if name not in self.skills:
+            raise KeyError(f'nova has no skill {name!r}')
+        self.skills[name].broken = 0
+        return self
 
     # ── choosing ────────────────────────────────────────────────────────────────
     def teach(self, ruleset) -> 'Nova':

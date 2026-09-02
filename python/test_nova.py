@@ -329,12 +329,33 @@ check('  and which step broke its promise', _rc['divergences'][0]['step'], 'buil
 check('  nova re-plans rather than stopping at the first failure', len(_rc['plans']) > 1, True)
 check('  and gives up with a reason', 'never reached' in _rc['why'], True)
 
-# THE CEILING, DEMONSTRATED RATHER THAN ASSERTED. nova cannot learn that `build` lies, so it
-# re-plans into the same failing plan every time. That is the boundary between a goal-based
-# agent and a learning agent, and it is the honest thing to pin.
-check('nova cannot learn a skill lies — it repeats the same plan',
-      len(_rc['divergences']), 3)
-check('  and the work it did do is kept', sorted(_rc['state']), ['tests', 'tests_pass'])
+# NOVA STOPS TRUSTING A SKILL THAT BREAKS ITS PROMISE. This assertion read `== 3` until
+# 2026-09-01, pinning the fact that nova re-planned into the same lie every time. It is 1
+# now, and the change is the whole of nova's learning: one observation, remembered, changing
+# what it will plan.
+check('one divergence, not three — the lie is remembered', len(_rc['divergences']), 1)
+check('  the skill is marked broken', _c.skills['build'].broken, 1)
+check('  and the reason names it, and how to undo it',
+      'build excluded for breaking a promise' in _rc['why'], True)
+check('  the work it did do is kept', sorted(_rc['state']), ['tests', 'tests_pass'])
+check('  the planner will not route through it',
+      _c.plan(want={'wheel'}, have={'tests_pass'}).steps, None)
+
+# FORGIVENESS IS A DECISION, NOT A TIMER. nova cannot tell a transient failure from a
+# permanent one — the same reason run() does not retry a failing act — so distrust never
+# expires and undoing it is somebody's call.
+_c.trust('build')
+check('trust() believes it again', _c.plan(want={'wheel'}, have={'tests_pass'}).steps, ('build',))
+check('  and clears the mark', _c.skills['build'].broken, 0)
+
+# ONLY A MISSING PROMISE BREAKS TRUST. A skill that produces MORE than it declared has an
+# incomplete declaration, which is worth reporting and is not a reason to disbelieve it.
+_extra = set()
+_e = Nova(goal='x')
+_e.learn('generous', lambda: _extra.update({'a', 'b'}), gives={'a'})
+_re = _e.pursue(want={'a'}, sense=lambda: set(_extra))
+check('an unexpected extra is reported', _re['divergences'][0]['unexpected'], ('b',))
+check('  and does not break trust', _e.skills['generous'].broken, 0)
 
 # When the skill tells the truth, the same call succeeds with no divergence.
 _world.clear()
