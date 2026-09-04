@@ -157,6 +157,15 @@ to declare a goal against a reference that cannot move, not in the verdict.
 
 ## Follow-up 2: two changes that halve the false alarms, and why they are not applied
 
+> **WITHDRAWN 2026-09-04.** The numbers below are real and the recommendation built on them is
+> not. Both were measured on sub-tasks that `inject.py` builds by keeping 40% of the parent's
+> words, which makes them lexically similar by construction. Against the 73 real
+> filesystem-verified in-scope steps, jaccard and containment score AUC 0.489 and MiniLM 0.395
+> — at or below chance. Real sub-tasks share nothing with their parent, so a function that
+> separates synthetic ones tells you nothing about work. Kept in place rather than deleted
+> because the measurement happened and the reasoning from it was wrong in a way worth seeing.
+> See "The signal is not there in either representation" in `THRESHOLDS.md`.
+
 ### The ground was never the assignment
 
 In all twelve runs the ground was set from the agent's FIRST stated goal, and in all twelve
@@ -250,7 +259,7 @@ work score 1.00 and 0.00 depending on how they write their check-ins.
 
 ### What follows
 
-The containment change in Follow-up 2 helps because it is less brittle to rephrasing, and
+The containment change in Follow-up 2 is withdrawn (see the notice on that section) and
 that is the right direction. It does not close a bimodal gap; it narrows it.
 
 Anything that actually fixes this has to make a restatement of the same goal score close to a

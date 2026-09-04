@@ -35,12 +35,21 @@ is flat and false alarms are not, and the axis they move on is not goal identity
       80%                      6%                99%
      100%                      0%                99%
 
-So Φ discriminates on VOCABULARY OVERLAP. Whether that is the same thing as drift depends
-entirely on where real sub-tasks land on that axis, and a first pass at the corpus is not
-able to say: only 9 fires carry goal_score at all. All nine are below 0.40, and this
-session's own two were 0.03 and 0.29 — the left end, where a legitimate sub-task false-alarms
-89-100% of the time. Nine is a hint, not a rate. Recording goal_score on every reading is
-what would turn it into one.
+So Φ discriminates on VOCABULARY OVERLAP, on THESE arms.
+
+CORRECTED 2026-09-04, and the correction matters more than the table. The NARROWED arm below
+builds a sub-task by keeping a fraction of the parent's words, so it is lexically similar to
+its parent by construction. Real sub-tasks are not. Against 73 filesystem-verified in-scope
+steps from real agent runs, jaccard scores AUC 0.489 and MiniLM 0.395 against unrelated goals
+— at or below chance. Real in-scope work scores LOWER than two unrelated goals do.
+
+So the sweep below measures how a similarity function behaves on a synthetic gradient, and
+the gradient is not where real work sits. Do not read the 60%/80% rows as evidence that a
+better-behaved function helps in practice; that was read that way once and was wrong.
+
+(The earlier version of this note said only 9 fires carried goal_score. That was corpus age,
+not a missing field — goal_score has been written on every reading since 2026-09-01 and 369
+carry it now. The number grows; the shape does not.)
 
 parent_goal REPAIRS IT COMPLETELY: 100% -> 0% at 20% overlap, 30% -> 0% at 60%, at every
 level tested. The remedy works. It is also supplied by the agent being measured, which is
