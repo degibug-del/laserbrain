@@ -152,3 +152,61 @@ ground never appears on both sides.
 
 Until then the supportable claim stands where the pilot left it: the value is in being made
 to declare a goal against a reference that cannot move, not in the verdict.
+
+---
+
+## Follow-up 2: two changes that halve the false alarms, and why they are not applied
+
+### The ground was never the assignment
+
+In all twelve runs the ground was set from the agent's FIRST stated goal, and in all twelve
+that first goal was reconnaissance: "find out what is actually in the task directory". The
+assignment was "make test_solution.py pass". So Φ has been measuring drift away from *looking
+at the directory* — a thirty-second preliminary — and every real step drifts from that by
+construction.
+
+Scoring the same traces against the assignment instead moves median overlap from 0.00 to
+0.11. Better, and not enough: 92% of steps still fall below GOAL_MIN. The hypothesis that
+this alone was the bug is refuted.
+
+### Jaccard punishes a step for being longer than its goal
+
+The mechanism the refutation exposed. Jaccard is symmetric, so a four-word assignment against
+a twelve-word step is penalised for the length gap even when the step references the
+assignment completely. A sub-step is SUPPOSED to add specifics.
+
+Containment — `|step ∩ ground| / |ground|`, how much of the ground the step still references —
+is the asymmetric form. A step may add words freely and is only penalised for dropping the
+subject.
+
+    goal term              HELD    NARROWED    INJECTED    separation
+                           (FP)        (FP)    (detect)
+    jaccard (shipped)        0%         89%         98%           +9
+    containment              0%         68%         98%          +30
+
+    real in-scope steps, ground = the assignment:
+      jaccard      79/85   93% fire
+      containment  38/85   45% fire
+
+Detection is unchanged at 98% and HELD stays at 0%, so this is not a threshold loosened until
+it stops complaining. It is the same detector with the length artifact removed.
+
+### Why this is not applied here
+
+Three reasons, and the third is the real one.
+
+1. Containment was derived from the same twelve runs the 45% is measured on. The synthetic
+   arms are independent and agree, but that number is in-sample and will be optimistic.
+
+2. 45% is still unusable. Halving an unusable false-alarm rate leaves an unusable
+   false-alarm rate. This changes the size of the problem, not its kind.
+
+3. **Changing the goal term makes 8380 existing readings non-comparable.** Every threshold in
+   the calibration, every band in attention.json, and every historical verdict was produced
+   under the Jaccard term. Swapping it silently is the same fault as rescoring a preregistered
+   outcome — the measure moves and nothing records that it moved. If it is changed it needs a
+   version stamp on every reading, the way `spectralVersion` was added to clarity rows before
+   more were collected, and the parity vectors and all three implementations move together.
+
+That is a decision about the product's core metric and it is not one to take from an
+in-sample result.
