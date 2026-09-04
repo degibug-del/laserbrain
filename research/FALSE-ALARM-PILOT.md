@@ -210,3 +210,51 @@ Three reasons, and the third is the real one.
 
 That is a decision about the product's core metric and it is not one to take from an
 in-sample result.
+
+---
+
+## Follow-up 3: the goal term is bimodal, and GOAL_MIN sits in the gap
+
+From the live corpus, not a construction. 342 readings since 2026-09-01 carrying
+`goal_score`, which is the overlap the verdict is computed from:
+
+    0.0-0.1     4   ( 1.2%)
+    0.1-0.3     8   ( 2.3%)
+    0.3-0.5     0   ( 0.0%)
+    0.5-0.9     0   ( 0.0%)
+    0.9-1.0   330  (96.5%)
+
+Nothing between 0.30 and 0.90. Not "few" — none.
+
+### GOAL_MIN is not calibrated to anything
+
+The floor is 0.30. There are no readings in [0.30, 0.90], so the threshold could be set
+anywhere in that range and every verdict in the corpus would be identical. It was tuned on a
+distribution with a hole where the tuning happens. Whatever justified 0.30 was not a property
+of this data.
+
+### What the two modes actually are
+
+An agent calling `check_state` does one of two things. It pastes its previous goal string,
+scoring 1.00. Or it types a fresh sentence, scoring near 0 because two English sentences about
+the same work rarely share a stemmed content word. There is no gradual middle because goals
+are discrete strings, not positions.
+
+That explains both halves of this document. This session scores 1.00 on 96% of readings
+because its habit is to restate verbatim. The twelve subagents in the pilot wrote a new
+sentence at every step, landed in the low mode, and fired on 84% of correct steps.
+
+**So the goal term separates callers who paste from callers who retype.** It is a measurement
+of a habit of the caller, not a property of the work being done. Two agents doing identical
+work score 1.00 and 0.00 depending on how they write their check-ins.
+
+### What follows
+
+The containment change in Follow-up 2 helps because it is less brittle to rephrasing, and
+that is the right direction. It does not close a bimodal gap; it narrows it.
+
+Anything that actually fixes this has to make a restatement of the same goal score close to a
+verbatim repeat of it. That is a semantic requirement and no surface-token function meets it.
+Until something does, `GOAL_MIN` should be described as what it is — a switch between "pasted"
+and "retyped" — rather than as a calibrated threshold, and no number derived from its position
+should be quoted as a detection property.
