@@ -92,11 +92,15 @@ the gap and does not close it.
 
 ## Reproduce
 
-    python3 - <<'EOF'
-    # goal_score distribution, from ~/.config/laserbrain/drift-log.jsonl
-    # ground-pair Jaccard, from the same file's distinct runs
-    # phi on stuck/circling readings, same file
-    EOF
+    python3 research/thresholds.py
 
-The three distributions above come from that log directly; every number is a count over rows
-in it, and re-running against a longer log should move the counts and not the shape.
+It reads `~/.config/laserbrain/drift-log.jsonl`, prints all three distributions with the
+constants pulled live from `grammar.json` rather than typed in, and flags each threshold that
+has no data around it. `--log` points it at another corpus.
+
+The counts above were taken at 8380 readings and the script now reports 8438, because this
+session kept working while the file was being written. Every count will move as the log grows.
+The shape is the claim, not the counts — `goal_score` should stay bimodal, the ground pairs
+should stay in the bottom decile, and `self_report_min` should keep admitting essentially
+everything it gates. If any of those stops being true the file is out of date and the fix is
+to re-run it, not to edit the numbers by hand.
