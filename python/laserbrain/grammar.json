@@ -1,5 +1,5 @@
 {
-  "laserbrain_grammar": "2.0.1",
+  "laserbrain_grammar": "2.0.2",
   "kind": "reasoning-state",
   "immutable": true,
   "fields": {
@@ -218,10 +218,10 @@
       "was": "instructions + protocol + operator, merged 2026-08-30. They shared no source file and had distinct failure modes, so they passed the old test. The test was the wrong one: three names for one answer to \"what does the detector run on\" is three things to learn before you can debug one."
     }
   },
-  "content_hash": "c32425874c73ccae",
+  "content_hash": "46142f6febbe6676",
   "content_hash_what": "sha256 of this FILE's own lines, excluding the three that carry the version and these hashes. Deliberately not a hash of re-serialised JSON: Python and JavaScript disagree about identical content \u2014 Python escapes non-ASCII by default and writes 1.0 where JavaScript writes 1 \u2014 so a cross-language content hash compares serialisers rather than content. Both attempts failed that way before this one. Bytes are bytes. Exists because grammar 1.6.0 came to mean two different documents on 2026-07-28: seven additions under one version, canonical and live both announcing 1.6.0 with different content, while sync-grammar --check compared the copies to each other and passed.",
   "ceiling_patterns": {
-    "what": "Two phrase lists separating CAUSE-CLAIMS from OBSERVATIONS in an agent's free-text fields (doing, next, blocked). A cause-claim asserts why something happened or what will happen; an observation reports what was seen. Nisbett & Wilson (1977): people report causes for their own behaviour confidently and wrongly, and an agent has the same ceiling. The same distinction the browser instrument at phronesis.world/field/ceiling draws for people.",
+    "what": "Two phrase lists separating CAUSE-CLAIMS from OBSERVATIONS in an agent's free-text fields (doing, next, blocked). A cause-claim asserts why something happened or what will happen; an observation reports what was seen. people report causes for their own behaviour confidently and wrongly, and an agent has the same ceiling. The same distinction the browser instrument at phronesis.world/field/ceiling draws for people.",
     "source": "laserbrain/ceiling.py, moved here 2026-07-31 when mcp-server.mjs became the second reader. The rule operator_patterns set: a list stays local until a SECOND implementation needs it, then it comes here rather than becoming two lists that drift. It was promoted once before this, prematurely, on the strength of a reader that had not been written \u2014 and moved straight back when the build went red. This time the reader exists.",
     "read_by": [
       "laserbrain/ceiling.py (Python SDK)",

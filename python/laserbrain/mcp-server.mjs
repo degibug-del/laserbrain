@@ -386,8 +386,8 @@ const _STEM = new RegExp(_ok(GRAMMAR.normalizer?.stem_pattern, _BUILTIN.stem_pat
 //
 // The second reading of the same thing `anchored` reads. `anchored` asks whether observed
 // events back the claim; this asks whether the agent was claiming or reporting at all,
-// which is in the words and not the events. Nisbett & Wilson (1977) — people report causes
-// for their own behaviour confidently and wrongly — and the browser instrument at
+// which is in the words and not the events. People report causes for their own behaviour
+// confidently and wrongly, and the browser instrument at
 // /field/ceiling has been drawing the same line for people since before this existed.
 //
 // The lists come from the grammar, which is what makes this a SECOND implementation of one

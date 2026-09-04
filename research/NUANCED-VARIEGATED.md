@@ -93,7 +93,7 @@ while Φ is memoryless. Half the detector looks at a sequence; the other half at
 The vocabulary is new to this project. The underlying distinction is not, and anyone who
 reads this should hear the precedents from us rather than find them later:
 
-- **Stevens' levels of measurement** (1946) partitions roughly along the same seam —
+- **Levels of measurement** partitions roughly along the same seam —
   nominal / ordinal / interval / ratio. "Differences of kind" versus "differences of
   degree" is that partition.
 - **Hierarchical / nested categorical data** and multi-level models are built for exactly

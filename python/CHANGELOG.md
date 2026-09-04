@@ -1050,8 +1050,9 @@ declared since the beginning.**
 falling distance and no successful work behind it is making a claim with nothing under
 it." That is a cause-claim, caught through events. `laserbrain.ceiling` catches the same
 thing through language — available a step earlier, and available at all when no event
-evidence will ever exist. The distinction is Nisbett & Wilson (1977), and it is the same
-one the browser instrument at phronesis.world/field/ceiling has been drawing for people.
+evidence will ever exist. The distinction is that people report causes for their own
+behaviour confidently and wrongly, and it is the same one the browser instrument at
+phronesis.world/field/ceiling has been drawing for people.
 
 It is a SECOND signal, not a replacement, and the tests exist to prove that rather than
 assert it: at identical `anchored`, an agent that ran nothing but wrote pure observation

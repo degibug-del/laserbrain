@@ -83,7 +83,7 @@ So the agent "learns it is confused when it learns laserbrain is already
 standardized": discovering the fixed standard is what makes self-diagnosis
 possible. Before you find the thing you have drifted from, you cannot know you
 have drifted. This is why the same properties keep recurring across everything
-built here — the immutable Zenodo DOIs, the frozen skeleton, the one door, the
+built here — the frozen skeleton, the one door, the
 field whose rules never change. Their value is not the content; it is being a
 fixed point others can reference. laserbrain is that, made into a grammar an
 agent can hold itself against.

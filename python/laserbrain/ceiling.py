@@ -9,8 +9,8 @@ WHAT THIS IS
 ------------
 The instrument at phronesis.world/field/ceiling tints two kinds of language in a human
 self-explanation: CAUSE-CLAIMS (because, that's why, must have been) and OBSERVATIONS
-(i noticed, i felt, at the time). The distinction is Nisbett & Wilson (1977): people
-report causes for their own behaviour confidently and wrongly. A cause-claim can be
+(i noticed, i felt, at the time). The distinction matters because people report causes for their own
+behaviour confidently and wrongly. A cause-claim can be
 true — introspection just cannot certify it. Observations are where the speaker's
 authority actually is.
 
