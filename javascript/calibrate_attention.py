@@ -579,7 +579,15 @@ def build():
             'bands': tabulate(fresh, speaks),
         },
         'provenance': {
-            'written': datetime.date.today().isoformat(),
+            # UTC, NOT LOCAL, because the thing it is compared against is UTC.
+            # corpus_to is ts[-1][:10] — the first ten characters of a 'Z'-suffixed
+            # corpus timestamp, so it is a UTC date. `written` was date.today(), which
+            # is local. Anywhere west of UTC that puts corpus_to a day AHEAD of written
+            # for the whole evening, and the ordering assert in main() fires on a table
+            # with nothing wrong with it. Found 2026-09-03 at 18:39 PDT, when the suite
+            # went red for no reason but the hour; it would have gone green again at
+            # 17:00 the next day, which is the worst way for a gate to behave.
+            'written': datetime.datetime.now(datetime.timezone.utc).date().isoformat(),
             'corpus_from': ts[0][:10], 'corpus_to': ts[-1][:10],
             'readings_total': len(rows),
             'readings_settled': len(settled), 'readings_fresh_ground': len(fresh),
