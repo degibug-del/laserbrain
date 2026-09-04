@@ -18,6 +18,7 @@ const GATES = [
   ['check-grammar-version', 'the grammar matches its own content hash'],
   ['check-normaliser-parity', 'one normaliser across every implementation'],
   ['check-tool-parity', 'the stdio and hosted transports expose what the contract says'],
+  ['check-plan-parity', "nova's python and javascript planners return the same plan"],
 ]
 
 let failed = 0

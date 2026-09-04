@@ -1,0 +1,395 @@
+{
+ "note": "Generated FROM laserbrain/python nova.plan(), the reference. Any port must reproduce steps and why exactly.",
+ "cases": [
+  {
+   "name": "a chain nobody wrote",
+   "skills": [
+    {
+     "name": "write_tests",
+     "needs": [],
+     "gives": [
+      "tests"
+     ]
+    },
+    {
+     "name": "run_tests",
+     "needs": [
+      "tests"
+     ],
+     "gives": [
+      "tests_pass"
+     ]
+    },
+    {
+     "name": "build",
+     "needs": [
+      "tests_pass"
+     ],
+     "gives": [
+      "wheel"
+     ]
+    },
+    {
+     "name": "publish",
+     "needs": [
+      "wheel"
+     ],
+     "gives": [
+      "published"
+     ]
+    }
+   ],
+   "want": [
+    "published"
+   ],
+   "have": [],
+   "broken": [],
+   "steps": [
+    "write_tests",
+    "run_tests",
+    "build",
+    "publish"
+   ],
+   "why": null,
+   "expansions": 20
+  },
+  {
+   "name": "skips what is already true",
+   "skills": [
+    {
+     "name": "write_tests",
+     "needs": [],
+     "gives": [
+      "tests"
+     ]
+    },
+    {
+     "name": "run_tests",
+     "needs": [
+      "tests"
+     ],
+     "gives": [
+      "tests_pass"
+     ]
+    },
+    {
+     "name": "build",
+     "needs": [
+      "tests_pass"
+     ],
+     "gives": [
+      "wheel"
+     ]
+    }
+   ],
+   "want": [
+    "wheel"
+   ],
+   "have": [
+    "tests_pass"
+   ],
+   "broken": [],
+   "steps": [
+    "build"
+   ],
+   "why": null,
+   "expansions": 8
+  },
+  {
+   "name": "a goal already met",
+   "skills": [
+    {
+     "name": "a",
+     "needs": [],
+     "gives": [
+      "x"
+     ]
+    }
+   ],
+   "want": [
+    "x"
+   ],
+   "have": [
+    "x"
+   ],
+   "broken": [],
+   "steps": [],
+   "why": null,
+   "expansions": 0
+  },
+  {
+   "name": "nothing produces it",
+   "skills": [
+    {
+     "name": "a",
+     "needs": [],
+     "gives": [
+      "x"
+     ]
+    }
+   ],
+   "want": [
+    "y"
+   ],
+   "have": [],
+   "broken": [],
+   "steps": null,
+   "why": "no skill produces: y",
+   "expansions": 0
+  },
+  {
+   "name": "shortest of two routes",
+   "skills": [
+    {
+     "name": "long1",
+     "needs": [],
+     "gives": [
+      "a"
+     ]
+    },
+    {
+     "name": "long2",
+     "needs": [
+      "a"
+     ],
+     "gives": [
+      "b"
+     ]
+    },
+    {
+     "name": "long3",
+     "needs": [
+      "b"
+     ],
+     "gives": [
+      "goal"
+     ]
+    },
+    {
+     "name": "short",
+     "needs": [],
+     "gives": [
+      "goal"
+     ]
+    }
+   ],
+   "want": [
+    "goal"
+   ],
+   "have": [],
+   "broken": [],
+   "steps": [
+    "short"
+   ],
+   "why": null,
+   "expansions": 10
+  },
+  {
+   "name": "order decides a tie",
+   "skills": [
+    {
+     "name": "p",
+     "needs": [],
+     "gives": [
+      "goal"
+     ]
+    },
+    {
+     "name": "q",
+     "needs": [],
+     "gives": [
+      "goal"
+     ]
+    }
+   ],
+   "want": [
+    "goal"
+   ],
+   "have": [],
+   "broken": [],
+   "steps": [
+    "p"
+   ],
+   "why": null,
+   "expansions": 3
+  },
+  {
+   "name": "a cycle terminates",
+   "skills": [
+    {
+     "name": "up",
+     "needs": [
+      "down"
+     ],
+     "gives": [
+      "up"
+     ]
+    },
+    {
+     "name": "down",
+     "needs": [
+      "up"
+     ],
+     "gives": [
+      "down"
+     ]
+    }
+   ],
+   "want": [
+    "sideways"
+   ],
+   "have": [
+    "up"
+   ],
+   "broken": [],
+   "steps": null,
+   "why": "no skill produces: sideways",
+   "expansions": 0
+  },
+  {
+   "name": "a broken skill is excluded",
+   "skills": [
+    {
+     "name": "write_tests",
+     "needs": [],
+     "gives": [
+      "tests"
+     ]
+    },
+    {
+     "name": "run_tests",
+     "needs": [
+      "tests"
+     ],
+     "gives": [
+      "tests_pass"
+     ]
+    },
+    {
+     "name": "build",
+     "needs": [
+      "tests_pass"
+     ],
+     "gives": [
+      "wheel"
+     ]
+    },
+    {
+     "name": "publish",
+     "needs": [
+      "wheel"
+     ],
+     "gives": [
+      "published"
+     ]
+    },
+    {
+     "name": "read_logs",
+     "needs": [
+      "tests_pass"
+     ],
+     "gives": [
+      "diagnosis"
+     ]
+    },
+    {
+     "name": "fix_build",
+     "needs": [
+      "diagnosis"
+     ],
+     "gives": [
+      "build_fixed"
+     ]
+    },
+    {
+     "name": "rebuild",
+     "needs": [
+      "build_fixed"
+     ],
+     "gives": [
+      "wheel"
+     ]
+    }
+   ],
+   "want": [
+    "published"
+   ],
+   "have": [],
+   "broken": [
+    "build"
+   ],
+   "steps": [
+    "write_tests",
+    "run_tests",
+    "read_logs",
+    "fix_build",
+    "rebuild",
+    "publish"
+   ],
+   "why": null,
+   "expansions": 48
+  },
+  {
+   "name": "excluded and now unreachable",
+   "skills": [
+    {
+     "name": "a",
+     "needs": [],
+     "gives": [
+      "x"
+     ]
+    },
+    {
+     "name": "b",
+     "needs": [
+      "x"
+     ],
+     "gives": [
+      "goal"
+     ]
+    }
+   ],
+   "want": [
+    "goal"
+   ],
+   "have": [],
+   "broken": [
+    "b"
+   ],
+   "steps": null,
+   "why": "no skill produces: goal \u2014 b would, and is no longer trusted after breaking its promise",
+   "expansions": 0
+  },
+  {
+   "name": "two conditions wanted",
+   "skills": [
+    {
+     "name": "a",
+     "needs": [],
+     "gives": [
+      "x"
+     ]
+    },
+    {
+     "name": "b",
+     "needs": [],
+     "gives": [
+      "y"
+     ]
+    }
+   ],
+   "want": [
+    "x",
+    "y"
+   ],
+   "have": [],
+   "broken": [],
+   "steps": [
+    "a",
+    "b"
+   ],
+   "why": null,
+   "expansions": 9
+  }
+ ]
+}
