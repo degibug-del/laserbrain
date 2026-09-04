@@ -104,3 +104,58 @@ The shape is the claim, not the counts — `goal_score` should stay bimodal, the
 should stay in the bottom decile, and `self_report_min` should keep admitting essentially
 everything it gates. If any of those stops being true the file is out of date and the fix is
 to re-run it, not to edit the numbers by hand.
+
+---
+
+## The signal is not there in either representation
+
+Measured 2026-09-04 with `all-MiniLM-L6-v2`, run locally, against the 73 filesystem-verified
+in-scope steps from `research/FALSE-ALARM-PILOT.md`.
+
+The section above ends by saying a semantic goal term is what would close the gap. That was a
+prediction and it is wrong.
+
+    set                       jaccard med   MiniLM med
+    in-scope (real)                  0.00         0.16
+    sub-task (synthetic)             0.24         0.57
+    unrelated (synthetic)            0.00         0.22
+
+    AUC in-scope vs unrelated   jaccard 0.489    MiniLM 0.395     (0.5 = chance)
+    AUC sub-task vs unrelated   jaccard 0.982    MiniLM 0.907
+
+**Real in-scope steps score lower than two unrelated goals do.** Both measures are at or below
+chance on the only data where the answer is known independently, and the embedding is worse
+than the bag of stems.
+
+### Why the synthetic benchmark said otherwise
+
+Both measures separate synthetic sub-tasks from unrelated goals almost perfectly. That is an
+artifact of how the synthetic ones were built: `inject.py` makes a sub-task by keeping 40% of
+the parent's words, so it is lexically similar by construction. Real sub-tasks share nothing —
+"find out what is in the task directory" and "read test_solution.py to see what it imports"
+are the same work sixty seconds apart with no stem in common and a MiniLM cosine of about 0.16.
+
+So the containment result recorded in FALSE-ALARM-PILOT.md — 89% false alarms falling to 68%,
+separation +9 to +30 — was measured on sub-tasks that do not resemble the real ones. It is
+withdrawn as a recommendation. Containment is still the better-behaved function on the
+synthetic arms and there is no evidence it helps on real work.
+
+### What this means
+
+Task nesting is not a similarity relation. "Read the test file" is not *similar* to "find out
+what is in the directory"; it is *subordinate* to it. Subordination is a relation between a
+plan and its steps, and no distance between two strings — surface or semantic — carries it,
+which is why the best general-purpose sentence model available scores it at 0.16 and why
+scoring it any other way is unlikely to help either.
+
+That is the honest end of this line. The goal term cannot be repaired by choosing a better
+function, because the thing being asked for is not a function of the two strings. Either the
+comparison gets access to structure the agent declares — which is what `parent_goal` already
+is, and it works perfectly — or Φ's goal term stays a switch between "repeated" and
+"rewritten" and should be described as one.
+
+### Reproduce
+
+    python3 research/thresholds.py          # the three distributions
+    # the AUC table above: sentence-transformers all-MiniLM-L6-v2 over
+    # research/goalsim-eval.json, cached locally, no network
