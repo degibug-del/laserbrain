@@ -647,7 +647,13 @@ class Nova:
                   if v else '  laserbrain says: nothing yet — no step has been taken')]
         for name, s in sorted(self.skills.items()):
             if s.calls:
-                lines.append(f'  {name}: {s.calls} call(s), {s.failures} failed')
+                # BROKEN IS NOT FAILED. `failures` counts raising; `broken` counts running
+                # cleanly and not producing what `gives` claims. The second is the one that
+                # takes a skill out of planning, so a reader deciding whether to trust() it
+                # again needs to see it here. The commit that added distrust said this line
+                # existed. It did not, until now.
+                mark = f', {s.broken} broken promise(s) — excluded from planning' if s.broken else ''
+                lines.append(f'  {name}: {s.calls} call(s), {s.failures} failed{mark}')
         intact = self.ground_intact()
         if intact is False:
             lines.append('  GROUND TAMPERED — the reference was changed after it was frozen; '
