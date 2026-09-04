@@ -105,3 +105,50 @@ parent and sub-goals produce better work than one that does not. Nothing here ad
     python3 research/inject.py                    # the sensitivity half, synthetic
     # fixtures and traces for this half: see the workflow
     # drift-detection-pilot, run wf_b8c6cf2f-4fb
+
+---
+
+## Follow-up: it is the feature, not the threshold
+
+2026-09-03, same day. The obvious repair is to move `GOAL_MIN` off 0.30, or swap the
+similarity function through the `sim` seam that `_displacement` already exposes. Neither
+works, and the reason is visible in one distribution.
+
+Taking the 73 verified in-scope steps and measuring each one's token overlap with its own
+frozen ground:
+
+    min 0.00    median 0.00    p90 0.06    max 0.21
+    below GOAL_MIN (0.30): 73/73  (100%)
+
+The median is zero. Not low — no shared stemmed content word at all between a step and the
+goal it is a step of. "Find out what is actually in the task directory" and "Read
+test_solution.py to see what it imports" have nothing in common after stopword removal and
+stemming, and they are the same piece of work one minute apart.
+
+So no threshold on this feature separates anything, because in-scope work is already at the
+floor. A detector that flags 100% of correct steps is unusable whatever its sensitivity, and
+that statement needs no positive set to support it.
+
+### A positive set was built and is withdrawn
+
+Pairs of unrelated real goals from drift-log.jsonl were used as positives, giving 100%
+false alarms against 100% catches on both dev and test. Those numbers are withdrawn: the
+positives come from laserbrain development and the negatives from a toy median task, so the
+two differ in domain, length and style at once and the contrast is not controlled.
+
+The first explanation offered for it — that shared project vocabulary inflated the positives
+— is also not established. Top-10 stem concentration runs 27% for the in-scope set against
+16% for the positives, which is the opposite direction. The sets are not comparable; which
+of their several differences dominates was not determined.
+
+### What a real repair would have to do
+
+Recognise that "read the test file" is nested inside "find out what is in the directory".
+That is a semantic relation and there is no surface-token feature that carries it, which is
+why the `sim` seam is the right place to look and why a bag-of-stems function is not the
+thing to put in it. Whether an embedding does better is an open question and is cheap to
+test against this same eval set — `research/goalsim-eval.json`, split by task so a run's
+ground never appears on both sides.
+
+Until then the supportable claim stands where the pilot left it: the value is in being made
+to declare a goal against a reference that cannot move, not in the verdict.
