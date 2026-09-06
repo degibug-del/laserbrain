@@ -240,6 +240,7 @@ class Nova:
         Returns a dict: done, state, taken, plans, divergences, why.
         """
         state = frozenset(sense() if sense else have)
+        raised_here: dict[str, int] = {}   # consecutive raises, this pursue only
         want = frozenset(want)
         taken, plans, divergences = [], [], []
         for _ in range(max_replans + 1):
@@ -253,9 +254,28 @@ class Nova:
                 sk = self.skills[name]
                 try:
                     self.use(name)
+                    raised_here.pop(name, None)   # it worked; forgive the earlier raises
                 except Exception as e:
+                    # A SKILL THAT KEEPS RAISING IS ALSO NOT TRUSTWORTHY, and until now only
+                    # a broken PROMISE was. Measured 2026-09-05: a skill raising every call
+                    # was invoked 4 times in one pursue with broken=0, because re-planning
+                    # scored it as healthy and picked it again each time. `sense` was None,
+                    # so the divergence check below never ran and nothing counted the raise.
+                    #
+                    # Distrust is on the SECOND consecutive raise, not the first. A skill can
+                    # fail once for reasons that are not about the skill — a network, a lock,
+                    # a file appearing a moment later — and excluding it on one bad call
+                    # throws away a capability over noise. Twice in a row inside a single
+                    # pursue is the skill, not the weather.
+                    raised_here[name] = raised_here.get(name, 0) + 1
                     divergences.append({'step': name, 'kind': 'raised',
-                                        'detail': f'{type(e).__name__}: {e}'})
+                                        'detail': f'{type(e).__name__}: {e}',
+                                        'consecutive': raised_here[name]})
+                    if raised_here[name] >= 2:
+                        sk.broken += 1
+                        divergences.append({'step': name, 'kind': 'distrusted',
+                                            'detail': f'raised {raised_here[name]}x in a row; '
+                                                      f'excluded from planning'})
                     break
                 self.steps += 1
                 v = self._hz.check(goal=self.goal, progress='advancing',

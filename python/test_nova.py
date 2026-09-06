@@ -156,6 +156,47 @@ o2 = nv2.compose({'a': worker('write the parser', 3), 'b': worker('tune the cach
 check('unrelated work yields nothing from above', o2['_nova']['seen_only_from_above'], 0)
 
 print()
+
+# ── distrust on repeated raising ──────────────────────────────────────────────
+#
+# Until 2026-09-05 only a broken PROMISE cost a skill its trust: pursue compared the
+# predicted state against sense() and incremented `broken` when something promised did not
+# appear. A skill that RAISED was recorded as a divergence and nothing else, so re-planning
+# scored it healthy and picked it again. Measured: a skill raising on every call was invoked
+# 4 times in one pursue with broken=0, and `sense` was None so the divergence check never ran.
+
+_calls = {'n': 0}
+def _always_raises():
+    _calls['n'] += 1
+    raise RuntimeError('disk on fire')
+
+_n = Nova('get the thing')
+_n.learn('fetch', _always_raises, needs=(), gives=('data',))
+_n.learn('use_it', lambda: 'x', needs=('data',), gives=('done',))
+_out = _n.pursue(want=('done',), have=())
+
+check('a skill raising twice loses trust', bool(_n.skills['fetch'].broken), True)
+check('and is not called a third time', _calls['n'], 2)
+check('so the goal is not reached', _out['done'], False)
+check('and the reason names the skill', 'fetch' in str(_out['why']), True)
+
+# ONE FAILURE IS FORGIVEN. A network blip is not a broken skill, and excluding a capability
+# over a single bad call throws it away over noise. Distrust is on the SECOND raise in a row.
+_st = {'n': 0}
+def _flaky():
+    _st['n'] += 1
+    if _st['n'] == 1:
+        raise ConnectionError('timeout')
+    return 'ok'
+
+_m = Nova('get it')
+_m.learn('fetch', _flaky, needs=(), gives=('data',))
+_m.learn('use_it', lambda: 'x', needs=('data',), gives=('done',))
+_o = _m.pursue(want=('done',), have=())
+
+check('a skill that recovers still finishes', _o['done'], True)
+check('and one failure does not cost it', bool(_m.skills['fetch'].broken), False)
+
 if FAIL:
     print(f'{len(FAIL)} FAILED')
     for f in FAIL:
@@ -366,3 +407,4 @@ check('  with nothing diverging', _rt['divergences'], ())
 check('  in one plan', len(_rt['plans']), 1)
 
 print('all pass')
+
