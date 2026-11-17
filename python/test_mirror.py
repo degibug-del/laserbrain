@@ -19,7 +19,15 @@ fail offline, and would be testing Cloudflare rather than this queue.
 """
 import os
 import sys
+import tempfile
 import time
+
+# A private state root, as tests/test_suites.py gives every suite. Run directly, this test
+# checked against the live ~/.config/laserbrain/contexts.json, wrote its fixture contexts
+# into it, and timed that store's read and write instead of the mirror: 6,265 contexts made
+# a check ~23 ms and this test red from September to 2026-11-16. The store is capped now
+# (test_context_cap.py); the mirror is what is measured here.
+os.environ.setdefault('LASERBRAIN_HOME', tempfile.mkdtemp(prefix='lb-mirror-'))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

@@ -26,7 +26,7 @@
 // path nobody else tests. Override with LASERBRAIN_HUB to read a local hub.
 import { spawn } from 'node:child_process'
 import { appendFile, mkdir } from 'node:fs/promises'
-import { existsSync, unlinkSync, readFileSync, writeFileSync, openSync, closeSync, statSync, mkdirSync } from 'node:fs'
+import { existsSync, unlinkSync, readFileSync, writeFileSync, openSync, closeSync, statSync, mkdirSync, appendFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname, basename } from 'node:path'
 import { configDir as lbConfigDir } from './lb_paths.mjs'
@@ -1235,6 +1235,26 @@ function anchored() {
    judgment needs and measurement does not: Φ can say you are 0.3 from ground, but only
    history can say you have opened this same context four times and never closed it. */
 const CONTEXTS = join(LB_CONFIG, 'contexts.json')
+const CONTEXTS_ARCHIVE = join(LB_CONFIG, 'contexts-archive.jsonl')
+// The store is CAPPED at the contexts seen most recently; the rest move to an append-only
+// archive. The whole map is read and rewritten on every check, so its size is paid on every
+// check, forever: on 2026-11-16 the live store held 6,265 contexts (5.4 MB), ~23 ms per check
+// in Python against ~0.25 ms on an empty store. 1,000 is about a month of work on that
+// machine. Mirrors CONTEXTS_MAX in laserbrain/__init__.py (python/test_context_cap.py).
+const CONTEXTS_MAX = 1000
+const seenKey = ([id, e]) => [String((e && (e.last_seen || e.first_seen)) || '').slice(0, 19), String(id)]
+const capContexts = (all) => {
+  const extra = Object.keys(all).length - CONTEXTS_MAX
+  if (extra <= 0) return 0
+  const old = Object.entries(all).map(kv => [seenKey(kv), kv]).sort((a, b) =>
+    a[0][0] < b[0][0] ? -1 : a[0][0] > b[0][0] ? 1 : a[0][1] < b[0][1] ? -1 : a[0][1] > b[0][1] ? 1 : 0,
+  ).slice(0, extra).map(x => x[1])
+  try {
+    appendFileSync(CONTEXTS_ARCHIVE, old.map(([id, e]) => JSON.stringify({ id, context: e }) + '\n').join(''))
+  } catch { return 0 }   // cannot archive: keep them rather than lose them
+  for (const [id] of old) delete all[id]
+  return old.length
+}
 
 // FNV-1a over the canonical token string. Short enough to quote in a sentence, and
 // stable across machines and sessions — the id is a function of the words alone, with no
@@ -1353,6 +1373,7 @@ const rememberContextLocked = (id, goal, distance, reason, run, score) => {
     repetition = e.spellings[score]
   }
   all[id] = e
+  capContexts(all)
   try {
     writeFileSync(CONTEXTS, JSON.stringify(all, null, 1))
   } catch { /* fail open: a context we cannot store is a memory we do not have, not an error */ }

@@ -302,6 +302,16 @@ def _b36(n):
 from . import _paths as _P
 from . import _evidence                     # the observed channel, fed by the runtime
 CONTEXTS = _P.config('contexts.json')
+CONTEXTS_ARCHIVE = _P.config('contexts-archive.jsonl')
+# The store is CAPPED at the contexts seen most recently; the rest move to an append-only
+# archive. The whole map is read and rewritten on every check, so its size is paid on every
+# check, forever. On 2026-11-16 the live store held 6,265 contexts (5.4 MB) and that read and
+# write cost ~23 ms of a check that takes ~0.25 ms on an empty store (test_mirror.py, which
+# allows 20 ms, had been failing on it since September). 1,000 is about a month of this
+# machine's work (878 contexts seen in the last 30 days), and an evicted context is kept,
+# not deleted: a context met again after eviction starts fresh, the archive still has it.
+# Mirrors CONTEXTS_MAX in mcp-server.mjs; test_context_cap.py holds the two to one rule.
+CONTEXTS_MAX = 1000
 
 
 def _read_contexts():
@@ -310,6 +320,33 @@ def _read_contexts():
         return d if isinstance(d, dict) else {}
     except Exception:
         return {}
+
+
+def _seen_key(item):
+    """Oldest first: last_seen to the second, then id. Python writes '+00:00' and JS writes
+    '.123Z', so only the first 19 characters are compared; the id makes the order total."""
+    cid, e = item
+    e = e if isinstance(e, dict) else {}
+    return (str(e.get('last_seen') or e.get('first_seen') or '')[:19], str(cid))
+
+
+def _cap_contexts(all_):
+    """Keep the CONTEXTS_MAX contexts seen most recently; append the rest to the archive.
+    Runs inside the lock, on the map about to be written. Returns how many moved."""
+    extra = len(all_) - CONTEXTS_MAX
+    if extra <= 0:
+        return 0
+    old = sorted(all_.items(), key=_seen_key)[:extra]
+    try:
+        CONTEXTS_ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
+        with open(CONTEXTS_ARCHIVE, 'a') as f:
+            for cid, e in old:
+                f.write(json.dumps({'id': cid, 'context': e}) + '\n')
+    except Exception:
+        return 0    # cannot archive: keep them rather than lose them
+    for cid, _ in old:
+        del all_[cid]
+    return len(old)
 
 
 def _with_context_lock(fn, timeout=2.0):
@@ -418,6 +455,7 @@ def _remember_context_locked(cid, goal, distance, reason, run, score):
         e['spellings'][score] = e['spellings'].get(score, 0) + 1
         repetition = e['spellings'][score]
     all_[cid] = e
+    _cap_contexts(all_)
     try:
         CONTEXTS.parent.mkdir(parents=True, exist_ok=True)
         CONTEXTS.write_text(json.dumps(all_, indent=1))

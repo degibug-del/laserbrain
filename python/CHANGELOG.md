@@ -2,6 +2,35 @@
 
 ## Unreleased - 2026-11-14
 
+### contexts.json is capped, and test_mirror measures the mirror again (2026-11-16)
+
+`test_mirror.py` had failed since September (~23 ms per check against the 20 ms its stub
+sleeps). The mirror was fine. Run directly, the test used the live state root, and every
+check reads and rewrites the whole `~/.config/laserbrain/contexts.json`, which had grown to
+6,265 contexts (5.4 MB). A check took ~0.25 ms on an empty store and ~23 ms on that one,
+for every real check_state too.
+
+- The store keeps the `CONTEXTS_MAX` (1,000) contexts seen most recently, by `last_seen`.
+  The rest are appended whole to `contexts-archive.jsonl`, not deleted. The context being
+  written always stays. If the archive cannot be written, nothing is dropped. The same rule
+  is in `__init__.py` and both `mcp-server.mjs` copies. Python and JS timestamps sort as one
+  clock (first 19 characters, then id).
+- `test_mirror.py` sets a private `LASERBRAIN_HOME` unless one is set, as
+  `tests/test_suites.py` already did for every suite under pytest. That is why the suite
+  stayed green while the direct run stayed red.
+- New `test_context_cap.py` (15 checks) drives Python and the stdio server on the same
+  seeded store and requires both to keep and archive the same contexts. Taking out either
+  cap call turns it red (8 failures for Python, 3 for JS).
+- Live store, once, under the store lock: 6,266 down to 1,000 (5,266 archived), then
+  `javascript/hooks/quarantine_contexts.py --apply` moved 131 test fixtures to
+  `contexts.synthetic.json`, leaving 869 observed contexts. Among them was "alpha beta
+  gamma" (2,531 checks), which was this test's own fixture. Fixtures had pushed
+  max-repeat >= 4 to 14.3% of contexts against 2.2% for observed ones. A real check now
+  takes ~4.7 ms against the live store.
+- Known limits: the cap is a count, not a size, so a context with thousands of distinct
+  spellings is still large. Long-idle work started again after eviction begins with no
+  memory of its earlier contexts; the archive keeps the history.
+
 ### Round-2 bugs B6 and B7: the inferred trace (2026-11-16)
 
 From research/DAY-FOUR-ROUND2.md section 7, after Diego approved fixing both together.
