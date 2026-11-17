@@ -15,3 +15,12 @@ arc/runs/
 arc/environment_files/
 arc/ARC-AGI/
 arc/ARC-AGI-2/
+
+# Written by test runs (test_judgment*, shared-lane tests), not source.
+.test-*.jsonl
+# Transcript-derived: these quote the owner's own messages from other projects and carry
+# local paths. Same rule as eval/.gitignore: keep out of any public push. Added 2026-11-16.
+DAY-FIVE-REAL-SESSIONS.md
+INCIDENTS-2026-10.jsonl
+INCIDENTS-2026-10.md
+eval/heldout-phrases.local.txt

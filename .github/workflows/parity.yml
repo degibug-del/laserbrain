@@ -6,7 +6,8 @@
 # already shipped that way: drift.ts missing `excursion` for months, and the stdio server
 # interrupting where the reference warns.
 #
-# python/.github/workflows/ is inert — GitHub only reads workflows at the repository root.
+# The wheel and install jobs came from python/.github/workflows/test.yml, which never ran:
+# GitHub only reads workflows at the repository root. Moved here 2026-11-01.
 
 name: parity
 
@@ -98,3 +99,67 @@ jobs:
       # verdict — a suite comparing nothing would pass.
       - run: node test/parity.mjs
         working-directory: javascript
+
+  wheel:
+    name: python — the wheel carries its data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install build
+      # pyproject's own comment: a wheel missing grammar.json "imports fine and silently
+      # runs different constants". Not a crash, a quiet recalibration of the instrument
+      # whose whole claim is that it does not move. Looking inside the wheel is cheap.
+      - run: python -m build
+        working-directory: python
+      - name: the wheel must contain grammar.json
+        working-directory: python
+        run: |
+          python - <<'PY'
+          import glob, zipfile, sys
+          whl = glob.glob('dist/*.whl')
+          assert whl, 'no wheel was built'
+          names = zipfile.ZipFile(whl[0]).namelist()
+          print('json files in the wheel:', [n for n in names if n.endswith('.json')])
+          if not any(n.endswith('grammar.json') for n in names):
+              sys.exit('MISSING FROM THE WHEEL: grammar.json — it would import fine and run '
+                       'different constants, which is the silent failure this gate exists for')
+          print('ok — the wheel carries its data')
+          PY
+
+  install:
+    name: python — the wheel alone, nothing else pulled in
+    runs-on: ubuntu-latest
+    needs: wheel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      # `pip install ./python` above proves the source tree. This proves the artifact, and the
+      # two diverge exactly when packaging is wrong. "Zero runtime dependencies" is a claim on
+      # the site, so the clean environment must end up holding laserbrain and nothing else.
+      - run: pip install build && python -m build
+        working-directory: python
+      - name: install the wheel alone and use it
+        working-directory: python
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --quiet dist/*.whl
+          /tmp/clean/bin/python - <<'PY'
+          import laserbrain
+          h = laserbrain.Harness()
+          h.check('ship the parser', 'advancing', 8)
+          v = h.check('paint the kitchen ceiling', 'advancing', 8)
+          assert v.reason == 'goal-drift', f'expected goal-drift on an unrelated goal, got {v.reason}'
+          print(f'ok — laserbrain {laserbrain.__version__} works from the wheel, '
+                f'{len(laserbrain.__all__)} public names, no other package installed')
+          PY
+      - name: nothing else came with it
+        run: |
+          # `grep -vc` exits 1 when the count is zero, and zero is the success case here,
+          # so count with wc instead.
+          n=$(/tmp/clean/bin/pip list --format=freeze \
+              | grep -vE '^(laserbrain|pip|setuptools|wheel)=' | wc -l | tr -d ' ')
+          echo "extra packages pulled in: $n"
+          test "$n" -eq 0 || { /tmp/clean/bin/pip list; exit 1; }
