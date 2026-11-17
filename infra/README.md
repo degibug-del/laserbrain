@@ -17,12 +17,16 @@ drifted is exactly the one that will not remember.
 | hook | event | what it does |
 |---|---|---|
 | `lb_coverage.py` | `UserPromptSubmit` | captures the first prompt as the frozen goal |
-| `lb_coverage.py` | `PostToolUse` | counts steps, logs failed commands as catches |
-| `lb_gate.py` | `PreToolUse` | **refuses tool calls** when coverage lapses |
+| `lb_coverage.py` | `PostToolUse` | counts steps, logs red test verdicts as catches |
+| `lb_coverage.py` | `PostToolUseFailure` | counts a failed call as a step and a catch (Claude Code skips PostToolUse when a call fails) |
+| `lb_gate.py` | `PreToolUse` | by default (`nudge`) logs each lapse and reminds the agent without refusing; **refuses tool calls** when coverage lapses only under `LASERBRAIN_GATE_MODE=hard`; claims always refuse |
 | `lb_safety.py` | `PreToolUse` | blocks destructive and publish-once actions |
 
-`lb_gate.py` is the mechanism. It stopped this harness's own author six times in one
-session and took an unsaved draft with one of them.
+`lb_gate.py` is the mechanism. Under the old default (now `LASERBRAIN_GATE_MODE=hard`) it
+stopped this harness's own author six times in one session and took an unsaved draft with
+one of them. Since 2026-10-16 the default is `nudge`: the day-one experiment counted 4,775
+step-count blocks, 0 kept by signal mode and 30 of 30 sampled false alarms
+(research/DAY-ONE-RESULTS.md).
 
 ## Wiring it
 
@@ -31,10 +35,12 @@ pip install laserbrain
 laserbrain install
 ```
 
-That installs the MCP server and all four hooks, referenced as **modules** —
-`python3 -m laserbrain.hooks.lb_gate` — so an upgrade moves them and no settings file goes
+That installs the MCP server and all five hook entries, referenced as **modules** —
+`python3 -P -m laserbrain.hooks.lb_gate` — so an upgrade moves them and no settings file goes
 stale. It backs up your existing settings, merges rather than overwrites, and verifies the
-hooks execute before reporting success.
+hooks execute before reporting success. `-P` (Python 3.11+) keeps the folder the agent is
+working in off the import path, so a laserbrain checkout there can't stand in for the
+installed hooks; leave it out on older Pythons.
 
 By hand, in `~/.claude/settings.json`:
 
@@ -44,10 +50,11 @@ By hand, in `~/.claude/settings.json`:
     "laserbrain": { "type": "stdio", "command": "laserbrain", "args": ["mcp"] }
   },
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "python3 -m laserbrain.hooks.lb_coverage" }] }],
-    "PostToolUse":      [{ "matcher": "*", "hooks": [{ "type": "command", "command": "python3 -m laserbrain.hooks.lb_coverage" }] }],
-    "PreToolUse":       [{ "matcher": "*", "hooks": [{ "type": "command", "command": "python3 -m laserbrain.hooks.lb_gate" }] },
-                         { "matcher": "*", "hooks": [{ "type": "command", "command": "python3 -m laserbrain.hooks.lb_safety" }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "python3 -P -m laserbrain.hooks.lb_coverage" }] }],
+    "PostToolUse":      [{ "matcher": "*", "hooks": [{ "type": "command", "command": "python3 -P -m laserbrain.hooks.lb_coverage" }] }],
+    "PostToolUseFailure": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "python3 -P -m laserbrain.hooks.lb_coverage" }] }],
+    "PreToolUse":       [{ "matcher": "*", "hooks": [{ "type": "command", "command": "python3 -P -m laserbrain.hooks.lb_gate" }] },
+                         { "matcher": "*", "hooks": [{ "type": "command", "command": "python3 -P -m laserbrain.hooks.lb_safety" }] }]
   }
 }
 ```

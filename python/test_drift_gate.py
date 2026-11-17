@@ -77,17 +77,17 @@ def run(reason, tool, mode):
 _off = pathlib.Path(os.path.expanduser('~/.config/laserbrain/gate-off'))
 show('gate-off is absent, so these results mean something', not _off.exists(), str(_off))
 
+# The hard verdict used below is `ungrammatical`. Until 2026-11-15 it was goal-drift, which
+# is now a note (drifting False) and gates nothing — pinned in its own section further down.
 print('\n  enforcement, when it is asked for')
 for tool in ('Write', 'Edit', 'Bash'):
-    p = run('goal-drift', tool, 'deny')
-    show(f'deny mode refuses {tool} after goal-drift',
+    p = run('ungrammatical', tool, 'deny')
+    show(f'deny mode refuses {tool} after ungrammatical',
          p.returncode == 2 and 'permissionDecision' in p.stdout, f'exit={p.returncode}')
-p = run('ungrammatical', 'Write', 'deny')
-show('deny mode refuses after ungrammatical', p.returncode == 2, f'exit={p.returncode}')
 
 print('\n  what must never be refused')
 for tool in ('Read', 'Grep', 'Glob', 'check_state', 'reset_task'):
-    p = run('goal-drift', tool, 'deny')
+    p = run('ungrammatical', tool, 'deny')
     show(f'{tool} passes even in deny mode', p.returncode == 0, f'exit={p.returncode}')
 
 print('\n  what is not a drift')
@@ -95,26 +95,44 @@ for reason in ('advancing', 'grounded', 'reground', 'stalled', 'oscillating'):
     p = run(reason, 'Write', 'deny')
     show(f'{reason} does not gate a write', p.returncode == 0, f'exit={p.returncode}')
 
+print('\n  goal-drift is a note, not a gate (2026-11-15)')
+# research/DAY-FIVE-REAL-SESSIONS.md §3: all 7 live goal-drift fires were false. It left
+# HARD_VERDICTS, so no drift mode refuses on it or logs a would-be refusal for it.
+for mode in (None, 'shadow', 'deny'):
+    for tool in ('Write', 'Edit', 'Bash'):
+        p = run('goal-drift', tool, mode)
+        show(f'goal-drift does not gate {tool} (LASERBRAIN_GATE_ON_DRIFT={mode})',
+             p.returncode == 0 and 'permissionDecision' not in p.stdout
+             and 'drift gate' not in p.stderr, f'exit={p.returncode} {p.stderr[:80]!r}')
+
 print('\n  the default, which is the load-bearing one')
-p = run('goal-drift', 'Write', None)
+p = run('ungrammatical', 'Write', None)
 show('unset LASERBRAIN_GATE_ON_DRIFT blocks nothing',
      p.returncode == 0 and 'permissionDecision' not in p.stdout, f'exit={p.returncode}')
 show('...and says what it would have done', 'shadow' in p.stderr.lower(), repr(p.stderr[:120]))
-show('...and names the precision that is the reason for waiting', '14.6' in p.stderr)
-p = run('goal-drift', 'Write', 'off')
+# It named goal-drift's 14.6% precision until 2026-11-15; goal-drift no longer reaches the
+# gate, so the message claims no figure for the verdict that does.
+show('...and says it is logged, claiming no precision it has not measured',
+     'logged' in p.stderr and '14.6' not in p.stderr, repr(p.stderr[:160]))
+p = run('ungrammatical', 'Write', 'off')
 show('off evaluates nothing at all',
      p.returncode == 0 and 'drift gate' not in p.stderr, f'exit={p.returncode}')
 
 print('\n  the refusal has to be actionable')
-p = run('goal-drift', 'Write', 'deny')
+p = run('ungrammatical', 'Write', 'deny')
 show('names the goal the run started with', 'fix the failing auth test' in p.stderr)
 show('names the goal that was spelled', 'refactor the session store' in p.stderr)
 show('says the call did not run', 'DID NOT RUN' in p.stderr)
-show('offers a way out', 'reset_task' in p.stderr and 'parent_goal' in p.stderr)
+# The way out follows the verdict. It listed goal-drift's three remedies until 2026-11-15,
+# parent_goal among them, which never cleared an ungrammatical reading.
+show('offers a way out: re-spell, with one progress word',
+     'ONE progress word' in p.stderr and 'reset_task' in p.stderr, repr(p.stderr[-300:]))
+show('...and not parent_goal, which cannot clear an ungrammatical reading',
+     'parent_goal' not in p.stderr, repr(p.stderr[-300:]))
 
 print('\n  this suite could have failed')
 show('a clean verdict and a drift verdict do not produce the same exit code',
-     run('advancing', 'Write', 'deny').returncode != run('goal-drift', 'Write', 'deny').returncode)
+     run('advancing', 'Write', 'deny').returncode != run('ungrammatical', 'Write', 'deny').returncode)
 
 print('\n  ' + ('PASS — the gate reads the verdict, and still blocks nothing by default.' if ok
                 else 'FAIL — see above.'))

@@ -64,8 +64,20 @@ try:
 except Refused as e:
     check('a grounded agent may act', False, str(e)[:60])
 
-# ── drifting: the whole point ────────────────────────────────────────────────────────
+# ── goal-drift alone: a note since 2026-11-15, so it does not take the hands ─────────
+# research/DAY-FIVE-REAL-SESSIONS.md §3: 7 of 7 live goal-drift fires were false. The
+# reading is still recorded; it just does not refuse anything on its own.
 h.check('write documentation instead', 'advancing', 4)
+check('goal-drift is recorded with drifting False', h.last.reason == 'goal-drift'
+      and not h.last.drifting, f'{h.last.reason} drifting={h.last.drifting}')
+try:
+    out = op.act(lambda: 'deployed', kind='deploy', target='prod')
+    check('goal-drift alone does not refuse an irreversible act', out == 'deployed', str(out))
+except Refused as e:
+    check('goal-drift alone does not refuse an irreversible act', False, str(e)[:60])
+
+# ── drifting: the whole point ────────────────────────────────────────────────────────
+h.check('', 'advancing', 4)                 # ungrammatical: still an interrupt
 check('the harness sees the drift', h.last.drifting, h.last.reason)
 was, msg = refused(op)
 check('a drifting agent is refused', was, msg[:56])

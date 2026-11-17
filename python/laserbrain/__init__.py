@@ -561,7 +561,12 @@ def _displacement(goal, progress, distance, ground, sim=None, cal=None):
             + cal.w_progress * (0 if progress == ground['progress'] else 1))
 
 
-_DRIFT = ('ungrammatical', 'goal-drift', 'stalled')
+# The reasons that count as a first strike for the warn-then-interrupt rule (see _isdrift).
+# 'goal-drift' left this tuple on 2026-11-15, with drift.ts's isDrift and the stdio server's
+# two `_prev` lists: it returns drifting=False now (a note, not an interrupt), so a goal-drift
+# on the previous step no longer turns a first `stalled` or self-report into an interrupt.
+# Evidence: research/DAY-FIVE-REAL-SESSIONS.md §3 — 7 of 7 live goal-drift fires were false.
+_DRIFT = ('ungrammatical', 'stalled')
 
 
 def _terms(goal, progress, distance, ground, sim=None, cal=None):
@@ -1631,25 +1636,41 @@ class _Run:
             # redirected you (reset), you are on a sub-task (parent_goal), or you really did
             # wander off (return). Only the third is drift. A verdict that names one cause
             # teaches the agent that cause is the only one.
+            #
+            # A NOTE, NOT AN INTERRUPT, since 2026-11-15. drifting=False, reason kept: the
+            # reading is still recorded, still counted (goal_drifts in judgment() and
+            # _control()), still comparable with the old corpus by reason. It just no longer
+            # interrupts on its own, and the advice no longer says "return". Evidence,
+            # research/DAY-FIVE-REAL-SESSIONS.md §3: all 7 live goal-drift fires from Oct 17
+            # to Nov 15 were false (5 were the user's next ask or a new phase, 1 a rewording,
+            # 1 a redirect he made); the July corpus had it at 24 of 35 fires with 0 real; the
+            # user_turn reground above already existed and did not stop them.
+            #
+            # The second signal is the existing escalation, unchanged: repeated goal-drift
+            # (>= 3, more than regrounds) makes judgment() return `wrong-problem` (with
+            # pace <= 0 after 3 checks) and _control() return decision `reground`.
             rej = getattr(self, '_rejected_parent', None)
             if rej is not None:
                 # Name what happened to the declaration, and never tell an agent to do the
                 # thing it just did.
-                return emit('goal-drift', True,
-                            f'Your goal no longer matches the one you started with (overlap '
+                return emit('goal-drift', False,
+                            f'Note: your goal no longer matches the one you started with (overlap '
                             f'{anchor:.2f}). You DID declare a parent, and it was measured at '
                             f'{rej:.2f} against your ground — below the {self.cal.goal_min:.2f} '
-                            f'floor, so this reads as drift rather than an excursion. Either the '
-                            f'parent is not the goal this serves, or it shares too little wording '
-                            f'with it to be recognised. If the user redirected you, reset.', phi,
+                            f'floor, so this is recorded as goal-drift rather than an excursion. '
+                            f'Either the parent is not the goal this serves, or it shares too '
+                            f'little wording with it to be recognised. If the user redirected you, '
+                            f'reset. Otherwise compare your goal with the ground. Recorded, not an '
+                            f'interrupt.', phi,
                             why=f'overlap with the first goal is {anchor:.2f} and the declared '
                                 f'parent overlaps {rej:.2f}, both below goal_min '
                                 f'{self.cal.goal_min:.2f}; first goal was {self.first_goal_text!r}',
                             parent_overlap=rej)
-            return emit('goal-drift', True,
-                        f'Your goal no longer matches the one you started with (overlap {anchor:.2f}). '
+            return emit('goal-drift', False,
+                        f'Note: your goal no longer matches the one you started with (overlap {anchor:.2f}). '
                         f'If the user redirected you, reset. If this is a sub-task, pass parent_goal. '
-                        f'Otherwise return to the goal you started with.', phi,
+                        f'Otherwise you may be on something else — compare your goal with the ground. '
+                        f'Recorded, not an interrupt.', phi,
                         why=f'overlap with the first goal is {anchor:.2f}, below goal_min '
                             f'{self.cal.goal_min:.2f}; first goal was {self.first_goal_text!r}')
         if d is None:
@@ -2273,12 +2294,14 @@ class _Dialogue:
 # refuses to start because a data file moved is worse than one that starts on its last
 # known-good constants.
 _MODULATION = _G.get('modulation') or {}
+# No 'goal-drift' since 2026-11-15, matching grammar.json: it is a note now
+# (verdicts.note), so no role returns on it.
 _FALLBACK_MODES = ['ungrammatical', 'topic-drift', 'echo-spiral', 'oscillating',
-                   'deliberation-stall', 'goal-drift', 'stalled',
+                   'deliberation-stall', 'stalled',
                    'self-report:stuck', 'self-report:circling']
 _FALLBACK_DEPTH = {
-    'deep': ['ungrammatical', 'topic-drift', 'goal-drift'],
-    'balanced': ['ungrammatical', 'topic-drift', 'goal-drift', 'echo-spiral', 'oscillating',
+    'deep': ['ungrammatical', 'topic-drift'],
+    'balanced': ['ungrammatical', 'topic-drift', 'echo-spiral', 'oscillating',
                  'self-report:stuck', 'self-report:circling'],
     'tight': _FALLBACK_MODES,
 }

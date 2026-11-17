@@ -139,7 +139,7 @@
             "distance": 6
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.5,
             "laserscore": "\u27e8about|page|rewrite\u27e9 advancing d6"
@@ -216,7 +216,7 @@
             "parent_goal": "rewrite the billing system"
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.59,
             "laserscore": "\u27e8base|clas|orm|refactor\u27e9 advancing d5 \u2282 \u27e8bill|rewrite|system\u27e9"
@@ -514,7 +514,7 @@
             "distance": 2
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.46,
             "laserscore": "\u27e8cos|differentiate|negative\u27e9 advancing d2"
@@ -618,7 +618,7 @@
             "distance": 2
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.46,
             "laserscore": "\u27e8cos|differentiate|negative\u27e9 advancing d2"
@@ -670,7 +670,7 @@
             "distance": 2
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.46,
             "laserscore": "\u27e8cos|differentiate|negative\u27e9 advancing d2"
@@ -701,7 +701,7 @@
             "distance": 4
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.56,
             "laserscore": "\u27e8narrow|physic\u27e9 advancing d4"
@@ -714,7 +714,7 @@
             "distance": 2
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.62,
             "laserscore": "\u27e8one|pap|read\u27e9 advancing d2"
@@ -740,7 +740,7 @@
             "distance": 4
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.56,
             "laserscore": "\u27e8narrow|physic\u27e9 advancing d4"
@@ -779,7 +779,7 @@
             "distance": 4
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.56,
             "laserscore": "\u27e8narrow|physic\u27e9 advancing d4"
@@ -792,7 +792,7 @@
             "distance": 2
           },
           "out": {
-            "drifting": true,
+            "drifting": false,
             "reason": "goal-drift",
             "phi": 0.62,
             "laserscore": "\u27e8one|pap|read\u27e9 advancing d2"

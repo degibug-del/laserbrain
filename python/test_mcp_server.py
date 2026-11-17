@@ -75,11 +75,16 @@ out, r = run([INIT,
               call('get_history', {}, 5)])
 v = [json.loads(o['result']['content'][0]['text']) for o in out[1:4]]
 check('first check freezes the ground', v[0]['reason'] == 'grounded', v[0]['reason'])
-check('an unrelated goal reads as drift', v[1]['drifting'] and v[1]['reason'] == 'goal-drift',
-      f"{v[1]['reason']} phi={v[1]['phi']}")
+# goal-drift is a note since 2026-11-15: reason kept, drifting False.
+check('an unrelated goal reads as goal-drift, a note not an interrupt',
+      not v[1]['drifting'] and v[1]['reason'] == 'goal-drift',
+      f"{v[1]['reason']} drifting={v[1]['drifting']} phi={v[1]['phi']}")
+check('...and its advice does not order a return',
+      'return' not in v[1]['advice'].lower() and 'compare your goal with the ground' in v[1]['advice'],
+      v[1]['advice'][:80])
 check('returning to the ground clears it', not v[2]['drifting'], v[2]['reason'])
 h = json.loads(out[4]['result']['content'][0]['text'])
-check('history records the run', h['total'] == 3 and h['drifting'] == 1, str(h['total']))
+check('history records the run', h['total'] == 3 and h['drifting'] == 0, str(h['total']))
 
 # ── reset must clear the ground, or a new task is measured against an old one ────────
 out, _ = run([INIT,

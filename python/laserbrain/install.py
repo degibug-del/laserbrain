@@ -10,6 +10,11 @@ Hooks are referenced as MODULES, never as file paths:
 
 so an upgrade moves them and nothing in settings.json goes stale, and a venv path never
 gets baked into a config file that outlives it.
+
+On Python 3.11+ the command also carries -P, which keeps the current folder off the import
+path. Hooks run in whatever folder the agent is working in, so without it a laserbrain
+checkout or scratch copy there stands in for the installed hooks; on 2026-10-29 a copy that
+failed to import made lb_safety exit 1, and the harness let the call through unguarded.
 """
 from __future__ import annotations
 
@@ -20,12 +25,19 @@ import subprocess
 import sys
 from pathlib import Path
 
+# PostToolUseFailure since 2026-11-14 (round 2 B3, research/DAY-FOUR-ROUND2.md). Claude Code
+# skips PostToolUse when a call fails, so without it a failed call never reached lb_coverage:
+# 26 of 887 lbq calls in round 2 exited non-zero and none was counted as a step, a catch or
+# evidence. Matcher '*' as for PostToolUse: a failed Edit or MCP call is a step too. The
+# merge below is keyed per event, so an existing install gains just this entry.
 HOOKS = [
-    ('UserPromptSubmit', 'lb_coverage', None),
-    ('PostToolUse',      'lb_coverage', '*'),
-    ('PreToolUse',       'lb_gate',     '*'),
-    ('PreToolUse',       'lb_safety',   '*'),
+    ('UserPromptSubmit',   'lb_coverage', None),
+    ('PostToolUse',        'lb_coverage', '*'),
+    ('PostToolUseFailure', 'lb_coverage', '*'),
+    ('PreToolUse',         'lb_gate',     '*'),
+    ('PreToolUse',         'lb_safety',   '*'),
 ]
+SAFE_FLAG = ' -P' if sys.version_info >= (3, 11) else ''     # see the module docstring
 
 
 def _settings_path(host: str) -> Path:
@@ -40,7 +52,7 @@ def _verify() -> list[str]:
     bad = []
     for mod in ('lb_safety', 'lb_gate', 'lb_coverage'):
         try:
-            r = subprocess.run([sys.executable, '-m', f'laserbrain.hooks.{mod}'],
+            r = subprocess.run([sys.executable, *SAFE_FLAG.split(), '-m', f'laserbrain.hooks.{mod}'],
                                input=probe, capture_output=True, text=True, timeout=30)
             noise = (r.stdout + r.stderr).lower()
             if 'unavailable' in noise or 'traceback' in noise:
@@ -106,10 +118,16 @@ def main(argv=None) -> int:
     if not a.no_hooks:
         hooks = cfg.setdefault('hooks', {})
         for event, mod, matcher in HOOKS:
-            cmd = f'{sys.executable} -m laserbrain.hooks.{mod}'
+            cmd = f'{sys.executable}{SAFE_FLAG} -m laserbrain.hooks.{mod}'
             entries = hooks.setdefault(event, [])
-            if any(mod in str(h.get('command', ''))
-                   for e in entries for h in e.get('hooks', [])):
+            mine = [h for e in entries for h in e.get('hooks', []) if mod in str(h.get('command', ''))]
+            if mine:
+                for h in mine:      # wired before -P, by this same interpreter: add it
+                    old = str(h.get('command', ''))
+                    if SAFE_FLAG and sys.executable in old and f' -m laserbrain.hooks.{mod}' in old \
+                            and ' -P ' not in old:
+                        h['command'] = old.replace(' -m laserbrain.hooks.', ' -P -m laserbrain.hooks.', 1)
+                        changed.append(f'{event}/{mod} -P')
                 continue
             entry = {'hooks': [{'type': 'command', 'command': cmd}]}
             if matcher:

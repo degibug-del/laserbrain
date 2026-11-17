@@ -434,14 +434,65 @@ const toWords = (s) => {
   return out
 }
 
+// THE PROGRESS SLOT TAKES ONE WORD, AND ITS NAME INVITES A SENTENCE. 2026-10-25.
+//
+// On the evening of 2026-10-25 every Claude check_state came back `ungrammatical` for
+// hours, goal after goal, including right after reset_task. The goals were fine: the same
+// goals with progress 'advancing' ground cleanly. Every failing call had put a progress
+// NOTE in `progress` — "Backend /api/send route done, Send sheet UI added; now verifying
+// endpoint" — because the schema declared a bare string and the hook nudges say "your
+// current goal, progress and distance", which in English asks for a note. Across the whole
+// corpus 13 of 19 ungrammatical rows (2026-10-25) are such notes, every one by an agent that was
+// on task. The verdict told them to stop and return to ground, and never which slot failed.
+//
+// Only SPELLING is forgiven at the door: case, surrounding whitespace and a trailing full stop
+// ('Advancing', ' stuck ', 'advancing.') become the word. A SENTENCE IS NOT READ AS A WORD.
+// The first draft of this fix read any on-topic note without "stuck"/"circling" as 'advancing';
+// a skeptic then sent "going nowhere, the same error again and again", "blocked: cannot
+// continue without the API key" and "advancing - but stuck on the same failing test" and got
+// back "On track. Continue." — the self-report this detector exists to hear, overruled. So a
+// note stays ungrammatical. What changed is everything around it: the schema declares the
+// enum, `doing` is documented as the place for the note, the hook nudges list the three words,
+// and the verdict names the failing slot (`why`), so the caller re-spells instead of retrying.
+const _TROUBLE = /\b(stuck|circling|circles?)\b/i
+const spellProgress = (raw, doing) => {
+  if (typeof raw !== 'string') return { progress: raw, doing }
+  const low = raw.trim().replace(/[.!]+$/, '').toLowerCase()
+  if (PROGRESS.has(low) && low !== raw) return { progress: low, doing, spelled: { from: 'case', raw } }
+  return { progress: raw, doing }
+}
+
+// WHY a state is ungrammatical, in the caller's terms. python/laserbrain/__init__.py has
+// always computed this (`why`); this server returned only "You cannot spell a clear goal
+// and a valid progress", which named no slot — and an agent that cannot see which slot
+// failed retries the same shape, which is what it did for an evening.
+const ungrammaticalWhy = (goal, progress) => {
+  if (!goal || !String(goal).trim()) return 'the goal is empty'
+  if (progress === undefined || progress === null || progress === '') return 'progress is missing'
+  if (typeof progress !== 'string') return `progress is a ${typeof progress}, not a word`
+  const t = _TROUBLE.exec(progress)
+  if (t) return `your progress note uses "${t[1].toLowerCase()}" — if that is your state, send progress: "stuck" or "circling"; if not, "advancing"`
+  const shown = progress.length > 60 ? `${progress.slice(0, 57)}...` : progress
+  return `${JSON.stringify(shown)} is not one of advancing, stuck, circling`
+}
+
 // The only channel between the UserPromptSubmit hook and this process: a file the hook
 // writes when the user speaks. Consumed — deleted — so it grants exactly one re-ground.
 // Synchronous on purpose: check_state must decide inside a single call, and the whole
 // point of the harness is that its verdict never depends on timing.
 const USER_TURN_FLAG = join(LB_CONFIG, 'user-turn')
-const consumeUserTurn = () => {
+//
+// `since` (2026-11-14, round 2 B8): a flag no newer than this lane's ground is the turn that
+// ground already answered, not a new one. The first grounding never consumed it, so the flag
+// the user's opening message wrote waited for the first real goal change, hours later if
+// need be, and licensed it as a re-ground: goal-drift could not fire once per run. Deleting
+// it at the first grounding would fix that and break subagents, which share this file: a
+// child grounding after the user spoke would eat the parent's licence. Comparing times
+// leaves an old flag inert for every lane that grounded after it, and leaves it in place.
+const consumeUserTurn = (since = 0) => {
   try {
     if (!existsSync(USER_TURN_FLAG)) return false
+    if (since && statSync(USER_TURN_FLAG).mtimeMs <= since) return false
     unlinkSync(USER_TURN_FLAG)
     return true
   } catch { return false }        // fail open: behave exactly as before the flag existed
@@ -714,19 +765,30 @@ const TOOLS = [
     name: 'check_state',
     description:
       'The smart recursion harness. Call EACH step with your working state spelled against the ' +
-      'grammar (goal, progress: advancing|stuck|circling, distance 0-10). It remembers your ground ' +
+      'grammar (goal, progress: ONE word advancing|stuck|circling, distance 0-10; a progress note ' +
+      'goes in `doing`). It remembers your ground ' +
       'state and returns {drifting, reason, phi, advice}. You have drifted — stop and return to your ' +
       'goal — if you cannot spell a clear goal+progress, if you report stuck/circling after moving ' +
-      'from ground, if your goal no longer matches the one you first stated, or if distance stops ' +
-      'falling. Call reset_task on a new task; get_history for the run so far.',
+      'from ground, or if distance stops falling. A goal that no longer matches the one you first ' +
+      'stated comes back as reason goal-drift with drifting false: a note to compare with your ' +
+      'ground, not an order. Call reset_task on a new task; get_history for the run so far.',
     inputSchema: {
       type: 'object',
       properties: {
         goal: { type: 'string', description: 'Your ONE goal, held identical to the goal you first stated.' },
         parent_goal: { type: 'string', description: 'Optional. If this step serves a LARGER goal you have not abandoned, name that goal here. Without it a legitimate sub-task reads as drift, because the grammar has only one goal slot.' },
-        progress: { type: 'string', description: 'advancing | stuck | circling' },
+        // THE ENUM IS DECLARED, NOT ONLY DESCRIBED. 2026-10-25. This was a bare string
+        // whose description happened to read 'advancing | stuck | circling', so nothing in
+        // the contract stopped a caller reading "progress" as English — a progress note.
+        // One evening of Claude sessions did exactly that and got `ungrammatical` on every
+        // call (13 of the 19 ungrammatical rows in the corpus are such notes, all on-task).
+        // python/laserbrain/mcp.py has declared this enum all along; this matches it.
+        progress: { type: 'string', enum: ['advancing', 'stuck', 'circling'],
+          description: 'ONE word: advancing | stuck | circling. Not a progress note — put the note in `doing`.' },
         distance: { type: 'number', description: '0-10, how far from done (0 = done).' },
-        doing: { type: 'string' }, next: { type: 'string' }, blocked: { type: 'string' },
+        doing: { type: 'string', description: 'Optional. Your progress note: what you just did or are doing, in your own words.' },
+        next: { type: 'string', description: 'Optional. What you will do next.' },
+        blocked: { type: 'string', description: 'Optional. What is in your way, if anything.' },
         session: { type: 'string', description: 'Optional. A stable id for THIS agent. Subagents share their parent\'s server connection, so without it a child\'s ground overwrites the parent\'s. Omit and you share one lane, exactly as before.' },
       },
       required: ['goal', 'progress', 'distance'],
@@ -743,7 +805,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         goal: { type: 'string', description: 'Your ONE goal, held identical to the goal you first stated.' },
-        progress: { type: 'string', description: 'advancing | stuck | circling' },
+        progress: { type: 'string', enum: ['advancing', 'stuck', 'circling'],
+          description: 'ONE word: advancing | stuck | circling.' },
         distance: { type: 'number', description: '0-10, how far from done (0 = done).' },
         team: { type: 'string', description: 'A recursion-team preset name.' },
         role: { type: 'string', description: 'Which role in that team this agent is playing.' },
@@ -806,8 +869,9 @@ const TOOLS = [
       'What is in the drift corpus and what nobody has judged yet. Lists past fires with '
       + 'their run id and step so mark_verdict can label them after the fact \u2014 which is '
       + 'when a fire can actually be judged, since you usually learn whether an interruption '
-      + 'was worth it only after the work it interrupted went somewhere. Shows the unlabelled '
-      + 'by default; pass all:true to include the ones already judged.',
+      + 'was worth it only after the work it interrupted went somewhere. goal-drift readings are '
+      + 'listed too, though since 2026-11-15 they are notes (drifting false), not fires. Shows the '
+      + 'unlabelled by default; pass all:true to include the ones already judged.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1783,7 +1847,14 @@ async function _call(name, args) {
     // Only the FIRES are worth judging. Every step is logged now, and a label on a
     // reading that never interrupted anything says nothing about whether the instrument
     // was right to interrupt.
-    let rows = fires.filter((r) => r.drifting)
+    //
+    // goal-drift is the one exception, since 2026-11-15 (change B): it returns
+    // drifting:false now, a note rather than an interrupt, but it is the same reading the
+    // older rows fired on, and labelling it is how anyone learns whether the note is right.
+    // Filtering on `drifting` alone made review_verdicts({reason:'goal-drift'}) return only
+    // the rows written before the change, so new goal-drift readings could never be judged.
+    const reviewable = (r) => r.drifting || r.reason === 'goal-drift'
+    let rows = fires.filter(reviewable)
     if (wantReason) rows = rows.filter((r) => r.reason === wantReason)
     if (wantRun) rows = rows.filter((r) => r.run === wantRun)
     const unlabelled = rows.filter((r) => !labelled.has(_key(r)))
@@ -1794,11 +1865,15 @@ async function _call(name, args) {
 
     return JSON.stringify({
       fires: rows.length,
+      // How many of `fires` are goal-drift notes (drifting:false), so the count is not read
+      // as interruptions. Older goal-drift rows carry drifting:true and are not in this number.
+      notes: rows.filter((r) => !r.drifting).length,
       unlabelled: unlabelled.length,
       labelled: rows.length - unlabelled.length,
       unlabelled_by_reason: byReason,
       showing: shown.map((r) => ({
         run: r.run, step: r.step, reason: r.reason, phi: r.phi,
+        drifting: Boolean(r.drifting),
         agent: r.agent ?? null, ts: r.ts,
         goal: typeof r.goal === 'string' ? r.goal.slice(0, 72) : null,
         labelled: labelled.has(_key(r)),
@@ -2014,7 +2089,10 @@ async function _call(name, args) {
     // leaks onto the next one.
     const _rg = LAST_RESUMED
     LAST_RESUMED = null
-    const { goal, progress, distance, parent_goal, doing, next, blocked } = args || {}
+    const { goal, distance, parent_goal, next, blocked } = args || {}
+    // Spelling (case, whitespace, a full stop) is forgiven at the door — see spellProgress. `progress` is
+    // the word the ladder judges; `spelled` says how it was got when it was not sent as-is.
+    const { progress, doing, spelled } = spellProgress(args?.progress, args?.doing)
     const record = (drifting, reason, advice, phi = 0, extra = {}) => {
       const step = drift.trace.length + 1
       drift.trace.push({ step, reason, phi: Number(phi.toFixed(2)) })
@@ -2116,6 +2194,8 @@ async function _call(name, args) {
       logDrift({ ts: new Date().toISOString(), run: runId, agent: AGENT, step, reason, drifting,
         phi: Number(phi.toFixed(2)), goal_score,
         laserscore: score, goal, progress, distance: asDist(distance),
+        // Only on a translated row: what was sent, and which arm of spellProgress read it.
+        ...(spelled ? { spelled: spelled.from, progress_raw: args?.progress } : {}),
         dist_recent: drift.distHist.slice(-4),
         arm: _arm.arm, unit: _arm.unit,
         grammar_version: GRAMMAR.laserbrain_grammar ?? null,
@@ -2328,12 +2408,37 @@ async function _call(name, args) {
           'ground has to stay fixed while the work moves, and a sentence about what was ' +
           'just finished cannot — by the next step something else has been. State it as ' +
           'the thing you are trying to reach.' } : {}),
+        // Said out loud whenever the progress word was not sent as-is, so the caller learns
+        // the contract instead of depending on the translation. See spellProgress.
+        ...(spelled ? { spelled: { progress, from: spelled.from,
+          say: 'progress takes ONE word (advancing | stuck | circling); a note goes in `doing`.' } } : {}),
         ...(judgment ? { judgment } : {}), advice })
     }
-    if (!goal || !String(goal).trim() || !PROGRESS.has(progress))
-      return record(true, 'ungrammatical', 'You cannot spell a clear goal and a valid progress. Stop and return to ground.')
+    if (!goal || !String(goal).trim() || !PROGRESS.has(progress)) {
+      // Still `ungrammatical`, still drifting — the detector is unchanged. What changes is
+      // that the verdict now names the slot and the fix, as the Python reference does.
+      const why = ungrammaticalWhy(goal, progress)
+      let advice = (!goal || !String(goal).trim())
+        ? 'Your goal is empty — spell the ONE goal you are working on. Stop and return to ground.'
+        : `You cannot spell a valid progress: ${why}. progress is ONE word — advancing, stuck or `
+          + 'circling — and a note goes in `doing`. Re-spell it; if you cannot say which word is '
+          + 'true, stop and return to ground.'
+      // THE GROUND DOES NOT MOVE ON AN UNGRAMMATICAL CALL, and an evening of them hid that a
+      // new task had arrived: this return precedes the reground below, so the user-turn flag
+      // waits, unconsumed, and the response kept showing a ground from hours earlier. Say so
+      // when the spelled goal has also left the ground — advice only, nothing re-grounds here.
+      if (drift.ground && goal && String(goal).trim() && drift.firstGoal?.length) {
+        const g = toWords(goal), first = new Set(drift.firstGoal)
+        let inter = 0; for (const x of g) if (first.has(x)) inter++
+        if (inter / (new Set([...g, ...first]).size || 1) < GOAL_MIN)
+          advice += ` Your goal also differs from the ground ("${drift.ground.goal}"): if the user `
+            + 'gave you a new task, call reset_task.'
+      }
+      return record(true, 'ungrammatical', advice, 0, { why })
+    }
     if (!drift.ground) {
       drift.ground = { goal, progress, distance: asDist(distance) }
+      drift.groundedAt = Date.now()
       drift.firstGoal = [...toWords(goal)]
       drift.distHist = [asDist(distance)]
       runId = (globalThis.crypto?.randomUUID?.() ?? String(Date.now()))
@@ -2367,7 +2472,9 @@ async function _call(name, args) {
       {
         const _t = drift.trace ?? []
         const _last = _t[_t.length - 1]
-        const _prev = _last ? (['ungrammatical', 'goal-drift', 'stalled'].includes(_last.reason)
+        // 'goal-drift' left this list on 2026-11-15, with Python's _DRIFT and drift.ts's
+        // isDrift: it is a note now, so a goal-drift before this step is not a first strike.
+        const _prev = _last ? (['ungrammatical', 'stalled'].includes(_last.reason)
                               || String(_last.reason).startsWith('self-report')) : false
         return record(_prev, `self-report:${progress}`, _prev
           ? `You reported ${progress} and have stayed off ground. Return to your goal.`
@@ -2383,8 +2490,9 @@ async function _call(name, args) {
       // exactly one re-ground per user turn. Merely reading it would exempt an agent that
       // wandered for twenty steps after a redirection, which is the real drift this
       // instrument exists to catch.
-      if (consumeUserTurn()) {
+      if (consumeUserTurn(drift.groundedAt)) {
         drift.ground = { goal, progress, distance: asDist(distance) }
+        drift.groundedAt = Date.now()
         drift.firstGoal = [...g]
         drift.distHist = [asDist(distance)]
         // The setpoint moved, so the progress accumulator starts here. Everything earlier
@@ -2453,18 +2561,34 @@ async function _call(name, args) {
       // fifteen times between them and returned to ground each time, because the advice
       // said 'you are solving something else' and offered no other reading. A verdict
       // that names one cause teaches the agent that cause is the only one.
+      //
+      // A NOTE, NOT AN INTERRUPT, since 2026-11-15. goal-drift now returns drifting:false
+      // and keeps its reason, so it is still recorded, still counted by judgeWork and
+      // control() (goal_drifts) and still comparable with the old corpus by reason. What
+      // changed is only that it no longer interrupts on its own. Evidence
+      // (research/DAY-FIVE-REAL-SESSIONS.md §3): all 7 live goal-drift fires from Oct 17
+      // to Nov 15 were false (5 were Diego's next ask or a new phase, 1 a rewording, 1 a
+      // redirect he made), and in the July corpus it was 24 of 35 fires with 0 real. The
+      // reground rule (consumeUserTurn above) already existed and did not stop them. The
+      // advice keeps the three readings and drops the order to return.
+      //
+      // The second signal is the one that already existed: when goal-drift repeats
+      // (>= 3, more than the regrounds), judgeWork returns `wrong-problem` and control()
+      // returns decision `reground`, attached to the reading as `judgment`. Unchanged.
       if (rejectedParent !== null) {
         // Never tell an agent to do the thing it just did.
-        return record(true, 'goal-drift', `Your goal no longer matches the one you started with `
+        return record(false, 'goal-drift', `Note: your goal no longer matches the one you started with `
           + `(overlap ${anchor.toFixed(2)}). You DID declare a parent, and it was measured at `
           + `${rejectedParent.toFixed(2)} against your ground — below the ${GOAL_MIN.toFixed(2)} `
-          + `floor, so this reads as drift rather than an excursion. Either the parent is not the `
-          + `goal this serves, or it shares too little wording with it to be recognised. `
-          + `If the user redirected you, call reset_task.`, phi, { parent_overlap: Number(rejectedParent.toFixed(2)) })
+          + `floor, so this is recorded as goal-drift rather than an excursion. Either the parent `
+          + `is not the goal this serves, or it shares too little wording with it to be recognised. `
+          + `If the user redirected you, call reset_task. Otherwise compare your goal with the ground. `
+          + `Recorded, not an interrupt.`, phi, { parent_overlap: Number(rejectedParent.toFixed(2)) })
       }
-      return record(true, 'goal-drift', `Your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). `
+      return record(false, 'goal-drift', `Note: your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). `
         + `If the user redirected you, call reset_task. If this is a sub-task, pass parent_goal. `
-        + `Otherwise you are solving something else — return.`, phi)
+        + `Otherwise you may be on something else — compare your goal with the ground. `
+        + `Recorded, not an interrupt.`, phi)
     }
     drift.distHist.push(asDist(distance))
     const dh = drift.distHist
@@ -2492,7 +2616,8 @@ async function _call(name, args) {
       {
         const _t = drift.trace ?? []
         const _last = _t[_t.length - 1]
-        const _prev = _last ? (['ungrammatical', 'goal-drift', 'stalled'].includes(_last.reason)
+        // No 'goal-drift' here either, since 2026-11-15 — see the self-report branch above.
+        const _prev = _last ? (['ungrammatical', 'stalled'].includes(_last.reason)
                               || String(_last.reason).startsWith('self-report')) : false
         return record(_prev, 'stalled', _prev
           ? `Distance has stopped falling (${dh.slice(-4).join(', ')}) and you were already off ground — return.`

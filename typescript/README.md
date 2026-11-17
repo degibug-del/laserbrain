@@ -40,7 +40,7 @@ const h = new Harness()
 h.check('add a CSV importer to the admin panel', 'advancing', 8)   // grounded
 
 const v = h.check('refactor the ORM base class', 'advancing', 5)
-v.drifting   // true
+v.drifting   // false — goal-drift is a note, not an interrupt (since 2026-11-15)
 v.reason     // 'goal-drift'
 v.ground     // 'add a CSV importer to the admin panel'  ← the frozen goal, handed back
 ```
@@ -59,7 +59,8 @@ h.check('validate CSV columns', 'advancing', 6, { parentGoal: G }) // excursion 
 
 `grounded` `advancing` `reground` `excursion` — carry on ·
 `stalled` `self-report` — warn, then interrupt ·
-`goal-drift` `ungrammatical` — stop ·
+`ungrammatical` — stop ·
+`goal-drift` — a note, not an interrupt; repeated with no re-ground it escalates in `judgment` ·
 `oscillating` — reads the sequence rather than the step
 
 ## Parity

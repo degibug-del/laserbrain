@@ -106,7 +106,7 @@
     "best_powered_n": 2127,
     "censored_beyond_steps": 8,
     "censored_share": 0.0768,
-    "censoring": "The coverage gate forces a check at 4 steps when coverage is under floor, so gaps of 8+ are 7.68% of the sample (181 of 2356). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose.",
+    "censoring": "The coverage gate forced a check at 4 steps when coverage was under floor (hard mode; since 2026-10-16 the default only nudges), so gaps of 8+ are 7.68% of the sample (181 of 2356). The distribution is the gate's policy, not the agent's behaviour, and the interval cannot be evaluated against data the interval produced. To settle it the gate would have to let a random share of runs go long on purpose.",
     "carried_from": "the last calibration with readable pairs",
     "carried_because": "this corpus yielded 6 readable pair(s) \u2014 every band underpowered. Measured pairs are counted only where a verdict was actually read; blind-arm checks are censored at the source and excluded.",
     "carried_written": "2026-08-15",
@@ -120,7 +120,7 @@
       0.0909,
       0.1957
     ],
-    "note": "Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by construction: the gate forces a check every four steps to hold the coverage floor, so this is the threshold, not an emergent property."
+    "note": "Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by construction: the gate forced a check every four steps to hold the coverage floor (hard mode, the default until 2026-10-16), so this is the threshold, not an emergent property."
   },
   "fresh_ground": {
     "what": "The same table over readings on a ground that was just set. Kept OUT of the schedule: a reading cannot drift from a ground reset one step ago, so including it would manufacture the low end. Recorded because redirect-driven fires live here and are worth watching.",

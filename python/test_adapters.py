@@ -24,10 +24,14 @@ def step(state):
 
 step({'goal': 'build the parser', 'd': 6})            # ground
 r1 = step({'goal': 'build the parser', 'd': 5})       # advancing
-r2 = step({'goal': 'write a poem instead', 'd': 5})   # goal-drift
+r2 = step({'goal': 'write a poem instead', 'd': 5})   # goal-drift: a note since 2026-11-15
 show('verdict attached to result', 'laserbrain' in r1 and r1['laserbrain'].reason == 'advancing')
-show('drift caught + on_return fired', r2['laserbrain'].drifting and seen == ['goal-drift'],
-     f"reason={r2['laserbrain'].reason}")
+show('goal-drift is recorded but does not fire on_return',
+     r2['laserbrain'].reason == 'goal-drift' and not r2['laserbrain'].drifting and seen == [],
+     f"reason={r2['laserbrain'].reason} drifting={r2['laserbrain'].drifting} seen={seen}")
+r3 = step({'goal': '', 'd': 5})                       # ungrammatical: still an interrupt
+show('drift caught + on_return fired', r3['laserbrain'].drifting and seen == ['ungrammatical'],
+     f"reason={r3['laserbrain'].reason}")
 
 # 2) langgraph_node — drive the node by hand as a graph would, branching on the verdict.
 print("\n== 2) langgraph_node (LangGraph) ==")
@@ -36,7 +40,12 @@ route = lambda s: 'return' if s['laserbrain'].drifting else 'agent'
 state = {'goal': 'index the corpus', 'distance': 7}
 state.update(node(state))                              # ground
 show('node returns a Verdict', hasattr(state['laserbrain'], 'drifting'))
-state = {'goal': 'reorganize my inbox', 'distance': 7}  # a different goal → drift
+state = {'goal': 'reorganize my inbox', 'distance': 7}  # a different goal → goal-drift, a note
+state.update(node(state))
+show('goal-drift alone keeps the edge on the agent', route(state) == 'agent'
+     and state['laserbrain'].reason == 'goal-drift',
+     f"reason={state['laserbrain'].reason} advice={state['laserbrain'].advice[:32]}…")
+state = {'goal': '', 'distance': 7}                     # ungrammatical → drift
 state.update(node(state))
 show('conditional edge routes to return on drift', route(state) == 'return',
      f"advice={state['laserbrain'].advice[:32]}…")

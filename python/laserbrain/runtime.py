@@ -280,9 +280,95 @@ def normalise(ev):
 
     Accepts snake_case and camelCase payloads side by side, whichever host sent them.
     """
-    if not isinstance(ev, dict):
-        return (None, '', {}, True, '')
+    return _normalise(ev)[:5]
 
+
+def _normalise(ev):
+    """normalise() plus `via` (how a failure was known, see _outcome) as a sixth element.
+
+    Session.feed reads this so one event is classified ONCE (2026-11-14, round 2 B3/B4
+    review). feed used to call normalise() and then tool_outcome() for the via tag, which
+    ran the whole verdict scan twice per call; the hook then ran it a third time for
+    evidence. normalise() keeps its 5-tuple for every caller that unpacks five values.
+    """
+    if not isinstance(ev, dict):
+        return (None, '', {}, True, '', '')
+
+    tool, args, resp = _tool_parts(ev)
+
+    # Prompt capture: only when this is not also a tool event.
+    prompt = ev.get('prompt')
+    if prompt is None:
+        prompt = ev.get('userPrompt') if ev.get('userPrompt') is not None else ev.get('promptText')
+    if prompt is not None and not tool:
+        return ('prompt', '', {}, True, clean_prompt(prompt), '')
+
+    if not tool:
+        return (None, '', {}, True, '', '')
+
+    # DID THE CALL FAIL: one rule, _outcome(), shared with lb_coverage._event_ok so catches
+    # and evidence cannot disagree. Its structural checks are the ones that stood here, in
+    # the same order with the same results: a failure event, an int exit code (which still
+    # overrides), an error flag, a string result that begins "error".
+    #
+    # TEXT DECIDES A CALL FAILED ONLY WHEN ITS OUTPUT ENDS RED (2026-11-14, round 2 B4,
+    # research/DAY-FOUR-ROUND2.md). Until then any _FAIL_PATTERNS phrase in the first 4000
+    # characters failed the call, and in round 2 all 28 "build catches" it made came from
+    # commands that exited 0: "fatal:" from `git status` outside a repo (13), "no such
+    # file" (5), AssertionError in piped test output or a `cat` of source (5), errors the
+    # worker provoked on purpose (3). A hand label found 16 of those 28 false. A false
+    # catch is worse than a missed one: catches are the GROUND TRUTH the harness is scored
+    # against, so inventing them would let the instrument grade itself against its own
+    # noise.
+    #
+    # THE VERDICT SCAN STAYS, because a pipe hides a red suite's exit status from every
+    # host. `python3 -m unittest` exits 1 and arrives as a failure event (B3); `... 2>&1 |
+    # tail -15` exits 0 and has to classify the same. In round 2, 108 lbq calls exited 0
+    # with a red unittest verdict, against 26 that failed structurally. The old probe saw 8
+    # of the 108, for two reasons: it read json.dumps(resp), whose escaped newlines leave
+    # `^` anchoring only at the start of the blob, and it cut at 4000 characters, while
+    # unittest prints its verdict last (past the cut in 33 of the 224 red runs it missed
+    # across both arms).
+    # tool_output_text() decodes what the command printed and red_verdict() reads all of
+    # it. Replayed over round 2 with B3 delivery: 134 lbq catches, 7 false, all 7
+    # structural and none from text (the old rule: 54 catches, 23 false).
+    #
+    # The 2026-07-26 lesson still holds — 21 sessions carried zero catches because failures
+    # arrive in prose — which is why verdicts are read rather than nothing. _looks_failed
+    # is kept for the research suites and the replay; nothing here calls it.
+    ok, via = _outcome(ev, tool, resp)
+
+    low_tool = tool.lower()
+    # A FAILED BOOKKEEPING CALL IS IGNORED, exactly as it was before failures arrived
+    # (2026-11-14, round 2 B3). With PostToolUseFailure wired, a failed check_state became a
+    # check row with reason 'no-reading', which inflates coverage and in hard mode can clear
+    # the gate, and a failed reset_task archived and reset the session. Both reproduced on
+    # the prototype. Keyed on the failure EVENT, not on via == 'event', so a denied one
+    # ("THIS CALL DID NOT RUN", via 'denied') is ignored too.
+    if _failure_event(ev) and low_tool.endswith(('check_state', 'reset_task', 'get_history')):
+        return (None, tool, args, True, '', '')
+    if low_tool.endswith('reset_task') or low_tool.endswith('__reset_task'):
+        return ('reset', tool, args, True, '', '')
+    kind = 'check' if low_tool.endswith('check_state') else 'tool'
+    text = json.dumps(resp, default=str) if resp else ''
+    # A CHECK REPLY IS PARSED, SO IT IS NEVER CUT (2026-11-14, round 2 B2). The 600 cap
+    # applied to every kind, and an MCP check reply serialised this way has a median of 734
+    # characters: 128 of 149 round-2 replies were cut mid-JSON, verdict_of() could not parse
+    # them, and the session row kept reason 'no-reading' with no phi or run. A cut
+    # `drifting: true` reply would have been stored as false. Tool text keeps its cap; since
+    # 2026-11-14 Session.feed reads a self-refusal from the event itself (self_refused),
+    # not from this text.
+    if kind != 'check':
+        text = text[:600]
+    return (kind, tool, args, ok, text, via)
+
+
+def _tool_parts(ev):
+    """(tool, args, resp) out of any host's tool event, after unwrapping a dispatcher.
+
+    One reading of the payload shape for normalise() and tool_outcome(), so the outcome
+    lb_coverage records as evidence is computed from the same fields as the catch.
+    """
     tool = str(ev.get('tool_name') or ev.get('toolName') or ev.get('name') or '')
     args = (ev.get('tool_input') if ev.get('tool_input') is not None
             else ev.get('toolInput') if ev.get('toolInput') is not None
@@ -291,66 +377,280 @@ def normalise(ev):
             else ev.get('input') if ev.get('input') is not None
             else {})
     tool, args = unwrap_tool_args(tool, args)
-
-    # Prompt capture: only when this is not also a tool event.
-    prompt = ev.get('prompt')
-    if prompt is None:
-        prompt = ev.get('userPrompt') if ev.get('userPrompt') is not None else ev.get('promptText')
-    if prompt is not None and not tool:
-        return ('prompt', '', {}, True, clean_prompt(prompt))
-
-    if not tool:
-        return (None, '', {}, True, '')
-
     resp = (ev.get('tool_response') if ev.get('tool_response') is not None
             else ev.get('toolResult') if ev.get('toolResult') is not None
             else ev.get('output') if ev.get('output') is not None
             else {})
-    ok = True
-    event_name = str(ev.get('hookEventName') or ev.get('hook_event_name') or '')
-    if 'failure' in event_name.lower():
-        ok = False
+    return tool, args, resp
+
+
+# ── WHAT A TOOL CALL'S OUTCOME WAS (2026-11-14, round 2 B3/B4) ─────────────────────────
+# A red test-runner or build VERDICT, read from the decoded output. These are the only text
+# patterns that fail a call; see the comment in normalise() for the round-2 evidence.
+#
+# Case-sensitive and line-anchored, which is what makes them safe: a runner prints its
+# verdict at the start of a line in a fixed spelling, while "FAILED" or "1 failed" inside a
+# log line, a source file or a sentence about tests does not match.
+#
+# `[^\S\n]` (whitespace but not a newline) where the replay's prototype had `\s`. Same
+# verdict on every input, because `^` already tries every line start, but `^\s*` restarted
+# at each line of a blank run and scanned the rest of it: 20,000 blank lines took 8 s when
+# measured on 2026-11-14, and a 200,000-character run would stall the hook. Now linear.
+#
+# The same fix for jest's `^Tests?:\s+.*`, whose `\s+` and `.*` overlap: 'Tests:' and 30,000
+# spaces took 1.6 s per scan, three scans per hook call. `[^\S\n]+(?=\S)` can split the
+# line one way only, and the verdict is the same on every jest summary line, which puts
+# the counts on the "Tests:" line itself.
+#
+# NO "THIS CALL DID NOT RUN" HERE since the B3/B4 review (2026-11-14). As a line pattern it
+# matched anywhere: a successful `grep -n "THIS CALL DID NOT RUN" lb_safety.py` became a
+# 'denied' catch and an evidence failure, and so did 12 of 12 successful greps and diffs of
+# gate source in Diego's last 30 days of transcripts. A hook's denial is a message that
+# BEGINS with its deny text; red_verdict() tests that with _DENIAL_HEAD_RE below.
+_VERDICT_RED_RE = re.compile('|'.join([
+    r'^[^\S\n]*(?:\d+[^\S\n]+)?FAILED \((?:failures|errors)=\d+',        # unittest (also after uniq -c)
+    r'^[^\S\n]*(?:\d+[^\S\n]+)?(?:FAIL|ERROR): test\w* \([\w.]+\)\s*$',  # unittest per-test header
+    r'^=+ .*\b\d+ (?:failed|errors?)\b.*=+\s*$',                          # pytest summary line
+    r'^[^\S\n]*(?:\*\* )?(?:BUILD|EXPORT|ARCHIVE) FAILED\b',              # xcodebuild
+    r'^Tests?:[^\S\n]+(?=\S)[^\n]*\b\d+ failed\b',                        # jest
+]), re.MULTILINE)
+# A green verdict. The LAST verdict wins, so a suite run red and then green in one call
+# (fix, rerun) is a success.
+#
+# `[^\S\n]*\n(?:[^\S\n]*\n)+` is the prototype's `\s*\n\s*\n`: any whitespace run that holds
+# two or more newlines and ends in one. Written so it splits one way only, because the
+# overlapping form went quadratic on a "Ran N tests" line followed by a long blank run.
+_VERDICT_GREEN_RE = re.compile(
+    r'^Ran \d+ tests? in [\d.]+s[^\S\n]*\n(?:[^\S\n]*\n)+(?:OK\b|NO TESTS RAN)'
+    r'|^=+ (?:(?!failed|error).)*\b\d+ passed\b(?:(?!failed|error).)*=+\s*$', re.MULTILINE)
+
+# ── A HOOK'S REFUSAL IS KNOWN BY ITS HEAD (2026-11-14, round 2 B3/B4 review) ─────────────
+# A refusal or a denial is a MESSAGE THAT BEGINS WITH THE DENY TEXT. Claude Code delivers it
+# bare ("laserbrain gate: ...") or behind its hook prefix ("PreToolUse:Bash hook error: " or
+# "PreToolUse:Edit hook error: [command]: "): those are the only two shapes among the 474
+# hook denials (423 coverage gate, 51 lb_safety) in Diego's last 30 days of transcripts,
+# and every one says THIS CALL DID NOT
+# RUN within its first lines. A command that ran and failed starts with "Exit code N"
+# instead, and a command that ran and succeeded starts with whatever it printed. lb_gate's
+# non-blocking warning ("... Reads still pass.") has no THIS CALL DID NOT RUN, so a log that
+# opens with one is not a refusal either.
+#
+# WHY NOT SEARCH THE WHOLE TEXT, as is_self_refusal() does. That search ran over every call
+# once B3 brought failures in, and it took two kinds of real work away:
+#   - 63 successful Reads, greps and diffs of laserbrain's own source or logs in those
+#     transcripts stopped counting as evidence, because the source quotes the deny text;
+#   - a red suite whose output quotes the gate (laserbrain's own test_proportional_gate
+#     prints three such lines on a normal run) lost its catch, because "laserbrain gate:"
+#     followed anywhere by "coverage" read as the gate refusing.
+# It was also slow: a lazy DOTALL search over 200,000 characters of "laserbrain gate:" lines
+# with no "coverage" took 2.7 s, four times per hook call. These tests read six lines at most.
+# The bracketed command may itself hold ']' (the plugin's own hook command has `[ -n "$LB_PY" ]`),
+# so the group runs lazily to the first ']: ' that the deny text follows, on one line only.
+_REFUSAL_LEAD = r'\A\s*(?:PreToolUse:\S+ hook error: (?:\[[^\n]*?\]: )?)?'
+_DID_NOT_RUN = r'(?:[^\n]*\n){0,5}?[^\n]*?\bTHIS CALL DID NOT RUN\b'
+# The coverage gate (its coverage clause is on the first line of every refusal lb_gate
+# writes) and the enforced drift gate: the instrument refusing, never a catch.
+_SELF_REFUSAL_HEAD_RE = re.compile(
+    _REFUSAL_LEAD + r'laserbrain (?:gate:(?=[^\n]*\bcoverage\b)|drift gate:)' + _DID_NOT_RUN,
+    re.IGNORECASE)
+# Any laserbrain hook's denial, the claim gate and lb_safety included.
+_DENIAL_HEAD_RE = re.compile(
+    _REFUSAL_LEAD + r'laserbrain (?:claim gate|safety|gate|drift gate):' + _DID_NOT_RUN,
+    re.IGNORECASE)
+# File-content and subagent tools are never text-scanned: a Read of a red log, a Write of a
+# test file or a subagent's report quoting a red run is not the call failing. The last four
+# names are Grok's.
+_NO_TEXT_SCAN = frozenset({
+    'read', 'write', 'edit', 'multiedit', 'notebookedit', 'notebookread', 'grep', 'glob', 'ls',
+    'task', 'agent', 'webfetch', 'websearch', 'todowrite',
+    'read_file', 'write_file', 'edit_file', 'list_dir'})
+# A very long output is read at both ends: a verdict comes last, and a runner's own header
+# (or an early crash) comes first.
+_SCAN_HEAD, _SCAN_TAIL = 20_000, 180_000
+
+
+def _blocks_text(blocks):
+    """The text blocks of an MCP content list, joined. Images and other blocks are skipped."""
+    out = []
+    for b in blocks:
+        if isinstance(b, str):
+            out.append(b)
+        elif isinstance(b, dict) and b.get('type') == 'text':
+            out.append(str(b.get('text') or ''))
+    return '\n'.join(out)
+
+
+def tool_output_text(tool, resp):
+    """The text a command PRINTED, decoded, never json.dumps(resp).
+
+    '' for file-content and subagent tools (_NO_TEXT_SCAN) and for shapes that carry no
+    printed text. A string result is itself; an MCP content list is its text blocks; a
+    Bash result is stdout then stderr; another host's {output: str} is that output.
+    """
+    if str(tool or '').lower() in _NO_TEXT_SCAN:
+        return ''
+    if isinstance(resp, str):
+        return resp
+    if isinstance(resp, list):
+        return _blocks_text(resp)
+    if isinstance(resp, dict):
+        if 'stdout' in resp or 'stderr' in resp:
+            return f"{resp.get('stdout') or ''}\n{resp.get('stderr') or ''}"
+        if isinstance(resp.get('content'), list):
+            return _blocks_text(resp['content'])
+        if isinstance(resp.get('output'), str):
+            return resp['output']
+    return ''
+
+
+def _message_texts(ev, resp):
+    """Every field a hook's refusal can arrive in, decoded, never json.dumps.
+
+    The failure event's `error` (Claude Code's PostToolUseFailure), a string result, an MCP
+    content list, and the message fields of a result dict ({isError, content: str} from an
+    SDK, {error} from the OpenAI Agents adapter, {stdout, stderr} from Bash, {output} from
+    other hosts). Each is tested at its own head: a refusal is a message, not a quotation.
+    """
+    out = []
+    e = error_text(ev)
+    if e:
+        out.append(e)
+    if isinstance(resp, str):
+        out.append(resp)
+    elif isinstance(resp, list):
+        out.append(_blocks_text(resp))
+    elif isinstance(resp, dict):
+        for k in ('content', 'output', 'stderr', 'stdout', 'error', 'errorMessage', 'message'):
+            v = resp.get(k)
+            if isinstance(v, str):
+                out.append(v)
+            elif isinstance(v, list):
+                out.append(_blocks_text(v))
+    return out
+
+
+def starts_as_self_refusal(text):
+    """True when this message IS the coverage gate or the enforced drift gate refusing: it
+    begins with the deny text. Quoting that text later in the output is not refusing."""
+    return bool(text) and bool(_SELF_REFUSAL_HEAD_RE.match(text))
+
+
+def starts_as_denial(text):
+    """True when this message IS a laserbrain hook's denial (THIS CALL DID NOT RUN)."""
+    return bool(text) and bool(_DENIAL_HEAD_RE.match(text))
+
+
+def self_refused(ev):
+    """The coverage gate or the enforced drift gate refused this call: one of its message
+    fields (see _message_texts) begins with the deny text. The rule lb_coverage's
+    _is_self_refusal copies, so catches and evidence exclude the same calls."""
+    if not isinstance(ev, dict):
+        return False
+    _tool, _args, resp = _tool_parts(ev)
+    return any(starts_as_self_refusal(t) for t in _message_texts(ev, resp))
+
+
+def red_verdict(text):
+    """True when the LAST test or build verdict in the text is red, or when the text is a
+    hook's denial (it begins with one: the call did not run).
+
+    The coverage gate's own refusal is never red, for the reason it is never a catch
+    anywhere else. Both of those are read at the head of the text only; see
+    _SELF_REFUSAL_HEAD_RE.
+    """
+    if not text:
+        return False
+    if len(text) > _SCAN_HEAD + _SCAN_TAIL:
+        text = text[:_SCAN_HEAD] + '\n' + text[-_SCAN_TAIL:]
+    if starts_as_self_refusal(text):
+        return False
+    if starts_as_denial(text):
+        return True
+    reds = [m.start() for m in _VERDICT_RED_RE.finditer(text)]
+    if not reds:
+        return False
+    greens = [m.start() for m in _VERDICT_GREEN_RE.finditer(text)]
+    return not greens or max(reds) > max(greens)
+
+
+def error_text(ev):
+    """A failure event's own message: `error`, else `errorMessage`; '' when absent.
+
+    Claude Code's PostToolUseFailure carries the failure ONLY here ("Exit code 1\\n...", or
+    a hook's denial) and sends no tool_response, so a test that reads the response alone
+    is blind to it.
+    """
+    if not isinstance(ev, dict):
+        return ''
+    e = ev.get('error')
+    if e is None:
+        e = ev.get('errorMessage')
+    if e is None:
+        return ''
+    if isinstance(e, str):
+        return e
+    try:
+        return json.dumps(e, default=str)
+    except Exception:
+        return str(e)
+
+
+def is_interrupt(ev):
+    """The user stopped the call (Esc). Counted as a step, never as a catch or evidence."""
+    return isinstance(ev, dict) and bool(ev.get('is_interrupt') or ev.get('isInterrupt'))
+
+
+def _failure_event(ev):
+    """The host delivered this call on its failure event (PostToolUseFailure and kin)."""
+    return 'failure' in str(ev.get('hookEventName') or ev.get('hook_event_name') or '').lower()
+
+
+def _outcome(ev, tool, resp):
+    """(ok, via): did this tool call fail, and how is that known.
+
+    via is '' for a success, otherwise:
+      'event'    the host said so: its failure event (PostToolUseFailure, post_tool_use_failure)
+      'exit'     an int exit_code / exitCode that is not 0
+      'flag'     error / is_error / isError, or a string result that begins "error"
+      'verdict'  no structural failure, but the decoded output ends in a red verdict
+      'denied'   a hook refused it: a message field BEGINS with its deny text and THIS CALL
+                 DID NOT RUN (the claim gate or lb_safety). The coverage and drift gates
+                 are self-refusals and never become catches; see self_refused.
+
+    The structural part is the pre-2026-11-14 normalise() order, result for result, so
+    every event it classified then is classified the same now. Only the text step is new.
+    """
+    ok, via = True, ''
+    if _failure_event(ev):
+        ok, via = False, 'event'
     if isinstance(resp, dict):
         code = resp.get('exit_code')
         if code is None:
             code = resp.get('exitCode')
         if isinstance(code, int):
             ok = code == 0
+            via = '' if ok else 'exit'
         elif resp.get('error') or resp.get('is_error') or resp.get('isError'):
-            ok = False
+            ok, via = False, 'flag'
     elif isinstance(resp, str) and resp.strip().lower().startswith('error'):
-        ok = False
+        ok, via = False, 'flag'
+    if ok and red_verdict(tool_output_text(tool, resp)):
+        ok, via = False, 'verdict'
+    # 'denied' only when a message BEGINS with a hook's deny text (_DENIAL_HEAD_RE). A
+    # substring test tagged a real exit-1 failure that merely printed the phrase as a
+    # denial, so a scorer splitting denials out would have dropped it.
+    if not ok and any(starts_as_denial(t) for t in _message_texts(ev, resp)):
+        via = 'denied'
+    return ok, via
 
-    # A failure whose evidence is INSIDE the text used to sail through as success.
-    #
-    # Everything above only fires when a failure announces itself structurally: an
-    # exit_code, an isError flag, or a string that literally begins with "error". Most
-    # real failures do neither. "timeout: command not found" is a bare stderr line. A
-    # denied tool call arrives as ordinary MCP content. A compiler error sits in the
-    # middle of 200 lines of output. All three were recorded as ok.
-    #
-    # The cost was recall itself. Recall is hits over CATCHES, and a catch is exactly an
-    # independently-detected failure. With this recogniser blind to unlabelled failures,
-    # 21 sessions carried ZERO catches on 2026-07-26 — a day containing two failed
-    # archives, a rejected upload and a missing binary — so the denominator was always
-    # zero and recall was unobtainable no matter how far coverage rose. Raising the
-    # coverage floor that morning was necessary and nowhere near sufficient.
-    #
-    # Deliberately narrow. These are unambiguous failure signatures, anchored to line
-    # starts where possible, because a false catch is worse than a missed one: catches
-    # are the GROUND TRUTH the harness is scored against, so inventing them would let the
-    # instrument grade itself against its own noise.
-    if ok:
-        probe = (resp if isinstance(resp, str) else json.dumps(resp, default=str))[:4000]
-        if _looks_failed(probe):
-            ok = False
 
-    low_tool = tool.lower()
-    if low_tool.endswith('reset_task') or low_tool.endswith('__reset_task'):
-        return ('reset', tool, args, True, '')
-    kind = 'check' if low_tool.endswith('check_state') else 'tool'
-    text = json.dumps(resp, default=str)[:600] if resp else ''
-    return (kind, tool, args, ok, text)
+def tool_outcome(ev):
+    """(ok, via) for one raw tool event, by the rule normalise() uses. (True, '') for
+    anything that is not a dict. lb_coverage reads evidence through this."""
+    if not isinstance(ev, dict):
+        return True, ''
+    tool, _args, resp = _tool_parts(ev)
+    return _outcome(ev, tool, resp)
 
 
 class Session:
@@ -412,7 +712,7 @@ class Session:
         self._obs = Observer(self.d['goal'])
         return self.save()
 
-    def tool(self, name, args=None, ok=True, self_refusal=False):
+    def tool(self, name, args=None, ok=True, self_refusal=False, via=None):
         self.d['steps'] += 1
         # FEED THE OBSERVED CHANNEL. This session has always known every tool call and its
         # outcome; the harness's corroboration channel had no wire to it and depended on the
@@ -423,7 +723,10 @@ class Session:
         # coverage gate blocking its own agent is the instrument disagreeing with itself, not
         # work that happened. Counting it as observed work would let the harness corroborate
         # its own interruptions.
-        if not self_refusal:
+        # Not when the hook is the writer (LASERBRAIN_HOOK_EVIDENCE, set by lb_coverage in its
+        # own process): it already counted this call, and two writers counted it twice
+        # (round 2, B5).
+        if not self_refusal and not os.environ.get('LASERBRAIN_HOOK_EVIDENCE'):
             try:
                 _evidence.bump(ok=ok)
             except Exception:
@@ -449,8 +752,14 @@ class Session:
             # and sensitivity.py drops anything without this flag. Dating them would not
             # work: the fix landed mid-session, so the contaminated catches share a date
             # with the clean ones.
+            #
+            # `via` says how the failure was known (see _outcome): 'event', 'exit', 'flag',
+            # 'verdict' or 'denied'. Added 2026-11-14 (round 2 B3/B4) and written only when
+            # known, so a catch made before the fix has none and the two eras stay separable;
+            # 'denied' lets a scorer split hook refusals from the world disagreeing.
             self.d['catches'].append({'step': self.d['steps'], 'by': 'build',
                                       'what': f'failed call: {name}', 'clean': True,
+                                      **({'via': via} if via else {}),
                                       **self.attribute()})
         return self.save()
 
@@ -621,7 +930,7 @@ class Session:
         base = (f'laserbrain: {since} steps since your last check_state '
                 f'(coverage {self.coverage:.0%} over {self.d["steps"]} steps). '
                 f'dogfood.py withholds any detection result below 50%. Call check_state '
-                f'now with your CURRENT goal, progress and distance 0-10.')
+                f'now with your CURRENT goal, progress (one word: advancing|stuck|circling; a note goes in doing) and distance 0-10.')
         note = self.goal_shape_note()
         return f'{base}\n{note}' if note else base
 
@@ -637,7 +946,7 @@ class Session:
         return (f'laserbrain: {since} steps since your last check_state '
                 f'(coverage {self.coverage:.0%} over {self.d["steps"]} steps). '
                 f'dogfood.py withholds any detection result below 50%. Call check_state '
-                f'now with your CURRENT goal, progress and distance 0-10.')
+                f'now with your CURRENT goal, progress (one word: advancing|stuck|circling; a note goes in doing) and distance 0-10.')
 
     def feed(self, ev):
         """Drive the session from one raw runtime event. Returns a nudge or None.
@@ -655,7 +964,7 @@ class Session:
         quiet instrument and was a deaf one. The 8% precision we publish had to be
         recovered from chat transcripts because the session files never held it.
         """
-        kind, tool, args, ok, text = normalise(ev)
+        kind, tool, args, ok, text, via = _normalise(ev)
         if kind == 'prompt':
             self.prompt(text); return None
         if kind == 'reset':
@@ -673,13 +982,27 @@ class Session:
                        tokens=tokens_so_far(ev))
             return None
         if kind == 'tool':
-            self.tool(tool, args, ok, self_refusal=is_self_refusal(text))
+            # A refusal can arrive in the failure event's own `error` field, with no response
+            # at all (2026-11-14, round 2 B3), so both are read. The user pressing Esc is
+            # handled the same way: the step counts, the build did not disagree.
+            #
+            # Read at the HEAD of each message (self_refused), not searched for in `text`:
+            # a red suite or a Read of gate source quotes the deny text, and the search made
+            # the one lose its catch and the other its evidence (B3/B4 review). `via` comes
+            # from the same classification as `ok`, so the event is scanned once.
+            refused = self_refused(ev) or is_interrupt(ev)
+            self.tool(tool, args, ok, self_refusal=refused, via=via or None)
             return self.nudge()
         return None
 
 
 # ── adapter shapes — thin wrappers over the same path ───────────────────────
 # Failure signatures that a tool reports in its TEXT rather than in a status field.
+#
+# NOT USED BY normalise() SINCE 2026-11-14 (round 2 B4): every one of round 2's 28 text
+# catches came from a command that exited 0, and the verdict-only rule (_VERDICT_RED_RE,
+# _outcome) replaced it. Kept, with this behaviour, for research/test_self_refusal.py and
+# the round-2 replay, which import _looks_failed and _FAIL_PATTERNS.
 #
 # Kept deliberately short and specific. A catch is the ground truth this harness is scored
 # against, so a false catch is strictly worse than a missed one: it would let the instrument
@@ -734,15 +1057,31 @@ _NOT_FAIL_RE = re.compile(
 # Anchored on "laserbrain gate:" WITH the coverage clause, which is narrow on purpose.
 # "laserbrain claim gate:" (another agent holds the path) and "laserbrain safety:"
 # (rm -rf and friends) each catch a condition the instrument did not create, and both
-# remain catches.
-_SELF_REFUSAL_RE = re.compile(r'laserbrain gate:.*?\bcoverage\b', re.IGNORECASE | re.DOTALL)
+# remain catches (tagged via 'denied' since 2026-11-14, so a scorer can split them out).
+#
+# THE ENFORCED DRIFT GATE TOO, since 2026-11-14 (round 2 B3). "laserbrain drift gate:"
+# refuses BECAUSE a reading fired, so its block coincides with a fire by construction: the
+# mirror image of the 2026-08-02 circle, an identity that would inflate the hit rate the way
+# the coverage gate deflated it. It could not reach a post hook on Claude Code until
+# PostToolUseFailure was wired, which is why it was never needed here before.
+#
+# THIS SEARCH IS NO LONGER WHAT THE LIVE PATH USES (2026-11-14, B3/B4 review). It finds the
+# deny text ANYWHERE, which a Read of lb_gate.py or a red laserbrain suite also contains.
+# normalise(), Session.feed and lb_coverage read the refusal at the head of each message
+# instead (_SELF_REFUSAL_HEAD_RE, self_refused). This search stays, unchanged, for
+# _looks_failed, research/test_self_refusal.py and the round-2 replay.
+_SELF_REFUSAL_RE = re.compile(r'laserbrain gate:.*?\bcoverage\b|laserbrain drift gate:',
+                              re.IGNORECASE | re.DOTALL)
 
 
 def is_self_refusal(text: str) -> bool:
-    """True when this result is the coverage gate refusing, rather than work failing.
+    """True when this text CONTAINS the coverage gate or the enforced drift gate refusing.
 
     Not ground truth in either direction: the call did not run, so nothing was proved
     about the world — only that the instrument stopped its own agent.
+
+    A containment test, kept for _looks_failed and the research suites. Whether a CALL was
+    refused is self_refused(ev), which reads the head of each message field.
     """
     return bool(text) and bool(_SELF_REFUSAL_RE.search(text))
 
@@ -802,8 +1141,10 @@ def reads_as_report(text: str) -> bool:
 def _looks_failed(text: str) -> bool:
     """True when the TEXT of a tool result carries an unambiguous failure signature.
 
-    Used only after the structural checks (exit_code, isError) have declined to call it a
-    failure — so this catches the large class of tools that report failure in prose.
+    Not used by normalise() since 2026-11-14 (round 2 B4); kept for research suites and the
+    replay. It ran after the structural checks (exit_code, isError) had declined to call a
+    result a failure, and in round 2 every call it failed had exited 0. normalise() now
+    reads only red verdicts; see red_verdict.
     """
     if not text:
         return False

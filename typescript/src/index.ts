@@ -11,7 +11,7 @@
  *   const h = new Harness()
  *   h.check('add a CSV importer to the admin panel', 'advancing', 8)   // grounded
  *   const v = h.check('refactor the ORM base class', 'advancing', 5)
- *   v.drifting   // true
+ *   v.drifting   // false — goal-drift is a note since 2026-11-15, not an interrupt
  *   v.reason     // 'goal-drift'
  *   v.ground     // 'add a CSV importer to the admin panel'
  */

@@ -66,8 +66,12 @@ export const emptyDrift = (): DriftState => ({ ground: null, firstGoal: [], dist
 // A trace step's reason, classified. The Verdict carries `drifting` for the
 // current step; for a PAST step only the reason is stored, so alerts (which fire
 // on the edge into drift) need this to read the previous step's state.
+//
+// No 'goal-drift' since 2026-11-15, with Python's _DRIFT and the stdio server: goal-drift
+// returns drifting=false now (a note, not an interrupt), so it is not a first strike either.
+// laserbrain research/DAY-FIVE-REAL-SESSIONS.md §3: 7 of 7 live goal-drift fires were false.
 export const isDrift = (reason: string): boolean =>
-  reason === 'ungrammatical' || reason === 'goal-drift' || reason === 'stalled' || reason.startsWith('self-report')
+  reason === 'ungrammatical' || reason === 'stalled' || reason.startsWith('self-report')
 
 const PROGRESS = new Set(['advancing', 'stuck', 'circling'])
 export const asDist = (d: unknown) => { const n = parseInt(String(d), 10); return isNaN(n) ? 5 : Math.max(0, Math.min(10, n)) }
@@ -463,8 +467,8 @@ export function checkStep(
   const { goal, progress, distance } = input
   // Did the PREVIOUS step already read as a drift condition? The soft modes
   // (stalled, self-report) only tell you to RETURN if the drift is sustained —
-  // one noisy step is a watch, not a loop. Hard modes (ungrammatical, goal-drift)
-  // fire immediately. This is the fix for the false-return failure: a single
+  // one noisy step is a watch, not a loop. The hard mode (ungrammatical) fires
+  // immediately; goal-drift is a note since 2026-11-15 and never interrupts. This is the fix for the false-return failure: a single
   // off-reading no longer sends a working agent back to ground.
   const last = prev.trace[prev.trace.length - 1]
   const prevDriftReason = last ? isDrift(last.reason) : false
@@ -557,19 +561,29 @@ export function checkStep(
     return emit(false, 'grounded', 'Ground state set — this is where you started. Continue, and check each step.')
   }
   const phi = displacement({ goal, progress, distance }, st.ground)
+  // The goal overlap is computed HERE, above the self-report branch, since 2026-08-30.
+  // Normalised, so rephrasing the same goal does not trip it.
+  const g = norm(goal), first = new Set(st.firstGoal)
+  let inter = 0; for (const x of g) if (first.has(x)) inter++
+  const anchor = inter / (new Set([...g, ...first]).size || 1)
   // Soft: a self-report of stuck/circling only returns you if you have genuinely
   // moved from ground (Φ past a floor, not merely > 0) AND it is sustained.
-  if ((progress === 'stuck' || progress === 'circling') && phi > 0.15) {
+  //
+  // GUARDED BY THE ANCHOR. This branch returned before the goal check below was ever
+  // reached, and it passes the previous verdict through by design — the warn-then-interrupt
+  // rule. So the loudest state the instrument can be in came back silent: goal fully
+  // abandoned AND the agent reporting `circling`, Φ 0.85, goal_score 0.00, drifting FALSE.
+  // An agent that is lost and says so triggered nothing.
+  //
+  // The guard is the anchor, not Φ. Φ cannot separate these: it is high both when the goal
+  // has changed and when the work is merely far from where it started. Below GOAL_MIN the
+  // goal itself has moved, which is the next branch's question, so this one declines.
+  if ((progress === 'stuck' || progress === 'circling') && phi > 0.15 && anchor >= GOAL_MIN) {
     return emit(prevDriftReason, `self-report:${progress}`,
       prevDriftReason
         ? `You reported ${progress} and have stayed off ground. Return to your goal.`
         : `You reported ${progress}. If it holds next step, return to ground.`, phi)
   }
-  // Hard: the goal itself no longer overlaps the one you started with. Normalised,
-  // so rephrasing the same goal no longer trips it.
-  const g = norm(goal), first = new Set(st.firstGoal)
-  let inter = 0; for (const x of g) if (first.has(x)) inter++
-  const anchor = inter / (new Set([...g, ...first]).size || 1)
   if (anchor < GOAL_MIN) {
     // A DECLARED PARENT MAKES THIS A BRANCH, NOT A DEPARTURE. Added 2026-08-20: this file
     // could not produce `excursion` at all — no parent_goal anywhere — so the hosted API,
@@ -591,14 +605,22 @@ export function checkStep(
           `(parent overlap ${pAnchor.toFixed(2)}). Not drift — but the parent is what you owe.`, phi)
       rejected = pAnchor
     }
+    // A NOTE, NOT AN INTERRUPT, since 2026-11-15, matching laserbrain's __init__.py and stdio
+    // server: drifting=false, reason kept, so it is still recorded and counted (judgeRun's
+    // goalDrifts still escalates a persistent mismatch to wrong-problem). The advice gives the
+    // three readings and no order to return. laserbrain research/DAY-FIVE-REAL-SESSIONS.md §3.
     if (rejected !== null)
-      return emit(true, 'goal-drift',
-        `Your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). ` +
+      return emit(false, 'goal-drift',
+        `Note: your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). ` +
         `You DID declare a parent, and it was measured at ${rejected.toFixed(2)} against your ` +
-        `ground — below the ${GOAL_MIN.toFixed(2)} floor, so this reads as drift rather than an ` +
-        `excursion. Either the parent is not the goal this serves, or it shares too little ` +
-        `wording with it to be recognised. If the user redirected you, reset.`, phi)
-    return emit(true, 'goal-drift', `Your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). Return.`, phi)
+        `ground — below the ${GOAL_MIN.toFixed(2)} floor, so this is recorded as goal-drift rather ` +
+        `than an excursion. Either the parent is not the goal this serves, or it shares too little ` +
+        `wording with it to be recognised. If the user redirected you, reset. Otherwise compare ` +
+        `your goal with the ground. Recorded, not an interrupt.`, phi)
+    return emit(false, 'goal-drift',
+      `Note: your goal no longer matches the one you started with (overlap ${anchor.toFixed(2)}). ` +
+      `If the user redirected you, reset. If this is a sub-task, pass parent_goal. Otherwise you ` +
+      `may be on something else — compare your goal with the ground. Recorded, not an interrupt.`, phi)
   }
   // Soft: distance stopped falling — over a 4-step window (was 3), and only a
   // return if you were already off ground.

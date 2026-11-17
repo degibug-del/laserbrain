@@ -3,6 +3,7 @@
 
     python3 calibrate_attention.py            # write attention.json
     python3 calibrate_attention.py --check    # exit 1 if the file is stale
+    python3 calibrate_attention.py --harvest  # keep the user turns the transcripts still hold
 
 WHAT THIS IS FOR
 
@@ -76,6 +77,18 @@ DRIFT = pathlib.Path(os.environ.get('LASERBRAIN_DRIFT_LOG')
                      or _root.config('drift-log.jsonl'))
 TRANSCRIPTS = pathlib.Path(os.environ.get('LASERBRAIN_TRANSCRIPTS')
                            or pathlib.Path.home() / '.claude/projects')
+# THE USER TURNS, KEPT. Every band is "time since the user last spoke", and those moments came
+# only from the host's transcripts, which the host deletes (Claude Code: cleanupPeriodDays, 30
+# by default). On 2026-10-29 this machine still held the whole drift log, back to 2026-07-28,
+# and none of the 3243 user turns the shipped table was measured against: 866 of 913 settled
+# readings had no message before them, every band fell under MIN_N, and --check called a sound
+# table STALE. laserbrain now keeps every turn in its own record (laserbrain/turns.py): the
+# coverage hook appends what it scans, a daily background catch-up and `--harvest` copy what the
+# transcripts still hold. Owned like the drift log, so the join no longer depends on someone
+# else's retention policy.
+_sys.path.insert(1, str(_pl.Path(__file__).resolve().parent.parent / 'python'))
+from laserbrain import turns as _turns                             # noqa: E402
+TURNS = _turns.record_path()
 # WHERE THE CALIBRATED TABLE LIVES. This wrote next to the script until 2026-08-21, which
 # was true when the script lived in lasermind/ beside its output. Git records the move:
 # `R100 infra/lasermind/attention.json -> javascript/attention.json`, then
@@ -88,6 +101,9 @@ _HERE = pathlib.Path(__file__).resolve().parent
 OUT = next((c for c in (_HERE.parent / 'json' / 'attention.json',
                         _HERE / 'attention.json') if c.exists()),
            _HERE.parent / 'json' / 'attention.json')
+# Overridable for TESTS ONLY, so --check and the write guards can be driven on a synthetic table
+# without touching the two real ones (test_attention_corpus.py).
+OUT = pathlib.Path(os.environ.get('LASERBRAIN_ATTENTION_OUT') or OUT)
 
 # THE SECOND COPY, and the reason it is named here rather than left to a human.
 #
@@ -110,6 +126,7 @@ SHIPPED = next((c for c in (_HERE.parent / 'python' / 'laserbrain' / 'attention.
                             _HERE.parent / 'laserbrain-sdk' / 'laserbrain' / 'attention.json')
                 if c.parent.exists()),
                _HERE.parent / 'python' / 'laserbrain' / 'attention.json')
+SHIPPED = pathlib.Path(os.environ.get('LASERBRAIN_ATTENTION_SHIPPED') or SHIPPED)
 
 
 def _shipped_state(text):
@@ -143,23 +160,56 @@ def when(s):
     return datetime.datetime.fromisoformat(str(s).replace('Z', '+00:00'))
 
 
+def _transcripts():
+    return _turns.transcripts(TRANSCRIPTS)
+
+
+def logged_turns():
+    """{timestamp: kind} from laserbrain's own record. A torn, foreign or zone-less line is skipped."""
+    return _turns.logged(TURNS)
+
+
+# Where the last user_messages() found its turns, for the provenance block.
+TURN_SOURCES = {}
+
+
 def user_messages():
-    """Timestamps of every user turn, top-level and mid-work alike."""
-    out = set()
-    for f in glob.glob(str(TRANSCRIPTS / '**' / '*.jsonl'), recursive=True):
-        try:
-            for line in open(f, errors='replace'):
-                if '"queue-operation"' not in line:
-                    continue
-                try:
-                    d = json.loads(line)
-                except ValueError:
-                    continue
-                if d.get('operation') == 'enqueue' and d.get('timestamp'):
-                    out.add(d['timestamp'])
-        except OSError:
-            continue
-    return sorted(when(s) for s in out)
+    """Timestamps of every user turn, top-level and mid-work alike: laserbrain's own record
+    (TURNS) joined with whatever the transcripts still hold. A <task-notification> counts, as it
+    always has here; each record line carries its kind should that change. Read-only, like
+    everything --check runs: `--harvest` is the only path that writes the record from here."""
+    logged = logged_turns()
+    live = {ts for f in _transcripts() for ts, _ in _turns.enqueues(f)}
+    out = set(logged) | live
+    TURN_SOURCES.clear()
+    TURN_SOURCES.update(logged=len(logged), transcripts=len(live),
+                        transcripts_only=len(live - set(logged)))
+    return sorted(t for t in (_turns.parse_ts(s) for s in out) if t is not None)
+
+
+def harvest():
+    """Copy every enqueue the transcripts still hold into TURNS, once. (added, total)."""
+    return _turns.harvest(TRANSCRIPTS, TURNS)
+
+
+def shrinkage(cur, speaks):
+    """(available, recorded, written) when this machine can no longer see every user turn the
+    table was measured on, else None.
+
+    The table records how many user turns stood behind it (provenance.user_messages) and the
+    UTC date it was written. User turns only accumulate, so if fewer than that many are visible
+    up to the end of that day now, input was DELETED, and a band that lost its rate here lost
+    its data, not its truth. That is a different fact from "the corpus grew and the rates
+    moved", and it was being reported as the same one."""
+    pv = (cur or {}).get('provenance') or {}
+    recorded, written = pv.get('user_messages'), pv.get('written')
+    if not isinstance(recorded, int) or not isinstance(written, str):
+        return None
+    end = _ts(written[:10] + 'T23:59:59.999999+00:00')
+    if end is None:
+        return None
+    available = bisect.bisect_right(speaks, end)
+    return (available, recorded, written[:10]) if available < recorded else None
 
 
 def _ts(s):
@@ -317,7 +367,8 @@ def agent_clock():
     so the bands are free to be whatever they are, and they turn out to be strong.
 
     Steps since the agent's own last check is an INTERNAL clock, and the coverage gate
-    forces a check at 4 steps whenever coverage is under floor. So the gate manufactures
+    forced a check at 4 steps whenever coverage was under floor (LASERBRAIN_GATE_MODE=hard,
+    the default until 2026-10-16; the default now only nudges). So the gate manufactured
     the distribution it would be tuned against: 85% of all gaps land in 4-7 steps, and
     gaps of 8 or more are 0.3% of the sample — five readings. Whether an agent left for
     twelve steps drifts more than one left for four is not a hard question here, it is an
@@ -398,7 +449,8 @@ def agent_clock():
         'censored_beyond_steps': 8,
         'censored_share': round(long_gaps / pairs, 4),
         'censoring': (
-            'The coverage gate forces a check at 4 steps when coverage is under floor, so '
+            'The coverage gate forced a check at 4 steps when coverage was under floor '
+            '(hard mode; since 2026-10-16 the default only nudges), so '
             'gaps of 8+ are %.2f%% of the sample (%d of %d). The distribution is the '
             "gate's policy, not the agent's behaviour, and the interval cannot be "
             'evaluated against data the interval produced. To settle it the gate would '
@@ -437,8 +489,9 @@ def overhead():
     inference. Measured across 198 runs it sits at a median 22.2% with an IQR of
     20.9-24.0%, which is tight enough to publish as a constant rather than a mood.
 
-    It is also, unsurprisingly, 1/BLOCK_AFTER. The gate forces a check every four steps to
-    hold the coverage floor, so the overhead is not emergent — it is the threshold, and
+    It is also, unsurprisingly, 1/BLOCK_AFTER. The gate forced a check every four steps to
+    hold the coverage floor (hard mode, the default until 2026-10-16), so the overhead is
+    not emergent — it is the threshold, and
     changing one changes the other. That is worth a reader knowing before they weigh any
     claim about saved tokens: a benefit has to clear this before it is a benefit at all.
 
@@ -470,8 +523,9 @@ def overhead():
         'median': round(statistics.median(ratios), 4),
         'iqr': [round(ratios[n // 4], 4), round(ratios[3 * n // 4], 4)],
         'note': ('Runs under ten steps excluded. Equals roughly 1/BLOCK_AFTER by '
-                 'construction: the gate forces a check every four steps to hold the '
-                 'coverage floor, so this is the threshold, not an emergent property.'),
+                 'construction: the gate forced a check every four steps to hold the '
+                 'coverage floor (hard mode, the default until 2026-10-16), so this is the '
+                 'threshold, not an emergent property.'),
     }
 
 
@@ -496,7 +550,7 @@ def _agent_clock_or_last():
     so nothing downstream can mistake it for a fresh reading. The moment the store has
     readable pairs again this stops firing on its own.
     """
-    fresh = agent_clock()
+    fresh = agent_clock() or {}          # None where there is no session store at all
     powered = [b for b in fresh.get('bands', []) if not b.get('underpowered')]
     if powered:
         return fresh                       # the corpus can see it; use what was measured
@@ -530,13 +584,14 @@ def _agent_clock_or_last():
     return prev
 
 
-def build():
+def build(speaks=None):
     rows = readings()
     if not rows:
         print(f'  no corpus at {DRIFT} — refusing to write a calibration with nothing '
               'behind it.')
         return None
-    speaks = user_messages()
+    if speaks is None:
+        speaks = user_messages()
     if not speaks:
         print(f'  no transcripts under {TRANSCRIPTS} — the join needs user-message '
               'timestamps, and without them every band would be empty.')
@@ -592,6 +647,10 @@ def build():
             'readings_total': len(rows),
             'readings_settled': len(settled), 'readings_fresh_ground': len(fresh),
             'user_messages': len(speaks),
+            # How many of those laserbrain kept itself, and how many only a transcript still
+            # held. The second number is the share a host's cleanup can still take away.
+            'user_messages_logged': TURN_SOURCES.get('logged'),
+            'user_messages_transcripts_only': TURN_SOURCES.get('transcripts_only'),
             'dominant_agent': top[0], 'dominant_agent_share': round(top[1] / len(rows), 3),
             'caveat': ('One machine, and %.0f%% one agent. This calibrates THIS setup. It '
                        'is not a constant of nature and should be recomputed anywhere '
@@ -621,23 +680,72 @@ def compare(cur, fresh, tolerance):
       THE SHAPE CHANGED  bands added, removed or relabelled. Then it is a different table
                          and nothing about it is comparable.
     """
+    return [d['text'] for d in differences(cur, fresh, tolerance)]
+
+
+def differences(cur, fresh, tolerance):
+    """compare(), with each difference's kind ('shape', 'gained', 'lost' or 'moved') and its
+    sample sizes kept, so --check can tell a band whose data was deleted from one that moved."""
     out = []
     a = {b['label']: b for b in cur.get('bands', [])}
     b = {x['label']: x for x in fresh.get('bands', [])}
     if set(a) != set(b):
-        return [f'bands differ: shipped {sorted(a)} vs measured {sorted(b)}']
+        return [{'kind': 'shape', 'label': None,
+                 'text': f'bands differ: shipped {sorted(a)} vs measured {sorted(b)}'}]
     for label in b:
         old, new = a[label], b[label]
         if (old.get('rate') is None) != (new.get('rate') is None):
-            out.append(f'{label}: '
-                       + ('gained' if old.get('rate') is None else 'lost')
-                       + f' a usable rate (n {old.get("n")} -> {new.get("n")})')
+            kind = 'gained' if old.get('rate') is None else 'lost'
+            out.append({'kind': kind, 'label': label, 'old_n': old.get('n'), 'new_n': new.get('n'),
+                        'text': f'{label}: {kind} a usable rate (n {old.get("n")} -> {new.get("n")})'})
             continue
         if old.get('rate') is None:
             continue
         if abs(old['rate'] - new['rate']) > tolerance:
-            out.append(f'{label}: {old["rate"] * 100:.1f}% -> {new["rate"] * 100:.1f}% '
-                       f'(n {old.get("n")} -> {new.get("n")})')
+            out.append({'kind': 'moved', 'label': label, 'old_n': old.get('n'), 'new_n': new.get('n'),
+                        'text': f'{label}: {old["rate"] * 100:.1f}% -> {new["rate"] * 100:.1f}% '
+                                f'(n {old.get("n")} -> {new.get("n")})'})
+    return out
+
+
+def _gone(d):
+    """A band that lost its rate because its readings went with the deleted user turns."""
+    return (d['kind'] == 'lost' and isinstance(d.get('old_n'), int)
+            and isinstance(d.get('new_n'), int) and d['new_n'] < d['old_n'])
+
+
+def _unverifiable(d):
+    """Under deletion, a band measured here on FEWER readings than the table's cannot dispute it, whether
+    it lost its rate or came back with a different one: 1 drift in 20 is no evidence against 54 in 338.
+    The same rule as the write guard's, so --check never calls a band stale that the guard protects."""
+    return (d['kind'] in ('lost', 'moved') and isinstance(d.get('old_n'), int)
+            and isinstance(d.get('new_n'), int) and d['new_n'] < d['old_n'])
+
+
+def thinner(cur, fresh):
+    """Bands that carry a rate in `cur` and would be measured on fewer readings in `fresh`: what a write
+    would take away. (label, old_n, new_n) each."""
+    new = {b['label']: b for b in fresh.get('bands', [])}
+    out = []
+    for b in cur.get('bands', []):
+        f = new.get(b['label'])
+        if b.get('rate') is not None and isinstance(b.get('n'), int) and (f is None or (f.get('n') or 0) < b['n']):
+            out.append((b['label'], b['n'], (f or {}).get('n') or 0))
+    return out
+
+
+def inconsistent(cur):
+    """Bands whose own numbers disagree: a rate that is not round(drift / n, 4), or a rate on fewer than
+    min_n readings. A table this script wrote is consistent by construction; one edited by hand is not,
+    and with the corpus deleted that is the only check a band's rate can still get."""
+    out = []
+    min_n = cur.get('min_n') or MIN_N
+    for b in cur.get('bands', []):
+        r, n, dr = b.get('rate'), b.get('n'), b.get('drift')
+        if r is None:
+            continue
+        if not isinstance(n, int) or not isinstance(dr, int) or n < min_n or abs(r - round(dr / n, 4)) > 1e-9:
+            out.append(f'{b.get("label")}: rate {r} but drift {dr} of n {n}')
     return out
 
 
@@ -651,15 +759,29 @@ def main():
     ap.add_argument('--force', action='store_true',
                     help='write even when the measured agent_clock is dead (drift 0 in '
                          'every band against a live shipped one). For the case where zero '
-                         'is genuinely the answer rather than a blind-arm artefact.')
+                         'is genuinely the answer rather than a blind-arm artefact. It does NOT '
+                         'override the sample guard; that is --accept-thinner.')
+    ap.add_argument('--accept-thinner', action='store_true',
+                    help='write even when a band that carries a rate would be measured on fewer '
+                         'readings than the table it replaces (as after the host deleted old '
+                         'transcripts). Its own switch, so it never also silences the blind-arm guard.')
     ap.add_argument('--ship', action='store_true',
                     help='also write the packaged copy that goes inside the wheel. Off by '
                          'default: a site build must not mutate published package data as '
                          'a side effect. Run this at publish time, after reading the corpus '
                          'composition printed below it.')
+    ap.add_argument('--harvest', action='store_true',
+                    help='copy the user turns the transcripts still hold into laserbrain\'s own '
+                         'record (user-turns.jsonl) and stop. The coverage hook does this as it '
+                         'goes; this catches up what it never scanned.')
     a = ap.parse_args()
+    if a.harvest:
+        added, total = harvest()
+        print(f'  {TURNS}: {added} user turn(s) added, {total} kept.')
+        return 0
     ship = a.ship
-    fresh = build()
+    speaks = user_messages()
+    fresh = build(speaks)
     if fresh is not None:
         # A TABLE CANNOT COVER DATA THAT POSTDATES ITS OWN WRITE. 0.54.1 shipped
         # written=2026-08-21 with corpus_to=2026-08-22, because `written` was carried from a
@@ -671,6 +793,35 @@ def main():
                 f"provenance is not ordered: corpus_from={_pv['corpus_from']} "
                 f"corpus_to={_pv['corpus_to']} written={_pv['written']}")
     if fresh is not None and OUT.exists() and not a.check:
+        refusals = []
+        _cur = json.loads(OUT.read_text())
+        # A THINNER TABLE MUST NOT REPLACE A THICKER ONE, per band.
+        #
+        # The bands are counted against user turns, and a host deletes those. On 2026-10-29
+        # every user turn behind the shipped table was gone, the settled readings it counted
+        # fell from 843 to 47, and a plain run would have written that: four underpowered
+        # bands, every rate null, agent_risk() answering "unknown" at every gap. The table it
+        # replaced was still the best measurement anyone had, and the corpus could not dispute
+        # it, only fail to see it. PER BAND, because a total hides it: once the other bands grow
+        # past the old sum, a total check lets a write null a band --check had just called
+        # protected. With --ship the packaged copy is held to the same rule, since it can be the
+        # thicker one. --accept-thinner overrides; --force does not.
+        _thin = thinner(_cur, fresh)
+        if ship and SHIPPED.exists():
+            try:
+                _thin += [x for x in thinner(json.loads(SHIPPED.read_text()), fresh) if x not in _thin]
+            except ValueError:
+                pass
+        if _thin and not a.accept_thinner:
+            _sh = shrinkage(_cur, speaks)
+            refusals.append(
+                ['REFUSING — a recalibration here would measure these bands on fewer readings than the '
+                 'table it replaces:']
+                + [f'    {lab}: n {o} -> {n}' for lab, o, n in _thin]
+                + ([f'  This machine still sees {_sh[0]} of the {_sh[1]} user turns it was measured on (up '
+                    f'to {_sh[2]}): the host deleted the rest. laserbrain keeps its own record of user '
+                    f'turns now ({TURNS.name}), so the corpus grows from here.'] if _sh else [])
+                + ['  Keep the table, or pass --accept-thinner if a thinner one is really what you want.'])
         # A DEAD agent_clock MUST NOT SILENTLY REPLACE A LIVE ONE.
         #
         # agent_clock is the one block built from the SESSION STORE rather than the drift
@@ -691,20 +842,25 @@ def main():
         # even on a machine whose session store is blind. The first version of this guard
         # gated both and turned the read-only path into a refusal, which would have made the
         # parity suite unable to report the very divergence it exists for.
-        # --force overrides, for the case where zero really is the answer.
-        _cur = json.loads(OUT.read_text())
-        _live = sum((b.get('drift') or 0) for b in _cur.get('agent_clock', {}).get('bands', []))
+        # --force overrides, for the case where zero really is the answer. Both guards are
+        # judged and both refusals printed before returning: when the sample guard returned
+        # first, following its advice shipped a dead agent_clock with no warning ever shown.
+        _live = sum((b.get('drift') or 0) for b in (_cur.get('agent_clock') or {}).get('bands', []))
         _fresh_drift = sum((b.get('drift') or 0)
-                           for b in fresh.get('agent_clock', {}).get('bands', []))
+                           for b in (fresh.get('agent_clock') or {}).get('bands', []))
         if _live > 0 and _fresh_drift == 0 and not a.force:
-            print(f'  REFUSING — the measured agent_clock has drift 0 in every band, and '
-                  f'{OUT.name} holds one with {_live}.')
-            print('  That is the signature of a blind-arm session store, not of an agent '
-                  'that never drifts:')
-            print(f'    measured pairs {fresh.get("agent_clock", {}).get("pairs")}, '
-                  f'shipped pairs {_cur.get("agent_clock", {}).get("pairs")}')
-            print('  Recalibrate from a session store recorded outside the blind arm, or '
-                  'pass --force if zero is genuinely the answer.')
+            refusals.append([
+                f'REFUSING — the measured agent_clock has drift 0 in every band, and {OUT.name} holds '
+                f'one with {_live}.',
+                '  That is the signature of a blind-arm session store, not of an agent that never drifts:',
+                f'    measured pairs {(fresh.get("agent_clock") or {}).get("pairs")}, '
+                f'shipped pairs {(_cur.get("agent_clock") or {}).get("pairs")}',
+                '  Recalibrate from a session store recorded outside the blind arm, or pass --force if zero '
+                'is genuinely the answer.'])
+        if refusals:
+            for r in refusals:
+                for line in r:
+                    print('  ' + line if not line.startswith('  ') else line)
             return 1
     if fresh is None:
         # 77 under --check, not 1. Both of build()'s empty returns mean "the corpus this
@@ -720,15 +876,51 @@ def main():
             print(f'  MISSING — {OUT.name} has never been written. Run: python3 '
                   f'{pathlib.Path(__file__).name}')
             return 1
-        drifted = compare(json.loads(OUT.read_text()), fresh, a.tolerance)
+        _cur = json.loads(OUT.read_text())
+        # A TABLE THAT CONTRADICTS ITSELF is wrong whatever the corpus says, and with the corpus
+        # deleted this is the only check a band's rate can still get.
+        bad = inconsistent(_cur)
+        if bad:
+            print(f'  INCONSISTENT — {OUT.name}\'s own numbers disagree, so it was edited or damaged:')
+            for line in bad:
+                print(f'    {line}')
+            print(f'  Restore it (git checkout -- {OUT.parent.name}/{OUT.name}), or rewrite it: '
+                  f'python3 {pathlib.Path(__file__).name}')
+            return 1
+        diffs = differences(_cur, fresh, a.tolerance)
+        # DELETED IS NOT STALE. When the host has deleted user turns the table was measured on, a
+        # band measured here on FEWER readings than the table's cannot dispute it, whether it lost
+        # its rate or came back with another: 1 drift in 20 is no evidence against 54 in 338. Those
+        # are reported and do not fail the check; it is the same per-band rule the write guard
+        # uses, so a band called protected here is protected there. A band measured on as many
+        # readings as the table's, or more, is judged as before, deletion or not.
+        _sh = shrinkage(_cur, speaks)
+        gone = [d for d in diffs if _sh and _unverifiable(d)]
+        drifted = [d['text'] for d in diffs if d not in gone]
+        if gone:
+            print(f'  SHRUNK — this machine still sees {_sh[0]} of the {_sh[1]} user turns '
+                  f'{OUT.name} was measured on (up to {_sh[2]}); the host deleted the rest.')
+            for d in gone:
+                print(f'    {d["label"]}: n {d["old_n"]} -> {d["new_n"]}, too few readings here to judge it')
+            print('  Not stale: the table was measured on more than this machine can see now, and a '
+                  'recalibration would only make those bands thinner, so the write path refuses that.')
         if drifted:
             print(f'  STALE — {OUT.name} no longer describes the corpus:')
             for line in drifted:
                 print(f'    {line}')
-            print(f'  Run: python3 {pathlib.Path(__file__).name}')
+            # NEVER ADVISE A RUN THE GUARD WILL REFUSE. A plain recalibration also thins any band
+            # the corpus can no longer see; say so and name the switch that accepts it.
+            _thin = thinner(_cur, fresh)
+            if _thin:
+                print(f'  A recalibration would also measure {len(_thin)} band(s) on fewer readings ('
+                      + ', '.join(f'{lab} n {o} -> {n}' for lab, o, n in _thin) + '), so the guard refuses '
+                      f'a plain run. To replace the table anyway: python3 {pathlib.Path(__file__).name} '
+                      f'--accept-thinner')
+            else:
+                print(f'  Run: python3 {pathlib.Path(__file__).name}')
             return 1
         print(f'  {OUT.name} still describes the corpus (rates within '
-              f'{a.tolerance:.0%}).')
+              f'{a.tolerance:.0%}' + (', where it can still be measured).' if gone else ').'))
         status, detail = _shipped_state(OUT.read_text())
         if status == 'fail':
             print(f'  DIVERGED — {detail}')

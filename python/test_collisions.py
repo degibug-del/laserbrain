@@ -73,9 +73,13 @@ sc.observe(agent='b', goal='tune the cache layer', progress='advancing', distanc
 sc.observe(agent='a', goal='write the parser', progress='advancing', distance=4)
 sc.observe(agent='b', goal='write the parser', progress='advancing', distance=4)   # wandered in
 check('a momentary overlap is not a collision', len(sc.collisions()), 0)
-# ...though b HAS now left its own ground, which is the single-agent verdict's job.
-check('the single-agent instrument catches that instead',
-      any(r['agent'] == 'b' for r in sc.findings()), True)
+# ...though b HAS now left its own ground, which is the single-agent verdict's job. Since
+# 2026-11-15 that verdict is goal-drift with drifting False — recorded on b's reading, and
+# a note rather than a finding, because findings() lists drifting readings and catches.
+check('the single-agent instrument records that instead',
+      sc.agents['b'].last.reason, 'goal-drift')
+check('...as a note, not a finding',
+      any(r['agent'] == 'b' for r in sc.findings()), False)
 
 # ── it is reported, never acted on ───────────────────────────────────────────────
 print('\nadvisory')

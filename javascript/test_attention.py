@@ -256,25 +256,36 @@ else:
         check('--check passes against the live corpus', p.returncode == 0,
               (p.stdout + p.stderr).strip()[:70])
     saved = src_json.read_text()
+    # BOTH COPIES, doctored alike. Doctoring only json/ made this pass through DIVERGED (the
+    # packaged copy differs) whatever the rate check did: after the host deleted the corpus
+    # (2026-10-29) the rate check could no longer see the doctoring at all, and the assertion
+    # stayed green on the byte comparison alone. With both copies identical, the only way to
+    # fail is the check that reads the table's own numbers.
+    shipped_json = HERE.parent / 'python' / 'laserbrain' / 'attention.json'
+    saved_shipped = shipped_json.read_text() if shipped_json.exists() else None
     try:
         if _skip_corpus:
             raise _SkipCorpus
         doctored = json.loads(saved)
-        # The rate, not the count: --check asks whether the table still DESCRIBES the
-        # corpus, and 19% -> 90% is a table that does not.
+        # The rate, not the count: 19% -> 90% is a table whose own drift / n says otherwise.
         doctored['bands'][1]['rate'] = 0.90
         src_json.write_text(json.dumps(doctored, indent=2) + '\n')
+        if saved_shipped is not None:
+            shipped_json.write_text(json.dumps(doctored, indent=2) + '\n')
         q = subprocess.run([sys.executable, str(cal), '--check'], cwd=HERE,
                            env=_LIVE_ENV, capture_output=True, text=True, timeout=900)
-        check('  and fails on a doctored table', q.returncode == 1, f'rc={q.returncode}')
+        check('  and fails on a doctored table', q.returncode == 1
+              and ('INCONSISTENT' in q.stdout or 'STALE' in q.stdout), q.stdout.strip()[-120:])
         check('  saying which command fixes it', 'calibrate_attention.py' in q.stdout,
               q.stdout.strip()[:60])
     except _SkipCorpus:
         pass
     finally:
         # Restores unconditionally, skip or not: the doctored write may already have
-        # landed, and this is a real file in the repo.
+        # landed, and these are real files in the repo.
         src_json.write_text(saved)
+        if saved_shipped is not None:
+            shipped_json.write_text(saved_shipped)
     if not _skip_corpus:
         r = subprocess.run([sys.executable, str(cal), '--check'], cwd=HERE,
                            env=_LIVE_ENV, capture_output=True, text=True, timeout=900)
@@ -374,10 +385,19 @@ else:
         _g = _sp.run([_sys.executable, str(_CAL), '--ship'], env=_LIVE_ENV,
                      capture_output=True, text=True, cwd=_HERE)
         _guarded = 'REFUSING' in _g.stdout
-        if _guarded:
+        # TWO GUARDS NOW, each with its own switch, and BOTH are judged and printed before the run
+        # returns (2026-10-30): the sample guard (a band measured on fewer readings than the table
+        # it would replace, --accept-thinner) and the blind-arm guard (--force).
+        _thin = 'on fewer readings than the table' in _g.stdout
+        _blind = 'drift 0 in every band' in _g.stdout
+        if _thin:
+            check('  the sample guard refuses to write a thinner table',
+                  _g.returncode == 1 and '--accept-thinner' in _g.stdout, f'exit {_g.returncode}')
+        else:
+            print('  skip  the sample guard   nothing here would get thinner')
+        if _blind:
             check('  the blind-arm guard refuses to write a dead agent_clock',
-                  _g.returncode == 1 and 'drift 0 in every band' in _g.stdout,
-                  f'exit {_g.returncode}')
+                  _g.returncode == 1 and '--force' in _g.stdout, f'exit {_g.returncode}')
         else:
             # LOUDLY, not by vanishing. Wrapped in `if _guarded:` alone this assertion
             # simply did not exist on a machine whose store is readable, which is the
@@ -386,13 +406,11 @@ else:
             print('  skip  the blind-arm guard   this store is readable, nothing to refuse')
 
         # And a --ship run repairs the divergence, rather than leaving a human to copy the
-        # file. The packaged copy became opt-in behind --ship ("a site build must not mutate
-        # published package data as a side effect"); this assertion said "a plain run" and so
-        # had been asserting behaviour the calibrator deliberately gave up. --force is passed
-        # only where the guard already fired: this block is testing the WRITE mechanism, and
-        # it restores both files from backup in the finally below.
+        # file. The overrides are passed only where a guard fired: this block is testing the
+        # WRITE mechanism, and it restores both files from backup in the finally below.
         if _guarded:
-            _sp.run([_sys.executable, str(_CAL), '--ship', '--force'], env=_LIVE_ENV,
+            _sp.run([_sys.executable, str(_CAL), '--ship'] + (['--accept-thinner'] if _thin else [])
+                    + (['--force'] if _blind else []), env=_LIVE_ENV,
                     capture_output=True, text=True, cwd=_HERE)
         check('a --ship run rewrites BOTH copies', _SHIPPED.read_text() == _OUT.read_text())
         _rc2 = _sp.run([_sys.executable, str(_CAL), '--check'],

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""lb_coverage.py — PostToolUse / UserPromptSubmit / Stop hook for laserbrain coverage.
+"""lb_coverage.py — PostToolUse / PostToolUseFailure / UserPromptSubmit / Stop hook for laserbrain coverage.
 
 Makes coverage automatic instead of remembered. Reads both snake_case and camelCase
 hook payloads, so it works for any host that emits either.
@@ -15,10 +15,14 @@ goal, progress or distance, so it cannot call check_state on the agent's behalf.
 What it can do is:
 
   1. COUNT the steps (dogfood denominator).
-  2. LOG catches it can see (non-zero shell exits).
+  2. LOG catches it can see (failed calls, red test verdicts).
   3. INTERRUPT when coverage lapses:
        - hosts that read PostToolUse stdout: additionalContext
-       - hosts that ignore it: a Stop gate with decision=block
+       - hosts that ignore it: a Stop gate with decision=block under
+         LASERBRAIN_GATE_MODE=hard; by default (nudge) the same text as non-blocking
+         context, the would-be block logged as stage nudge-stop
+  4. ATTRIBUTE steps per agent (nudge mode): <session>.agents.json, keyed by the payload's
+     agent_id, so parallel subagents do not spend each other's step budget.
 
 SAFETY. Every path is wrapped; exits 0 unconditionally except intentional stop-blocks.
 A hook that crashes the tool it observes is worse than no hook.
@@ -99,6 +103,68 @@ def _mark_user_turn():
 # Byte offsets of the transcripts already scanned for queued messages, keyed by path.
 QUEUE_SCAN = _paths.config('queue-scan.json')
 
+# EVERY MOMENT THE USER SPOKE, kept by laserbrain itself. USER_TURN above holds only the
+# latest one, for the reground. calibrate_attention.py measures drift against the time since
+# the user last spoke, and it read those moments from the host's transcripts, which Claude
+# Code deletes after cleanupPeriodDays (30 by default). On 2026-10-29 every one of the 3243
+# user turns behind the shipped attention.json (2026-07-28..08-22) was gone, and 866 of 913
+# readings had nothing left to be measured against. The drift log survived because laserbrain
+# owns it; this is the other half of the join, owned the same way. One line per enqueue
+# record: its own timestamp, and whether it was the user or a <task-notification>.
+USER_TURNS = pathlib.Path(os.environ.get('LASERBRAIN_USER_TURNS') or _paths.config('user-turns.jsonl'))
+# A transcript seen for the first time has its history recorded too when it is small, which
+# is every new session (its first tool call follows its first prompt). A large one is a long
+# session the hook had stopped tracking (QUEUE_SCAN keeps the 40 most recently seen); reading
+# it all would stall the tool call, so it is left to the daily catch-up below.
+TURNS_FIRST_SIGHT_MAX = 4 * 1024 * 1024
+
+
+def _record_turns(turns, sid):
+    """Append (timestamp, kind) pairs to USER_TURNS in one O_APPEND write, so the hooks of
+    parallel subagents interleave whole lines rather than torn ones. A line written twice is
+    harmless: readers keep one per timestamp."""
+    try:
+        USER_TURNS.parent.mkdir(parents=True, exist_ok=True)
+        data = ''.join(json.dumps({'ts': ts, 'kind': kind, 'sid': sid, 'src': 'hook'}) + '\n'
+                       for ts, kind in turns).encode()
+        fd = os.open(str(USER_TURNS), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+    except Exception:
+        pass          # fail open: --harvest recovers it while the transcript still exists
+
+
+HARVEST_DAY = _paths.config('turns-harvest.day')
+
+
+def _daily_harvest(ev):
+    """Once a day, at a user prompt, copy what the transcripts hold into USER_TURNS in the
+    background (python -m laserbrain.turns). The scan below only sees transcripts that run
+    this hook after a tool call; a session answered without tools, or one on a host without
+    the hook, would otherwise keep its turns only until the host deletes the transcript.
+    Detached, so the prompt never waits on it. Only for the default state root: a relocated
+    LASERBRAIN_HOME is a test or a sandbox (LASERBRAIN_TURNS_HARVEST=1 forces it, =0 stops it)."""
+    flag = os.environ.get('LASERBRAIN_TURNS_HARVEST')
+    if flag == '0' or (flag != '1' and os.environ.get('LASERBRAIN_HOME')):
+        return
+    if _event_name(ev) != 'userpromptsubmit':        # _event_name lowercases
+        return
+    try:
+        today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+        if HARVEST_DAY.exists() and HARVEST_DAY.read_text().strip() == today:
+            return
+        HARVEST_DAY.parent.mkdir(parents=True, exist_ok=True)
+        HARVEST_DAY.write_text(today)
+        import subprocess
+        subprocess.Popen([sys.executable] + (['-P'] if sys.version_info >= (3, 11) else [])
+                         + ['-m', 'laserbrain.turns', '--quiet'],
+                         cwd=str(pathlib.Path.home()), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception:
+        pass          # fail open: tomorrow's prompt tries again, and --harvest still works by hand
+
 
 def _mark_user_turn_if_queued(ev):
     """Catch mid-turn messages, which never reach the UserPromptSubmit hook at all.
@@ -116,8 +182,10 @@ def _mark_user_turn_if_queued(ev):
     transcript path rides along on every PostToolUse payload.
 
     Scans only the bytes appended since the last look, and on first sight of a transcript
-    records its size WITHOUT firing — otherwise the initial scan would replay every
-    historical enqueue at once and reground on ancient history.
+    never fires on what is already there — otherwise the initial scan would replay every
+    historical enqueue at once and reground on ancient history. (Since 2026-10-29 a first
+    sight of a transcript up to TURNS_FIRST_SIGHT_MAX does READ it, to copy its history into
+    USER_TURNS; it still re-grounds on none of it.)
     """
     path = ev.get('transcript_path') or ev.get('transcriptPath')
     if not path:
@@ -144,10 +212,16 @@ def _mark_user_turn_if_queued(ev):
         return
 
     found = False
+    turns = []        # (timestamp, kind) for USER_TURNS: the record keeps every enqueue
+    # Outside nudge mode a notification still counts, as it did before 2026-10-16: hard,
+    # watch and signal reproduce the old hook byte for byte, and this flag is one of the files
+    # it writes (a checker found 11 hard-mode differences per run when the filter ran there).
+    skip_notifications = _gate_mode_env() == 'nudge'
     try:
         with transcript.open('r', errors='replace') as fh:
-            if not first_sight:
-                fh.seek(offset)
+            if not first_sight or size <= TURNS_FIRST_SIGHT_MAX:
+                if not first_sight:
+                    fh.seek(offset)
                 for line in fh:
                     if '"queue-operation"' not in line:
                         continue
@@ -155,20 +229,46 @@ def _mark_user_turn_if_queued(ev):
                         rec = json.loads(line)
                     except Exception:
                         continue
+                    if not isinstance(rec, dict):
+                        continue          # a JSON line that is not a record must not end the scan
                     if (rec.get('type') == 'queue-operation'
                             and rec.get('operation') == 'enqueue'):
+                        # A finished background task is queued the same way, as a
+                        # <task-notification>. It is not the user, and it is not a
+                        # redirection: in session 4038b8f4 358 of 961 enqueues were these, and
+                        # 10 re-grounds in the drift log had only a notification before them.
+                        c = rec.get('content')
+                        note = isinstance(c, str) and c.lstrip().startswith('<task-notification')
+                        if isinstance(rec.get('timestamp'), str):
+                            turns.append((rec['timestamp'], 'notification' if note else 'user'))
+                        if first_sight:
+                            continue      # history is recorded, never re-grounded on
+                        if skip_notifications and note:
+                            continue
                         found = True
             fh.seek(0, os.SEEK_END)
+            state.pop(key, None)          # re-inserted last: the dict's order is last-seen order
             state[key] = fh.tell()
     except Exception:
         return
+    if turns:
+        _record_turns(turns, transcript.stem)
 
     # Bound the file: one entry per session transcript would otherwise accumulate forever.
+    # Transcripts the host deleted go first, then the least recently seen. It kept the 40
+    # LARGEST offsets until 2026-10-30, which never dropped a deleted transcript and, once
+    # full, evicted every small new session in the call that added it: each call was then a
+    # first sight, replaying its history into USER_TURNS and re-grounding on nothing.
     if len(state) > 40:
-        state = dict(sorted(state.items(), key=lambda kv: kv[1])[-40:])
+        state = {k: v for k, v in state.items() if k == key or os.path.exists(k)}
+        state = dict(list(state.items())[-40:])
+    # Atomically: parallel hooks (a workflow's subagents share the parent's transcript) read
+    # this file while others write it, and a half-written read used to reset every offset.
     try:
         QUEUE_SCAN.parent.mkdir(parents=True, exist_ok=True)
-        QUEUE_SCAN.write_text(json.dumps(state))
+        tmp = QUEUE_SCAN.with_name(f'.{QUEUE_SCAN.name}.{os.getpid()}.tmp')
+        tmp.write_text(json.dumps(state))
+        os.replace(tmp, QUEUE_SCAN)
     except Exception:
         pass
 
@@ -294,6 +394,17 @@ def _event_ok(ev, ename):
     """Did this tool call succeed? Read from the response, never from the agent."""
     if 'failure' in ename:
         return False
+    # ONE RULE FOR EVIDENCE AND CATCHES (2026-11-14, round 2 B4). Since B5 made this hook
+    # the only evidence writer, evidence came from the structural fields below while the
+    # catch came from normalise(), which also reads text, so a red suite behind a pipe
+    # (108 lbq calls in round 2) would be a catch and an `ok`. runtime.tool_outcome is the
+    # classifier the catch uses. The structural code below stays for an older installed
+    # package (fails open).
+    try:
+        from laserbrain.runtime import tool_outcome
+        return bool(tool_outcome(ev)[0])
+    except Exception:
+        pass
     r = _resp(ev)
     if isinstance(r, dict):
         code = r.get('exit_code', r.get('exitCode'))
@@ -311,17 +422,74 @@ def _event_ok(ev, ename):
 #
 # Narrow on purpose. "laserbrain claim gate:" and "laserbrain safety:" catch conditions the
 # instrument did not create, and stay catches.
-_SELF_REFUSAL_RE = re.compile(r'laserbrain gate:.*?\bcoverage\b', re.IGNORECASE | re.DOTALL)
+#
+# "laserbrain drift gate:" joined on 2026-11-14 (round 2 B3): the enforced drift gate blocks
+# BECAUSE a reading fired, so its block coincides with a fire by construction, the mirror of
+# the 2026-08-02 circle.
+#
+# READ AT THE HEAD OF EACH MESSAGE, not searched for (2026-11-14, B3/B4 review). A refusal is
+# a message that BEGINS with the deny text, bare or behind Claude Code's "PreToolUse:<Tool>
+# hook error: [cmd]: " prefix; a failed command's `error` begins "Exit code N". The old
+# whole-text DOTALL search made every successful Read, grep or Edit of laserbrain's own
+# source stop counting as evidence (63 in Diego's last 30 days of transcripts), took the
+# catch from a red suite that quotes the gate, and cost 2.7 s on 200,000 characters. Every
+# real refusal also says THIS CALL DID NOT RUN within its first lines. Held identical to
+# runtime._SELF_REFUSAL_HEAD_RE and runtime._message_texts; test_round2_b3b4.py compares the
+# two. A copy, not an import, because the fallback runs exactly when runtime cannot be
+# imported.
+# The bracketed command may itself hold ']' (the plugin's own hook command has `[ -n "$LB_PY" ]`),
+# so the group runs lazily to the first ']: ' that the deny text follows, on one line only.
+_REFUSAL_LEAD = r'\A\s*(?:PreToolUse:\S+ hook error: (?:\[[^\n]*?\]: )?)?'
+_DID_NOT_RUN = r'(?:[^\n]*\n){0,5}?[^\n]*?\bTHIS CALL DID NOT RUN\b'
+_SELF_REFUSAL_HEAD_RE = re.compile(
+    _REFUSAL_LEAD + r'laserbrain (?:gate:(?=[^\n]*\bcoverage\b)|drift gate:)' + _DID_NOT_RUN,
+    re.IGNORECASE)
+
+
+def _message_texts(ev):
+    """The fields a refusal can arrive in, decoded (copy of runtime._message_texts)."""
+    def blocks(bs):
+        return '\n'.join(b if isinstance(b, str) else str(b.get('text') or '')
+                         for b in bs
+                         if isinstance(b, str) or (isinstance(b, dict) and b.get('type') == 'text'))
+    out = []
+    e = ev.get('error')
+    if e is None:
+        e = ev.get('errorMessage')
+    if e is not None:
+        out.append(e if isinstance(e, str) else json.dumps(e, default=str))
+    r = _resp(ev)
+    if isinstance(r, str):
+        out.append(r)
+    elif isinstance(r, list):
+        out.append(blocks(r))
+    elif isinstance(r, dict):
+        for k in ('content', 'output', 'stderr', 'stdout', 'error', 'errorMessage', 'message'):
+            v = r.get(k)
+            if isinstance(v, str):
+                out.append(v)
+            elif isinstance(v, list):
+                out.append(blocks(v))
+    return out
 
 
 def _is_self_refusal(ev):
-    """True when the response is the coverage gate stopping its own agent."""
-    r = _resp(ev)
+    """True when this call IS the coverage gate (or the enforced drift gate) stopping its own
+    agent: one of its message fields begins with the deny text.
+
+    Reads the failure event's `error` too (2026-11-14, round 2 B3). Claude Code's
+    PostToolUseFailure carries the refusal there and sends no tool_response, so a test of
+    the response alone would score a gate block as a catch and as evidence.
+    """
     try:
-        text = r if isinstance(r, str) else json.dumps(r, default=str)
+        return any(t and _SELF_REFUSAL_HEAD_RE.match(t) for t in _message_texts(ev))
     except Exception:
         return False
-    return bool(_SELF_REFUSAL_RE.search(text or ''))
+
+
+def _is_interrupt(ev):
+    """The user stopped the call (Esc): a step, but neither a catch nor evidence."""
+    return bool(ev.get('is_interrupt') or ev.get('isInterrupt'))
 
 
 def _probe_arm(sid):
@@ -560,6 +728,26 @@ def _event_name(ev):
                or os.environ.get('LASERBRAIN_HOOK_EVENT') or '').lower()
 
 
+def _reply_event(ev, promptish=False):
+    """The hookEventName to answer with: the event that was asked, never a fixed default.
+
+    WHY, 2026-11-14. The prompt path called _emit_inline_nudge() with its default
+    'PostToolUse'. Claude Code checks the label against the event it sent and discards a
+    mismatch ("expected 'UserPromptSubmit' but got 'PostToolUse'"), so the link and
+    subagent guidance written on every prompt reached no one: 40 of 40 lbq episodes in
+    round 2 (research/DAY-FOUR-ROUND2.md, B1). The flag file was written just before it,
+    which is why nothing else looked wrong.
+    """
+    raw = str(ev.get('hook_event_name') or ev.get('hookEventName') or '')
+    known = {'posttooluse': 'PostToolUse', 'userpromptsubmit': 'UserPromptSubmit',
+             'posttoolusefailure': 'PostToolUseFailure', 'sessionstart': 'SessionStart',
+             'pretooluse': 'PreToolUse'}
+    got = known.get(raw.replace('_', '').lower())
+    if got:
+        return got
+    return 'UserPromptSubmit' if promptish else 'PostToolUse'
+
+
 def _emit_inline_nudge(nudge, event='PostToolUse'):
     print(json.dumps({
         'hookSpecificOutput': {
@@ -575,6 +763,182 @@ def _emit_stop_block(nudge):
     print(json.dumps({'decision': 'block', 'reason': nudge}))
 
 
+# Same resolution as lb_gate.gate_mode(), read here from the environment so the common path
+# does not import lb_gate: unset or empty → nudge, unknown → hard (lb_gate says so on stderr).
+_GATE_MODES = ('nudge', 'hard', 'watch', 'signal')
+
+
+def _gate_mode_env():
+    v = (os.environ.get('LASERBRAIN_GATE_MODE') or '').strip().lower()
+    if not v:
+        return 'nudge'
+    return v if v in _GATE_MODES else 'hard'
+
+
+def _agent_key(ev):
+    a = ev.get('agent_id') or ev.get('agentId')
+    return str(a) if a else 'main'
+
+
+def _update_agents(ev, ename):
+    """nudge mode: per-agent step counters in <session>.agents.json. Never raises.
+
+    Every subagent shares its parent's session_id, so the session file's one `steps` counter
+    sums every agent's calls and any agent's check_state resets it for all of them. The gate
+    read that as "N steps since your last check_state" for an agent that had made a fraction
+    of N. This file counts per agent_id (the payload names one for subagent calls only;
+    'main' otherwise) so lb_gate can attribute each call to the agent that made it. The
+    session file itself is untouched. flock'd, because parallel subagents write at once.
+    """
+    try:
+        if 'prompt' in ename or 'stop' in ename or 'pretooluse' in ename:
+            return
+        tool, args = _unwrap(_tool(ev), _args(ev))
+        if not tool:
+            return
+        # A failed check_state is not a check and a failed reset_task is not a reset
+        # (2026-11-14, round 2 B3): ignored here as in runtime.normalise, exactly as before
+        # PostToolUseFailure was wired. Otherwise a failed check would clear this agent's
+        # own "steps since check" and feed a distance it never got a reading for.
+        if 'failure' in ename and (_is_check(tool) or _is_reset(tool)
+                                   or str(tool).lower().endswith('get_history')):
+            return
+        import fcntl
+        import time as _time
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        key = _agent_key(ev)
+        with open(STATE_DIR / f'{_sid(ev)}.agents.json', 'a+') as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.seek(0)
+            txt = fh.read()
+            try:
+                d = json.loads(txt) if txt.strip() else {}
+                if not isinstance(d, dict):
+                    d = {}
+            except Exception:
+                d = {}
+            e = d.get(key) if isinstance(d.get(key), dict) else {}
+            if _is_reset(tool):
+                e = {'steps': 0, 'checks': 0, 'check_step': 0, 'dists': []}
+            else:
+                e['steps'] = int(e.get('steps', 0)) + 1
+                if _is_check(tool):
+                    e['checks'] = int(e.get('checks', 0)) + 1
+                    e['check_step'] = e['steps']
+                    e['dists'] = (list(e.get('dists') or [])[-1:] + [args.get('distance')])
+                    e['prog'] = str(args.get('progress') or '').strip().lower()[:16]
+            e['t'] = round(_time.time(), 1)
+            d[key] = e
+            if len(d) > 200:          # one entry per subagent; keep the most recently active
+                d = dict(sorted(d.items(), key=lambda kv: kv[1].get('t', 0))[-200:])
+            fh.seek(0)
+            fh.truncate()
+            fh.write(json.dumps(d))
+    except Exception:
+        pass
+
+
+def _agent_counts(ev):
+    """(steps, checks, since) for the calling agent from <session>.agents.json, or None."""
+    try:
+        d = json.loads((STATE_DIR / f'{_sid(ev)}.agents.json').read_text())
+        e = d.get(_agent_key(ev))
+        if not isinstance(e, dict):
+            return 0, 0, 0
+        steps = int(e.get('steps', 0))
+        check_step = int(e.get('check_step', 0))
+        return steps, int(e.get('checks', 1 if check_step else 0)), max(0, steps - check_step)
+    except Exception:
+        return None
+
+
+def _agent_reminder(ev, edge_only, fallback):
+    """nudge mode: the runtime's reminder, computed from the CALLING agent's own counts.
+
+    Session.nudge() counts every agent's calls as one session total (they share a
+    session_id), so a subagent that had just checked in was told "8 steps since your last
+    check_state" after its siblings' calls (checker, 2026-10-17). Same text and cadence as
+    Session.nudge() (edge_only: every NUDGE_AFTER steps) or coverage_warning() (whenever
+    lapsed), with the agent's numbers. `fallback` (the session text) when no sidecar exists.
+    """
+    c = _agent_counts(ev)
+    if c is None:
+        return fallback
+    steps, checks, since = c
+    if since < NUDGE_AFTER or (edge_only and since % NUDGE_AFTER):
+        return None
+    cov = (checks / steps) if steps else 0.0
+    return (f'laserbrain: {since} of your steps since your last check_state '
+            f'(coverage {cov:.0%} over your {steps} steps). dogfood.py withholds any detection '
+            f'result below 50%. Call check_state now with your CURRENT goal, progress (one '
+            f'word: advancing|stuck|circling; a note goes in doing) and distance 0-10.')
+
+
+def _nudge_stop(ev, session_warn, camel_shape):
+    """nudge mode's end-of-turn check. Never blocks.
+
+    The reminder is the calling agent's own (_agent_reminder). On camelCase hosts, where
+    hard mode blocks the Stop, the would-be block is logged to refusals.jsonl as stage
+    nudge-stop with the session-wide numbers hard uses (would_hard: whether hard would have
+    blocked) and the agent's own numbers beside them.
+    """
+    own = _agent_reminder(ev, edge_only=False, fallback=session_warn)
+    if own:
+        _emit_inline_nudge(own + (' (Not blocking: LASERBRAIN_GATE_MODE unset = nudge.)'
+                                  if camel_shape else ''), event='Stop')
+    if not camel_shape or not (own or session_warn):
+        return
+    try:
+        from lb_gate import record_refusal, min_coverage, probe_arm
+        st = load(STATE_DIR / f'{_sid(ev)}.json')
+        steps = int(st.get('steps') or 0)
+        ck = st.get('checks') or []
+        since = steps - (int(ck[-1].get('step') or 0) if ck else 0)
+        c = _agent_counts(ev) or (steps, len(ck), since)
+        record_refusal(_sid(ev), 'nudge-stop', 'stop', since,
+                       (len(ck) / steps) if steps else 0.0, min_coverage(), NUDGE_AFTER,
+                       probe_arm(_sid(ev)), extra={
+                           'would_hard': bool(session_warn), 'agent': _agent_key(ev),
+                           'agent_since': c[2], 'agent_steps': c[0],
+                           'agent_coverage': round((c[1] / c[0]) if c[0] else 0.0, 3),
+                           'agent_stage': 'stop' if own else None,
+                       })
+    except Exception:
+        pass
+
+
+def _honesty_due(ev):
+    """nudge mode: may the honesty note go out on this call? Once per spelled check, on the call
+    that spelled it (its PostToolUse), and not when that check already said stuck or circling.
+
+    It used to be re-evaluated on every tool call, so one pair of equal distances repeated it on
+    each call until the next check: measured 2026-11-04 on one session, 239 tool results carried
+    it for 39 check_state calls (414 calls), and 39 of those came right after the agent had
+    reported stuck itself, which is the very thing the note asks for. Returns True when the
+    agent's own entry isn't recorded, so the note is never lost for lack of data."""
+    try:
+        d = json.loads((STATE_DIR / f'{_sid(ev)}.agents.json').read_text())
+        e = d.get(_agent_key(ev))
+        if not isinstance(e, dict) or 'check_step' not in e:
+            return True
+        if str(e.get('prog') or '') in ('stuck', 'circling'):
+            return False
+        return int(e.get('steps', 0)) == int(e.get('check_step', -1))
+    except Exception:
+        return True
+
+
+def _agent_dists(ev):
+    """The calling agent's last two spelled distances, or None if not recorded."""
+    try:
+        d = json.loads((STATE_DIR / f'{_sid(ev)}.agents.json').read_text())
+        e = d.get(_agent_key(ev)) or {}
+        ds = e.get('dists') or []
+        return ds if len(ds) >= 2 else None
+    except Exception:
+        return None
+
+
 def main():
     raw = sys.stdin.read()
     try:
@@ -587,6 +951,7 @@ def main():
     # noticed at all. (The diagnostic that established this was removed 2026-07-30 once
     # it had answered the question — see _mark_user_turn_if_queued for the measurement.)
     _mark_user_turn_if_queued(ev)
+    _daily_harvest(ev)
 
     # PUBLISH THE BLIND ARM, above every branch, because the MCP server cannot work it out.
     #
@@ -638,8 +1003,54 @@ def main():
     # because there was nothing to look at.
     #
     # A signal every reader depends on cannot live behind a branch.
+    #
+    # NOT laserbrain's own bookkeeping, since 2026-11-14 (round 2, B5). check_state's own
+    # PostToolUse landed here as a success, so every check bumped `ok` before the next one
+    # and the stall veto (mcp-server.mjs, "every check in the window is backed") read
+    # "backed" from check 6 on: an agent that only ever called check_state counted as
+    # working, and `stalled` could not fire. Reading the harness is not work.
+    #
+    # ONE WRITER. runtime.Session.tool() bumped the same counter again for the same call, so
+    # every tool counted twice whenever the package imported. The hook is the writer that
+    # sees every call on every branch; the env flag below tells Session.tool() to stand down
+    # inside this process only. The SDK, with no hook, still bumps as before.
+    #
+    # NOR THE INSTRUMENT'S OWN REFUSALS, OR THE USER'S ESC, since 2026-11-14 (round 2 B3).
+    # 'posttooluse' also matches PostToolUseFailure, which is where a gate block or an
+    # interrupt now arrives. Counted, a coverage-gate block would bump `fail`, set the
+    # server's sawAny (which enables 'unbacked') and push the window toward 'stuck': the
+    # instrument corroborating its own interruption. Session.tool excludes the same calls.
+    #
+    # ONLY A CALL THAT DID NOT SUCCEED can be a refusal or an interrupt (B3/B4 review,
+    # 2026-11-14). The exclusion first ran on every call, so a successful Edit of runtime.py
+    # or an exit-0 grep for the deny text stopped counting as work. A successful call cannot
+    # be a gate refusal.
     if 'posttooluse' in ename:
-        _record_evidence(_event_ok(ev, ename), f'{_tool(ev)}|{str(_args(ev))[:200]}')
+        _t0, _a0 = _unwrap(_tool(ev), _args(ev))
+        if not (_is_check(_t0) or _is_reset(_t0) or str(_t0).lower().endswith('get_history')):
+            _ok0 = _event_ok(ev, ename)
+            if _ok0 or not (_is_self_refusal(ev) or _is_interrupt(ev)):
+                _record_evidence(_ok0, f'{_tool(ev)}|{str(_args(ev))[:200]}')
+        os.environ['LASERBRAIN_HOOK_EVIDENCE'] = '1'
+    _gm_env = _gate_mode_env()
+    if _gm_env == 'nudge':
+        _update_agents(ev, ename)      # per-agent attribution; hard/watch/signal write nothing new
+    # ASKLLM WATCH, 2026-11-15 to 2026-11-22 (lb_askllm_watch.py). A helper agent's first
+    # check_state starts the frozen AI-graded ask-mismatch check in a detached process that
+    # only writes askllm-watch.jsonl. Nothing it does reaches stdout, the model or the user,
+    # and any failure stops here. Below _update_agents, so the sidecar counts this check.
+    if 'posttooluse' in ename and 'failure' not in ename and (ev.get('agent_id')
+                                                              or ev.get('agentId')):
+        try:
+            _tw, _aw = _unwrap(_tool(ev), _args(ev))
+            if _is_check(_tw):
+                _sw = _ilu.spec_from_file_location('lb_askllm_watch', str(
+                    pathlib.Path(__file__).resolve().parent / 'lb_askllm_watch.py'))
+                _mw = _ilu.module_from_spec(_sw)
+                _sw.loader.exec_module(_mw)
+                _mw.on_post_tool_use(ev, _tw, _aw, STATE_DIR)
+        except BaseException:          # noqa: BLE001 — watch-only, never into this hook
+            pass
     # WHICH PROTOCOL SHAPE, not which vendor. camelCase payloads (sessionId, toolName,
     # toolInput) need a different injection path from snake_case ones — that difference is
     # real and stays. Calling the variable `is_grok` made a fact about payload spelling
@@ -674,9 +1085,28 @@ def main():
                             f'(coverage {cov:.0%} over {steps} steps). dogfood.py withholds any '
                             f'detection result below 50%. Call check_state now with your CURRENT '
                             f'goal, progress (advancing|stuck|circling) and distance 0-10.')
-            if warn:
+            if _gm_env == 'nudge':
+                # No block; the calling agent's own reminder as context, and on camelCase
+                # hosts the would-be block logged as stage nudge-stop. See _nudge_stop.
+                _nudge_stop(ev, warn, camel_shape)
+            elif warn:
                 if camel_shape:
-                    _emit_stop_block(warn)
+                    # This stop-block is a step-count refusal, so it follows the gate mode,
+                    # read from the environment (lb_gate is imported only when a mode needs
+                    # its loggers):
+                    #   hard          the block, exactly as before 2026-10-16
+                    #   nudge (unset) handled above (_nudge_stop)
+                    #   watch|signal  no block; logged to refusal-args.jsonl (unchanged)
+                    _gm = _gm_env
+                    if _gm == 'hard':
+                        _emit_stop_block(warn)
+                    else:
+                        try:
+                            from lb_gate import record_refusal_args
+                            record_refusal_args(_sid(ev), _gm, 'stop', 'coverage', 'Stop', ev,
+                                                blocked=False)
+                        except Exception:
+                            pass
                 else:
                     _emit_inline_nudge(warn, event='Stop')
         except Exception:
@@ -690,6 +1120,10 @@ def main():
                 nudge = from_hook(ev, directory=str(STATE_DIR))
             else:
                 nudge = from_hook(ev, directory=str(STATE_DIR))
+            if _gm_env == 'nudge' and 'prompt' not in ename and _tool(ev):
+                # from_hook still records the step in the session file; the reminder it
+                # returns counts every agent's calls, so say the calling agent's own instead.
+                nudge = _agent_reminder(ev, edge_only=True, fallback=nudge)
             # Session-start / prompt: remind multi-agent link hygiene + honest progress.
             promptish = (ev.get('prompt') is not None
                          or ev.get('userPrompt') is not None
@@ -708,9 +1142,13 @@ def main():
                 # itself, so it could not have caught this. Only asking the live hook for
                 # the file did.
                 _mark_user_turn()
+                # The link_read sentence that opened this reminder ("multi-step work in a
+                # shared repo → link_read and answer open claims") was dropped 2026-11-15:
+                # it served Claude–Grok coordination, which is no longer in use, and the
+                # link log had been silent since 2026-08-01. It cost a sentence on every
+                # prompt and a link_read call on most tasks. link_read itself still works.
                 extras.append(
-                    'laserbrain link: multi-step work in a shared repo → link_read '
-                    '(limit≥10) and answer open claims before first write. '
+                    'laserbrain: '
                     'Gate: never batch non-laserbrain tools with the check_state that '
                     'clears the gate — check alone, then reissue. '
                     'Subagents: parent check_state between spawn waves; children do not '
@@ -734,9 +1172,19 @@ def main():
                 sid = session_id_of(ev)
                 s = Session(sid, directory=str(STATE_DIR))
                 checks = s.d.get('checks') or []
+                pair = None
                 if len(checks) >= 2:
-                    a, b = checks[-2], checks[-1]
-                    da, db = a.get('distance'), b.get('distance')
+                    pair = (checks[-2].get('distance'), checks[-1].get('distance'))
+                if _gm_env == 'nudge':
+                    # The session's last two checks may belong to two different agents (they
+                    # share a session_id), which made this fire on an agent whose own distance
+                    # was falling. Compare the CALLING agent's own last two when recorded.
+                    own = _agent_dists(ev)
+                    pair = tuple(own) if own else (pair if _agent_key(ev) == 'main' else None)
+                if pair and _gm_env == 'nudge' and not _honesty_due(ev):
+                    pair = None
+                if pair:
+                    da, db = pair
                     if da is not None and da == db and da not in (0, '0', 0.0):
                         extras.append(
                             'laserbrain honesty: distance has not fallen across the last '
@@ -746,9 +1194,10 @@ def main():
             except Exception:
                 pass
             if extras and not camel_shape:
-                _emit_inline_nudge('\n'.join(extras) + (('\n' + nudge) if nudge else ''))
+                _emit_inline_nudge('\n'.join(extras) + (('\n' + nudge) if nudge else ''),
+                                   event=_reply_event(ev, promptish))
             elif nudge and not camel_shape:
-                _emit_inline_nudge(nudge)
+                _emit_inline_nudge(nudge, event=_reply_event(ev, promptish))
             elif extras and camel_shape and promptish:
                 # UserPromptSubmit: try additionalContext, which some hosts honour.
                 print(json.dumps({
@@ -757,9 +1206,17 @@ def main():
                         'additionalContext': '\n'.join(extras),
                     }
                 }))
-            elif nudge and is_grok:
+            elif nudge and camel_shape:
                 # Where PostToolUse stdout is ignored — still record; Stop will gate.
-                pass
+                #
+                # THIS USED TO READ `is_grok`, a name that no longer existed. The NameError
+                # was swallowed below and the embedded fallback then counted the same step a
+                # second time, once every NUDGE_AFTER steps on camelCase hosts. Fixed in nudge
+                # mode only: hard, watch and signal must reproduce the pre-2026-10-16 hook
+                # byte for byte, double count included (a checker found 17 hard-mode
+                # differences in the session file and the Stop text when the fix ran there).
+                if _gm_env != 'nudge':
+                    raise RuntimeError('pre-2026-10-16 fall-through, kept outside nudge mode')
             return
         except Exception:
             pass  # fall through to embedded copy
@@ -794,6 +1251,14 @@ def main():
             # the rule for everyone. The discriminator genuinely lives out here.
             _mark_user_turn()
             path.write_text(json.dumps(s, indent=2))
+            return
+
+        # A failed bookkeeping call is ignored, as runtime.normalise ignores it (2026-11-14,
+        # round 2 B3): a failed reset_task must not archive and clear the session, and a
+        # failed check_state is no reading. Before PostToolUseFailure was wired neither ever
+        # arrived, so this keeps the fallback where it was.
+        if 'failure' in ename and (_is_check(tool) or _is_reset(tool)
+                                   or str(tool).lower().endswith('get_history')):
             return
 
         if _is_reset(tool):
@@ -903,7 +1368,10 @@ def main():
             elif resp0.get('error') or resp0.get('is_error') or resp0.get('isError'):
                 ok_flag = False
 
-        if _is_shell(tool) and not ok_flag and not _is_self_refusal(ev):
+        # Structural only, as before 2026-11-14: the fallback runs when the package cannot be
+        # imported, so it carries no copy of runtime's verdict scan. An interrupt (Esc) is the
+        # user stopping the call, not the build disagreeing.
+        if _is_shell(tool) and not ok_flag and not _is_self_refusal(ev) and not _is_interrupt(ev):
             cmd = str(args.get('command', ''))[:120]
             # `clean`: written by code that excludes the coverage gate. See runtime.py.
             s['catches'].append({'step': step, 'by': 'build',
@@ -926,11 +1394,14 @@ def main():
 
         if since >= NUDGE_AFTER and since % NUDGE_AFTER == 0 and not camel_shape:
             cov = len(s['checks']) / step if step else 0
+            # Labelled with the event that was asked (B1's rule): on PostToolUseFailure the
+            # default 'PostToolUse' label is a mismatch Claude Code throws away.
             _emit_inline_nudge(
                 f'laserbrain: {since} steps since your last check_state '
                 f'(coverage {cov:.0%} over {step} steps). dogfood.py withholds any '
                 f'detection result below 50%. Call check_state now with your CURRENT '
-                f'goal, progress (advancing|stuck|circling) and distance 0-10.'
+                f'goal, progress (advancing|stuck|circling) and distance 0-10.',
+                event=_reply_event(ev)
             )
     except Exception:
         pass

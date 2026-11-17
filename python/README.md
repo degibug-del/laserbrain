@@ -301,8 +301,9 @@ worse than no schedule, because it looks like one.
 
 **The agent's own clock is reported with its censoring.** `lb.attention.agent_risk(steps)`
 gives drift against steps since the agent last spelled its state — and returns
-`censored: True` past 8 steps, because the coverage gate forces a
-check at 4 and gaps that long are 0.31% of the sample. The interval
+`censored: True` past 8 steps, because the coverage gate forced a
+check at 4 (it still does under `LASERBRAIN_GATE_MODE=hard`; the default since 2026-10-16
+only nudges) and gaps that long are 0.31% of the sample. The interval
 cannot be evaluated against data the interval produced, so there is deliberately no
 `agent_next_check_in()`.
 
@@ -413,17 +414,25 @@ a policy you misspelled was being applied.
 
 `Operator` is the layer that touches the world, and it refuses anything irreversible without
 authorization. Give it the harness and it also refuses anything irreversible **while the
-agent is off its ground**:
+agent is drifting, or while the run itself is judged not worth continuing**:
 
 ```python
-hz = Harness("build the parser")
+hz = Harness()
 op = Operator(authorize=ask_me, harness=hz)
 
-hz.check("write documentation instead", "advancing", 4)   # drifted
+hz.check("build the parser", "advancing", 4)                # grounded
+hz.check("write documentation instead", "advancing", 4)     # goal-drift: a note, not drift
+hz.check("write the docs site", "advancing", 4)             # goal-drift
+hz.check("publish the docs site", "advancing", 4)           # goal-drift, third in a row
 op.act(deploy, kind="deploy", target="prod")
-# Refused: the agent is off its ground (goal-drift, phi=0.53) — return before acting
-#          irreversibly.
+# Refused: deploy:prod (irreversible): the run itself is judged wrong-problem — The goal has
+#          failed its overlap check 3 times against only 0 legitimate re-grounds. …
 ```
+
+One off-goal step on its own is not refused: since 2026-11-15 `goal-drift` is a note
+(drifting False), because on real sessions the wording signal alone was a redirect far more
+often than a wander. A drifting verdict (`ungrammatical`, or a stall or self-report that
+follows a warning) still refuses on the spot.
 
 Three things there are deliberate. It reads the harness's **last** verdict rather than
 taking its own — an operator has no goal or distance to spell, and inventing them would be

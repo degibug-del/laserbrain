@@ -39,8 +39,10 @@ You have drifted — and should stop — if any of these is true:
   won't compress into the schema, you have lost the thread.
 - **self-report** — `progress` is `stuck` or `circling`, *and* you have actually
   moved from where you started (a first-step "this is hard" is a mood, not a loop).
-- **goal drift** — the `goal` you spell no longer matches the goal you first stated.
-  You are solving something else now.
+- **goal drift** — the `goal` you spell no longer matches the goal you first stated,
+  and neither a user redirect nor a sub-task explains it. (check_state reports a wording
+  mismatch only as a note now, because the wording alone was usually a redirect or a new
+  phase. You know why your goal moved; it does not.)
 - **stalled** — your `distance` has stopped falling across the last few steps.
   Motion without progress is the shape of a loop.
 

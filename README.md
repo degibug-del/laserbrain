@@ -89,8 +89,12 @@ has drifted is the one that will not remember to check.
 /plugin install laserbrain
 ```
 
-It ships the MCP server and three hooks: `lb_gate` refuses side-effecting tool calls when
-coverage falls, `lb_safety` refuses destructive commands, `lb_coverage` records. **The hooks
+It ships the MCP server and three hooks: `lb_gate` reminds the agent to check in when
+coverage falls and refuses edits inside another agent's claimed scope, `lb_safety` refuses
+destructive commands, `lb_coverage` records. (Until 2026-10-16 `lb_gate` also refused
+side-effecting calls on the step count; the day-one experiment found all 4,775 of its blocks
+came from that rule and 30 of 30 sampled were false alarms, so that is now opt-in:
+`LASERBRAIN_GATE_MODE=hard`.) **The hooks
 are inert until the Python package is installed.** They are guarded, so a missing package is
 silent rather than fatal, and they say so once on stderr naming the interpreter they tried.
 Run both:
@@ -166,7 +170,10 @@ disagree. That is what makes three implementations survivable — and it is also
 
 `grounded` `advancing` `reground` `excursion` — carry on
 `stalled` `self-report` — warn, then interrupt
-`goal-drift` `ungrammatical` — stop
+`ungrammatical` — stop
+`goal-drift` — a note, not an interrupt (since 2026-11-15: on real sessions the wording signal
+alone was a redirect far more often than a wander); three in a row with no re-ground escalate
+in `judgment` as `wrong-problem`
 `oscillating` — reads the sequence rather than the step
 
 **Declare `parent_goal` for sub-tasks.** Without it, legitimate sub-work reads as drift.

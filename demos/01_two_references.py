@@ -49,15 +49,19 @@ for i in range(1, len(RUN)):
     neighbour.check(prev_goal, distance=prev_dist)
     n = neighbour.check(goal, distance=dist)
 
-    flag = "  ← fires" if f.drifting else ""
+    # Since 2026-11-15 goal-drift is a note (drifting False), not an interrupt, so "noticed"
+    # is read from the reason as well as the flag. The measurement is what this demo is about.
+    flag = "  ← notices" if (f.drifting or f.reason == "goal-drift") else ""
     print(f"  {goal:<38} Φ {f.phi:.2f} {f.reason:<10}   Φ {n.phi:.2f} {n.reason:<10}{flag}")
 
 print()
-print("  The frozen reference climbs 0.28 → 0.49 → 0.56 and fires. The neighbour reference sits")
-print("  flat around 0.30 and never fires — it reports the same mild displacement for step 4,")
+print("  The frozen reference climbs 0.28 → 0.49 → 0.56 and notices (goal-drift). The neighbour")
+print("  reference sits flat around 0.30 and never notices — it reports the same mild displacement for step 4,")
 print("  where the agent is redesigning a session store, as for step 1, where it was still")
 print("  fixing the auth test. It is not that it notices late. It cannot notice at all.")
 print()
 print("  Nothing here is scripted. Both columns are laserbrain's own detector, same version,")
 print("  same call. The only difference is which goal it was grounded on.")
+print("  (goal-drift is reported as a note, not an interrupt: on real sessions the wording alone was")
+print("  usually a redirect. What laserbrain does with it is demo 02; that it can see it at all is this.)")
 print()

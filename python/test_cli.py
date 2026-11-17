@@ -47,8 +47,11 @@ show('demo actually shows a drift and a return',
 code, out = run('check', '--goal', 'ship the billboard')
 show('check on a fresh goal exits 0 (grounded is not drift)', code == 0, f'exit={code}')
 
+# goal-drift is a note since 2026-11-15 (drifting False), so the exit code — which follows
+# `drifting` — is 0. The reading is still printed and still says goal-drift.
 code, out = run('check', '--goal', 'refactor the parser', '--against', 'ship the billboard')
-show('check against a different goal exits 1 — scriptable', code == 1, f'exit={code}')
+show('check against a different goal reports goal-drift and exits 0 (a note, not drift)',
+     code == 0 and 'goal-drift' in out, f'exit={code}')
 
 code, out = run('check', '--goal', 'ship the billboard', '--against', 'ship the billboard')
 show('check against the same goal exits 0', code == 0, f'exit={code}')

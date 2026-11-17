@@ -13,6 +13,11 @@ computed. All of it waits on a number that discipline has failed to move twice.
 So this blocks. After BLOCK_AFTER steps without a spelled check, no tool runs until
 check_state is called. Coverage stops being a virtue and becomes a precondition.
 
+SINCE 2026-10-16 THAT IS LASERBRAIN_GATE_MODE=hard, NOT THE DEFAULT. The day-one experiment
+measured what the block cost: 4,775 blocks, every one from the step count, 0 kept by signal
+mode, 30 of 30 sampled false alarms. Unset now means `nudge` — the step count logs and
+reminds but never refuses. See gate_mode() for all four modes.
+
 TWO THINGS IT MUST NEVER DO:
 
   deadlock — the laserbrain tools are ALWAYS allowed. Blocking check_state while
@@ -651,7 +656,7 @@ def steps_since_check(sess):
     return int(sess.get('steps', 0) or 0) - last
 
 
-def record_refusal(sid, stage, tool, since, cov, floor, block_after, arm):
+def record_refusal(sid, stage, tool, since, cov, floor, block_after, arm, extra=None):
     """Append one line for every time the gate warns or refuses. Never raises.
 
     THE GATE FIRED AND LEFT NOTHING. It logged its arms, and — since this morning — its
@@ -684,13 +689,16 @@ def record_refusal(sid, stage, tool, since, cov, floor, block_after, arm):
     try:
         log = STATE_DIR / 'refusals.jsonl'
         log.parent.mkdir(parents=True, exist_ok=True)
+        row = {
+            'at': __import__('datetime').datetime.now().isoformat(timespec='seconds'),
+            'session': sid, 'stage': stage, 'tool': tool, 'arm': arm,
+            'since': since, 'coverage': round(cov, 3),
+            'floor': floor, 'block_after': block_after,
+        }
+        if extra:                  # nudge rows only; hard/watch/signal rows are unchanged
+            row.update(extra)
         with open(log, 'a') as fh:
-            fh.write(json.dumps({
-                'at': __import__('datetime').datetime.now().isoformat(timespec='seconds'),
-                'session': sid, 'stage': stage, 'tool': tool, 'arm': arm,
-                'since': since, 'coverage': round(cov, 3),
-                'floor': floor, 'block_after': block_after,
-            }) + '\n')
+            fh.write(json.dumps(row) + '\n')
     except Exception:
         pass                       # a broken recorder must never cost a tool call
 
@@ -867,13 +875,384 @@ def load_session(ev):
 # reset_task if the user genuinely redirected you; or pass parent_goal if this is a
 # sub-task of a goal you have not abandoned. The gate reads only the LATEST check, so any
 # of the three clears it on the next reading rather than after a cooldown.
-HARD_VERDICTS = ('goal-drift', 'ungrammatical')
+#
+# goal-drift LEFT THIS TUPLE ON 2026-11-15. It returns drifting=false now — a note, not an
+# interrupt — in all three implementations, because all 7 live goal-drift fires from Oct 17
+# to Nov 15 were false and the July corpus had it at 24 of 35 fires with 0 real
+# (research/DAY-FIVE-REAL-SESSIONS.md §3-5). A gate that refused on it would still be
+# enforcing the order the instrument stopped giving. So no mode (shadow, deny, signal)
+# refuses or logs a would-be refusal on goal-drift any more; only ungrammatical, plus
+# ask-mismatch in signal mode. The escape above was written for goal-drift; the refusal
+# text now names the remedy for the verdict that fired (re-spell, for ungrammatical).
+# Signal mode (research/EVAL-PLAN.md arm D, "ON_DRIFT=deny, extended to ...") therefore
+# refuses on a narrower set than when that plan was written: goal-drift is out of it.
+HARD_VERDICTS = ('ungrammatical',)
 
 
 def gate_on_drift_mode():
     """off | shadow | deny. Unset means shadow — evaluated and logged, never enforced."""
     v = (os.environ.get('LASERBRAIN_GATE_ON_DRIFT') or 'shadow').strip().lower()
     return v if v in ('off', 'shadow', 'deny') else 'shadow'
+
+
+# ── the gate MODE: nudge (unset) | hard | watch | signal ─────────────────────────────────
+#
+# Added 2026-10-16 for EVAL-PLAN §3 arms B and D, after INCIDENTS-2026-10 found that all
+# 1,559 blocks came from the step-count rule and 30 of 30 sampled were false alarms.
+#
+# THE DEFAULT CHANGED THE SAME DAY. The day-one experiment (research/DAY-ONE-RESULTS.md)
+# counted 4,775 gate blocks, every one from the step count; signal mode kept 0 of them and 30
+# of 30 sampled were false alarms. Diego approved the change on 2026-10-16. So unset is
+# now `nudge`.
+#
+#     unset / nudge  the step count never refuses. Each call hard would have warned on or
+#                    refused is logged in refusals.jsonl under a `nudge-` stage (nudge-warn,
+#                    nudge-acting, nudge-hard: hard's decision from hard's session-wide
+#                    numbers, `would_hard` true for the last two), with the calling agent's
+#                    own numbers beside it (agent_*; lb_coverage counts per agent_id). The
+#                    check-in reminder follows the AGENT's numbers, with read-only shell
+#                    commands counted as reads (lb_shellread), and goes to the model as
+#                    non-blocking additionalContext — the stdout JSON channel deny() uses,
+#                    without a permissionDecision — once per BLOCK_AFTER of its steps. Spawns
+#                    get a logged, watch-only ask-match verdict (lb_askmatch). Claims refuse
+#                    exactly as in hard; the drift gate runs exactly as in hard.
+#     hard           the gate as it was before 2026-10-16, byte for byte: the step count
+#                    refuses acting calls past BLOCK_AFTER and everything past twice it. The
+#                    control arm for EVAL-PLAN; nothing added on 2026-10-16 runs here (the
+#                    equivalence harness compares exit code, stdout, stderr and every file
+#                    written, including camelCase PostToolUse chains and transcript enqueues).
+#     watch          nothing is refused. Every would-be refusal (coverage, drift, claim) is
+#                    recorded with a `watch-` stage and said on stderr, and the call runs.
+#     signal         the step count never refuses. Only a verdict does: the hard drift
+#                    verdicts plus `ask-mismatch`, enforced as LASERBRAIN_GATE_ON_DRIFT=deny
+#                    would. The claim gate still refuses — it is a collision guard between
+#                    agents, not a cadence rule. Reads and check_state are never refused.
+#
+# An unrecognised value falls back to HARD, not to the default, so a typo can never silently
+# disarm the gate; it says so on stderr once per state directory and value.
+GATE_MODES = ('nudge', 'hard', 'watch', 'signal')
+DEFAULT_GATE_MODE = 'nudge'
+SIGNAL_VERDICTS = HARD_VERDICTS + ('ask-mismatch',)
+
+
+def gate_mode():
+    """nudge | hard | watch | signal. Unset or empty means nudge; unknown means hard."""
+    raw = os.environ.get('LASERBRAIN_GATE_MODE') or ''
+    v = raw.strip().lower()
+    if not v:
+        return DEFAULT_GATE_MODE
+    if v in GATE_MODES:
+        return v
+    _warn_unknown_mode(raw)
+    return 'hard'
+
+
+def _warn_unknown_mode(raw):
+    """One stderr line per state dir and value; the marker is the memory. Never raises."""
+    try:
+        tag = hashlib.sha256(raw.encode('utf-8', 'replace')).hexdigest()[:12]
+        marker = STATE_DIR / f'.gate-mode-warned-{tag}'
+        if marker.exists():
+            return
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(raw[:80])
+        sys.stderr.write(f'laserbrain gate: LASERBRAIN_GATE_MODE={raw.strip()[:40]!r} is not one of '
+                         f'{", ".join(GATE_MODES)} — running as hard (the strictest) so a typo '
+                         f'cannot disarm the gate. Unset it for the default (nudge).\n')
+    except Exception:
+        pass
+
+
+# ── nudge-mode helpers ──────────────────────────────────────────────────────────────────
+#
+# Context for the model, collected during main() and printed once at exit as PreToolUse
+# additionalContext. Empty in hard, watch and signal, so those modes print nothing new.
+_NOTES = []
+
+
+def _flush_notes():
+    if not _NOTES:
+        return
+    print(json.dumps({'hookSpecificOutput': {
+        'hookEventName': 'PreToolUse',
+        'additionalContext': '\n'.join(_NOTES),
+    }}))
+
+
+def agent_key(ev):
+    """Who made this call: the payload's agent_id for a subagent, 'main' otherwise.
+
+    Claude Code's hook input carries agent_id "only when the hook fires from within a
+    subagent" (its own schema text) and omits it on the main thread. Every subagent shares
+    the parent's session_id, so before this the session file had ONE step counter for all of
+    them: on 2026-10-16 three concurrent goals checked in to session 4038b8f4 and each was
+    told "N steps since your last check_state" counting the others' calls.
+    """
+    a = ev.get('agent_id') or ev.get('agentId')
+    return str(a) if a else 'main'
+
+
+def agents_path(sid):
+    return STATE_DIR / f'{sid}.agents.json'
+
+
+def read_agents(sid):
+    """{agent_key: {'steps', 'checks', 'check_step', 'dists'}} or None when no sidecar exists."""
+    try:
+        d = json.loads(agents_path(sid).read_text())
+        return d if isinstance(d, dict) else None
+    except Exception:
+        return None
+
+
+def agent_counts(sid, ev):
+    """(steps, checks, since) for THIS agent from the sidecar lb_coverage writes in nudge mode.
+
+    None when there is no sidecar (an older hook, or lb_coverage running under another mode):
+    the caller then uses the session-wide numbers, which is all hard mode has ever used.
+    (0, 0, 0) for an agent that has made no counted call yet.
+    """
+    d = read_agents(sid)
+    if d is None:
+        return None
+    e = d.get(agent_key(ev))
+    if not isinstance(e, dict):
+        return 0, 0, 0
+    try:
+        steps = int(e.get('steps', 0))
+        check_step = int(e.get('check_step', 0))
+        checks = int(e.get('checks', 1 if check_step else 0))
+        return steps, checks, max(0, steps - check_step)
+    except Exception:
+        return None
+
+
+def _stage(since, steps, cov, floor, block_after, reading):
+    """The coverage gate's decision for one set of numbers, exactly as hard computes it:
+    None (silent), 'warn' (a read in the middle band), 'acting' or 'hard' (refused)."""
+    late = since >= block_after
+    thin = steps >= 8 and cov < floor
+    if not (late or thin):
+        return None
+    hard = since >= block_after * HARD_MULTIPLE or (cov < floor / 2 and steps >= 8)
+    if not hard and reading:
+        return 'warn'
+    return 'hard' if hard else 'acting'
+
+
+def nudge_step_count(sid, sess, ev, since, steps, cov, floor, block_after, arm):
+    """nudge mode's step count. NEVER REFUSES. Logs, and reminds the agent that is behind.
+
+    TWO SETS OF NUMBERS, because they answer different questions (checkers, 2026-10-17):
+
+      session-wide   what hard mode would have done with this call — the same since,
+                     coverage and READ_ONLY test it uses. Logged as the row's stage
+                     (nudge-warn / nudge-acting / nudge-hard) and `would_hard`, so the
+                     EVAL-PLAN replay can count the nudge arm against the hard arm.
+      this agent     the calling agent's own steps, checks and coverage (agent_counts), with
+                     read-only shell commands counted as reads (lb_shellread). Decides the
+                     reminder, so a parent that checks in is not told about its subagents'
+                     calls. Logged as agent_* fields; a row whose only trigger is the agent's
+                     own count has stage nudge-agent.
+
+    The reminder goes to the model as PreToolUse additionalContext (the stdout JSON channel
+    deny() uses, without a permissionDecision) once per BLOCK_AFTER of the agent's steps.
+    """
+    tool = (_tool_of(ev) or '').lower()
+    reading = any(r in tool for r in READ_ONLY) and not any(w in tool for w in WRITE_TOOLS)
+    h_stage = _stage(since, steps, cov, floor, block_after, reading)
+
+    own = agent_counts(sid, ev)
+    if own is None:
+        a_steps, a_checks, a_since = steps, len(sess.get('checks') or []), since
+    else:
+        a_steps, a_checks, a_since = own
+    a_cov = (a_checks / a_steps) if a_steps else 0.0
+    shell_read = (not reading) and shell_reads(ev)
+    a_stage = _stage(a_since, a_steps, a_cov, floor, block_after, reading or shell_read)
+
+    if h_stage or a_stage:
+        record_refusal(sid, f'nudge-{h_stage or "agent"}', tool, since, cov, floor, block_after,
+                       arm, extra={
+                           'would_hard': h_stage in ('acting', 'hard'),
+                           'agent': agent_key(ev), 'agent_stage': a_stage,
+                           'agent_since': a_since, 'agent_steps': a_steps,
+                           'agent_coverage': round(a_cov, 3), 'shell_read': shell_read,
+                       })
+        if _args_opt_in() and h_stage in ('acting', 'hard'):
+            record_refusal_args(sid, 'nudge', h_stage, 'coverage', tool, ev, blocked=False,
+                                since=since, sess=sess)
+    if not a_stage:
+        return
+    late = a_since >= block_after
+    due = ((a_since - block_after) % block_after == 0) if late else (a_steps % block_after == 0)
+    if due:
+        why = (f'{a_since} of your steps since your last check_state' if late
+               else f'your coverage {a_cov:.0%} is below the {floor:.0%} floor')
+        msg = (f'laserbrain: {why} (coverage {a_cov:.0%} over your {a_steps} steps). Not '
+               f'blocking (LASERBRAIN_GATE_MODE unset = nudge). Call check_state with your '
+               f'current goal, progress (one word: advancing|stuck|circling; a note goes in '
+               f'doing) and distance at your next milestone.')
+        _NOTES.append(msg)
+        warn(msg)
+
+
+def _load_sibling(name):
+    try:
+        spec = _ilu.spec_from_file_location(
+            name, str(pathlib.Path(__file__).resolve().parent / f'{name}.py'))
+        mod = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+def shell_reads(ev):
+    """True when the call is a shell command lb_shellread classifies as a pure read."""
+    sr = _load_sibling('lb_shellread')
+    if sr is None:
+        return False
+    cmd = sr.shell_command_of(ev)
+    return bool(cmd) and sr.is_read_only_command(cmd)
+
+
+def ask_match_spawn(sid, ev):
+    """Watch-only ask-match for Agent/Task/Workflow calls. Logs; adds a note on Workflow.
+
+    Never refuses and never raises. Reads a bounded tail of the transcript (lb_askmatch).
+    """
+    try:
+        # Name test first, so a non-spawn call never pays for loading the module.
+        if str(ev.get('tool_name') or ev.get('toolName') or '').strip().lower() not in (
+                'agent', 'task', 'workflow'):
+            return
+        am = _load_sibling('lb_askmatch')
+        if am is None:
+            return
+        tool, prompt = am.spawn_prompt_of(ev)
+        if not tool:
+            return
+        import time as _time
+        t0 = _time.perf_counter()
+        path = ev.get('transcript_path') or ev.get('transcriptPath')
+        msgs = am.read_recent_user_messages(path) if path else []
+        v = am.spawn_verdict(prompt, msgs)
+        ms = round((_time.perf_counter() - t0) * 1000, 2)
+        # LOGGED, NOT SAID, BY DEFAULT. A note could only ever help on the Workflow tool (that
+        # is where a harness relays the user's latest message to every child; an Agent/Task
+        # child gets its prompt and nothing relayed). But replayed the way this hook actually
+        # compares — each Workflow launch's script against the transcript's latest user
+        # message at that moment, over the sessions in eval/starts.labelled.jsonl — it caught
+        # 3 of 3 incidents and false-flagged 15 of 64 launches (23%: dev 10/30, held-out 5/34),
+        # far over the 5% bar EVAL-PLAN set. (The 5/96 figure first quoted here came from a
+        # replay that used the RELAYED text as the user's message; with the transcript's latest
+        # message the same per-agent replay gives 21/96 held-out and 123/365 dev.) So the note
+        # is opt-in, LASERBRAIN_ASKMATCH_NOTE=1, until a replay meets the bar; `would_note`
+        # in ask-match.jsonl records where it would have spoken.
+        would_note = bool(v.get('flag')) and tool.lower() == 'workflow'
+        noted = would_note and os.environ.get('LASERBRAIN_ASKMATCH_NOTE') == '1'
+        if noted:
+            _NOTES.append(am.note_for(v))
+        log = STATE_DIR / 'ask-match.jsonl'
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, 'a') as fh:
+            fh.write(json.dumps({
+                'at': __import__('datetime').datetime.now().isoformat(timespec='seconds'),
+                'session': sid, 'agent': agent_key(ev), 'tool': tool,
+                'verdict': v.get('verdict'), 'flag': bool(v.get('flag')), 'noted': noted,
+                'would_note': would_note,
+                'relay_overlap': v.get('relay_overlap'), 'u_terms': v.get('u_terms'),
+                'n_missing': len(v.get('missing') or []), 'n_user_msgs': len(msgs),
+                'prompt_sha256': hashlib.sha256(
+                    str(prompt).encode('utf-8', 'replace')).hexdigest(),
+                'ms': ms,                 # no message or prompt text is written here
+            }) + '\n')
+    except Exception:
+        pass
+
+
+def _load_secrets():
+    """lb_secrets by absolute path, like lb_paths. None if it cannot be loaded."""
+    try:
+        spec = _ilu.spec_from_file_location(
+            'lb_secrets', str(pathlib.Path(__file__).resolve().parent / 'lb_secrets.py'))
+        mod = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+# Words that make a preview not worth keeping even after the patterns ran: a command that
+# NAMES a credential may carry one in a shape no pattern knows. Same placeholder the
+# INCIDENTS-2026-10 labelling used.
+_CREDENTIAL_WORDS = ('password', 'passwd', 'secret', 'token', 'api_key', 'apikey', 'api-key',
+                     'bearer', 'keychain', 'private key', '.env', 'credential', 'authorization')
+
+
+def redact_args(args, limit=240):
+    """(sha256 of the canonical arguments, a redacted preview or None). Never raises.
+
+    The hash lets a scorer join a block to the transcript call it refused. The preview is
+    what a blind human labeller reads. If lb_secrets cannot be loaded the preview is
+    dropped rather than written unredacted — privacy fails closed here, unlike the gate.
+    """
+    try:
+        canon = json.dumps(args, sort_keys=True, default=str, ensure_ascii=False)
+    except Exception:
+        canon = str(args)
+    digest = hashlib.sha256(canon.encode('utf-8', 'replace')).hexdigest()
+    sec = _load_secrets()
+    if sec is None or not hasattr(sec, 'COMPILED'):
+        return digest, None
+    text = canon
+    try:
+        for name, (rx, _why) in sec.COMPILED.items():
+            text = rx.sub(f'[redacted:{name}]', text)
+    except Exception:
+        return digest, None
+    if any(w in text.lower() for w in _CREDENTIAL_WORDS):
+        return digest, '[input redacted: references a credential]'
+    return digest, text[:limit]
+
+
+def record_refusal_args(sid, mode, stage, kind, tool, ev, blocked, since=None, sess=None):
+    """One line per would-be or actual refusal in refusal-args.jsonl. A NEW file, so the
+    format of refusals.jsonl is untouched. Never raises.
+
+    WHAT IT WRITES ABOUT THE ARGUMENTS: a sha256 of the canonical arguments, and a PREVIEW
+    of up to 240 characters after lb_secrets redaction (redact_args). The preview is the
+    arguments' own text with every known secret pattern replaced — so it is raw text minus
+    what the patterns recognise, not a hash. A preview naming a credential word is replaced
+    by a placeholder, and if lb_secrets cannot load no preview is written at all.
+
+    Written in watch and signal mode. In hard and nudge mode only when
+    LASERBRAIN_REFUSAL_ARGS=1, so those modes write no argument text by default.
+    """
+    try:
+        args = (ev.get('tool_input') if ev.get('tool_input') is not None
+                else ev.get('toolInput') if ev.get('toolInput') is not None
+                else ev.get('arguments'))
+        digest, preview = redact_args(args)
+        last = ((sess or {}).get('checks') or [{}])[-1] if sess else {}
+        log = STATE_DIR / 'refusal-args.jsonl'
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, 'a') as fh:
+            fh.write(json.dumps({
+                'at': __import__('datetime').datetime.now().isoformat(timespec='seconds'),
+                'session': sid, 'mode': mode, 'stage': stage, 'kind': kind, 'tool': tool,
+                'blocked': bool(blocked), 'since': since,
+                'last_reason': (last or {}).get('reason'),
+                'args_sha256': digest, 'args_redacted': preview,
+                'outcome': None,          # filled in by a human labeller, never by the gate
+            }) + '\n')
+    except Exception:
+        pass
+
+
+def _args_opt_in():
+    return (os.environ.get('LASERBRAIN_REFUSAL_ARGS') or '').strip() in ('1', 'true', 'yes')
 
 
 def _ground_of_run(sess, run):
@@ -899,13 +1278,23 @@ def _ground_of_run(sess, run):
     return first
 
 
-def drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm):
+def drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm, gmode='hard'):
     """Refuse — or, by default, merely record — a side-effecting call made while the last
     reading was a hard drift verdict.
 
     Returns None. Calls deny() and exits only in `deny` mode.
+
+    `gmode` is gate_mode(). 'hard' leaves this function exactly as it was, and 'nudge' (the
+    default) behaves exactly as 'hard' here, with the session-wide step numbers hard logs.
+    'signal' enforces as `deny` would and also refuses on `ask-mismatch`. 'watch' never
+    enforces: a `deny` setting is downgraded to `shadow` (logged and warned, not blocked).
     """
     mode = gate_on_drift_mode()
+    verdicts = HARD_VERDICTS
+    if gmode == 'signal':
+        mode, verdicts = 'deny', SIGNAL_VERDICTS
+    elif gmode == 'watch' and mode == 'deny':
+        mode = 'shadow'
     if mode == 'off':
         return
 
@@ -914,7 +1303,7 @@ def drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm):
         return
     last = checks[-1]
     reason = str(last.get('reason') or '')
-    if reason not in HARD_VERDICTS:
+    if reason not in verdicts:
         return                      # includes every clean reading, and every soft one
 
     # Reads are never refused here, for the same reason the coverage gate's middle band
@@ -925,6 +1314,10 @@ def drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm):
         return
     if any(r in tool for r in READ_ONLY) and not any(w in tool for w in WRITE_TOOLS):
         return
+    # No lb_shellread exemption here, in any mode. The spec for the 2026-10-16 change was
+    # "drift follows LASERBRAIN_GATE_ON_DRIFT, unchanged", and a checker showed the first
+    # version broke it: under ON_DRIFT=deny a shell `ls` stopped being refused and stopped
+    # being logged, and a classifier mistake let `ls # x<newline>rm f` through a refusal.
 
     phi = last.get('phi')
     gs = last.get('goal_score')
@@ -936,14 +1329,25 @@ def drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm):
         detail += f' (Φ={phi:.2f}'
         detail += f', overlap {gs:.2f})' if isinstance(gs, (int, float)) else ')'
 
-    record_refusal(sid, f'drift-{mode}', tool, since, cov, floor, block_after, arm)
+    if gmode in ('hard', 'nudge'):  # nudge: drift follows LASERBRAIN_GATE_ON_DRIFT as in hard
+        record_refusal(sid, f'drift-{mode}', tool, since, cov, floor, block_after, arm)
+    else:
+        record_refusal(sid, f'{gmode}-drift-{mode}', tool, since, cov, floor, block_after, arm)
+    if gmode not in ('hard', 'nudge') or _args_opt_in():
+        record_refusal_args(sid, gmode, f'drift-{mode}', 'drift', tool, ev,
+                            blocked=(mode == 'deny'), since=since, sess=sess)
+
+    if mode == 'shadow' and gmode == 'watch':
+        warn(f'laserbrain drift gate (watch): would have refused this {tool or "call"} — '
+             f'{detail}. Not blocking (LASERBRAIN_GATE_MODE=watch); logged.')
+        return
 
     if mode == 'shadow':
         # STDERR and exit 0 — see warn(). A shadow that used deny()'s JSON shape would
         # silently become the enforcement it exists to defer.
         warn(f'laserbrain drift gate (shadow): would have refused this {tool or "call"} — '
-             f'{detail}. Not blocking, and this is logged. Precision on {reason} is 14.6%, '
-             f'so the log is how that number gets replaced with one measured on your work. '
+             f'{detail}. Not blocking, and this is logged, so how often {reason} would have '
+             f'stopped good work gets measured on your work. '
              f'Set LASERBRAIN_GATE_ON_DRIFT=deny to enforce.')
         return
 
@@ -954,13 +1358,32 @@ def drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm):
     lines += [
         'Refusing calls that change something — reads are still passing.',
         'THIS CALL DID NOT RUN. Nothing was written, executed or sent.',
-        'Three things clear this, and check_state can never itself be refused:',
-        '  · check_state with the goal you were actually given',
-        '  · reset_task, if the user redirected you',
-        '  · pass parent_goal, if this serves a larger goal you have not abandoned',
-        f'(Enforcement is on because LASERBRAIN_GATE_ON_DRIFT=deny. Measured precision on '
-        f'{reason} is 14.6% — unset the variable to return to shadow mode.)',
     ]
+    # The remedies follow the verdict. They were goal-drift's three (check_state with your
+    # goal, reset_task, parent_goal) until 2026-11-15, when goal-drift left HARD_VERDICTS.
+    # parent_goal never cleared an ungrammatical reading, so it is not offered for one.
+    if reason == 'ungrammatical':
+        lines += [
+            'Re-spelling clears this, and check_state can never itself be refused:',
+            '  · check_state with a non-empty goal and ONE progress word '
+            '(advancing | stuck | circling) — a note goes in `doing`',
+            '  · reset_task first, if the user gave you a new task',
+        ]
+    else:
+        lines += [
+            'Two things clear this, and check_state can never itself be refused:',
+            '  · check_state with the goal you were actually given',
+            '  · reset_task, if the user redirected you',
+        ]
+    if gmode == 'signal':
+        lines.append('(Enforcement is on because LASERBRAIN_GATE_MODE=signal: only drift and '
+                     'ask-mismatch verdicts refuse, never the step count. Unset the variable '
+                     'to return to the default gate.)')
+    else:
+        # The 14.6% that stood here was goal-drift's published precision. goal-drift no
+        # longer reaches this line (2026-11-15), so no figure is claimed for what does.
+        lines.append('(Enforcement is on because LASERBRAIN_GATE_ON_DRIFT=deny — unset the '
+                     'variable to return to shadow mode.)')
     deny('\n'.join(lines))
 
 
@@ -992,6 +1415,7 @@ def main():
 
     sid, sess = load_session(ev)
     me = resolve_me(ev, sess)
+    gmode = gate_mode()                          # 'nudge' when LASERBRAIN_GATE_MODE is unset; refusals need =hard
 
     # ── claim gate: never edit into another agent's declared scope ──────────
     target = edit_target(ev, low)
@@ -999,6 +1423,16 @@ def main():
         for path, who in claimed_by_others(me).items():
             # match on the tail, since claims are repo-relative and tools pass absolute
             if touches(target, path) or path.rstrip('/') in str(target):
+                if gmode == 'watch':
+                    record_refusal_args(sid, gmode, 'claim', 'claim', low, ev,
+                                        blocked=False, sess=sess)
+                    warn(f'laserbrain claim gate (watch): would have refused this edit — '
+                         f'{path} is claimed by {who}. Not blocking '
+                         f'(LASERBRAIN_GATE_MODE=watch); logged.')
+                    break
+                if gmode not in ('hard', 'nudge') or _args_opt_in():
+                    record_refusal_args(sid, gmode, 'claim', 'claim', low, ev,
+                                        blocked=True, sess=sess)
                 deny(f'laserbrain claim gate: {path} is claimed by {who} in the open wave.\n'
                      f'THIS CALL DID NOT RUN — nothing was written.\n'
                      f'Editing another agent\'s scope is the collision waves exist to prevent '
@@ -1007,9 +1441,14 @@ def main():
                      f'handoff before touching it.\n'
                      f'(me={me}; set LASERBRAIN_AGENT on the hook env if this is wrong.)')
 
+    if gmode == 'nudge':
+        ask_match_spawn(sid, ev)                 # watch-only; never refuses, never raises
+
     if not sid or not sess:
         return                                   # cannot attribute / no session → do not gate
 
+    # Session-wide numbers, in every mode: they are what hard refuses on and what the drift
+    # gate logs. nudge mode adds the calling agent's own numbers in nudge_step_count().
     since = steps_since_check(sess)
     steps = int(sess.get('steps', 0) or 0)
     cov = (len(sess.get('checks') or []) / steps) if steps else 0.0
@@ -1026,7 +1465,7 @@ def main():
     # Read the VERDICT, not just the cadence. Placed here because the coverage logic below
     # returns early whenever coverage is fine — which is the common case, and is exactly
     # when a drifting agent is least likely to be stopped by anything else.
-    drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm)
+    drift_gate(sid, sess, ev, me, since, cov, floor, block_after, arm, gmode=gmode)
     if arm == 'relaxed' and 'LASERBRAIN_MIN_COVERAGE' not in os.environ:
         floor = RELAXED_MIN_COVERAGE
         # THE SESSION ARM DECIDES WHETHER TO SWEEP; THE GAP PROBE DECIDES HOW FAR.
@@ -1052,6 +1491,12 @@ def main():
     # makes compliance mean the thing it is supposed to mean. It also self-corrects in
     # the agent's favour: front-load checks and the coverage term stays quiet, so
     # discipline early buys slack later rather than being forgotten.
+    if gmode == 'nudge':
+        # Before the early return below: the calling agent can be past its own threshold
+        # while the session-wide count, just reset by a sibling's check, is not.
+        nudge_step_count(sid, sess, ev, since, steps, cov, floor, block_after, arm)
+        return
+
     late = since >= block_after
     thin = steps >= 8 and cov < floor          # ignore the first few steps, where one
     if not (late or thin):                     # check swings coverage wildly
@@ -1099,6 +1544,9 @@ def main():
     # the allowlist working rather than a coincidence.
     reading = any(r in tool for r in READ_ONLY) and not any(w in tool for w in WRITE_TOOLS)
 
+    if gmode == 'signal' and not hard and reading:
+        return                                   # signal mode: the step count says nothing
+
     if not hard and reading:
         # Proportional zone, reading call: allow it, and say why it was nearly refused so
         # the escalation is never a surprise.
@@ -1134,14 +1582,30 @@ def main():
         f'— do not replay the whole block.\n'
         f'{check_howto(me)}'
     )
-    record_refusal(sid, 'hard' if hard else 'acting', tool, since, cov, floor,
+    stage = 'hard' if hard else 'acting'
+    if gmode in ('watch', 'signal'):
+        # The step count refuses nothing in either mode. Record what it WOULD have done —
+        # a prefixed stage in refusals.jsonl (same schema) plus the redacted arguments —
+        # so the EVAL-PLAN replay can count and score these against the hard arm.
+        record_refusal(sid, f'{gmode}-{stage}', tool, since, cov, floor, block_after, arm)
+        record_refusal_args(sid, gmode, stage, 'coverage', tool, ev, blocked=False,
+                            since=since, sess=sess)
+        if gmode == 'watch':
+            warn(f'laserbrain gate (watch): would have refused this {tool or "call"} — {why}. '
+                 f'Not blocking (LASERBRAIN_GATE_MODE=watch); logged.')
+        return
+    record_refusal(sid, stage, tool, since, cov, floor,
                    block_after, arm)
+    if _args_opt_in():
+        record_refusal_args(sid, gmode, stage, 'coverage', tool, ev, blocked=True,
+                            since=since, sess=sess)
     deny(reason)
 
 
 if __name__ == '__main__':
     try:
         main()
+        _flush_notes()                           # nudge mode only; empty in every other mode
     except SystemExit:
         raise
     except Exception as e:

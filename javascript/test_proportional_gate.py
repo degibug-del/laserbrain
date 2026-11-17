@@ -77,7 +77,9 @@ def session(dirpath, sid, steps, checks_at):
 def run(dirpath, sid, tool, args=None):
     """Invoke the gate as the host does. Returns (blocked, warned, text)."""
     ev = {'session_id': sid, 'tool_name': tool, 'tool_input': args or {}}
-    env = dict(os.environ, LASERBRAIN_STATE_DIR=str(dirpath))
+    # The proportional step-count gate is LASERBRAIN_GATE_MODE=hard since 2026-10-16, when
+    # the default became nudge (the step count never refuses). Pinned explicitly, not weakened.
+    env = dict(os.environ, LASERBRAIN_STATE_DIR=str(dirpath), LASERBRAIN_GATE_MODE='hard')
     env.pop('LASERBRAIN_MIN_COVERAGE', None)
     p = subprocess.run([sys.executable, str(GATE)], input=json.dumps(ev),
                        capture_output=True, text=True, env=env, timeout=120)
@@ -129,13 +131,34 @@ print('A WARNING IS NOT A BLOCK — the contract reads exit codes, not intent')
 with tempfile.TemporaryDirectory() as d:
     session(d, CONTROL, MID, [0])
     ev = {'session_id': CONTROL, 'tool_name': 'Read', 'tool_input': {'file_path': '/tmp/x'}}
-    env = dict(os.environ, LASERBRAIN_STATE_DIR=str(d))
+    # Pinned to hard, like the other two sites in this file: the middle-band warning this
+    # checks exists only there. (Left unpinned on 2026-10-16 it ran in nudge mode, printed
+    # nothing, and passed without testing anything — a checker caught it.)
+    env = dict(os.environ, LASERBRAIN_STATE_DIR=str(d), LASERBRAIN_GATE_MODE='hard')
     env.pop('LASERBRAIN_MIN_COVERAGE', None)
     p = subprocess.run([sys.executable, str(GATE)], input=json.dumps(ev),
                        capture_output=True, text=True, env=env, timeout=120)
     check('the warning exits 0', p.returncode == 0, f'exit {p.returncode}')
+    check('  and says so on stderr', 'Reads still pass' in (p.stderr or ''), (p.stderr or '')[:60])
     check('  and emits no deny payload', 'permissionDecision' not in (p.stdout or ''),
           'a deny-shaped warning would silently be a block')
+
+print()
+print('THE DEFAULT (nudge) NEVER REFUSES IN THE BAND EITHER — and still logs what hard would do')
+with tempfile.TemporaryDirectory() as d:
+    session(d, CONTROL, MID, [0])
+    for tool, ti in (('Read', {'file_path': '/tmp/x'}), ('Write', {'file_path': '/tmp/x', 'content': 'y'})):
+        ev = {'session_id': CONTROL, 'tool_name': tool, 'tool_input': ti}
+        env = dict(os.environ, LASERBRAIN_STATE_DIR=str(d))
+        env.pop('LASERBRAIN_MIN_COVERAGE', None)
+        env.pop('LASERBRAIN_GATE_MODE', None)
+        p = subprocess.run([sys.executable, str(GATE)], input=json.dumps(ev),
+                           capture_output=True, text=True, env=env, timeout=120)
+        check(f'nudge: a {tool} in the band exits 0 with no deny payload',
+              p.returncode == 0 and 'permissionDecision' not in (p.stdout or ''), f'exit {p.returncode}')
+    rows = [json.loads(x) for x in (pathlib.Path(d) / 'refusals.jsonl').read_text().splitlines()]
+    check('  and logs hard\'s decision for each: nudge-warn for the read, nudge-acting for the write',
+          [r['stage'] for r in rows] == ['nudge-warn', 'nudge-acting'], str([r['stage'] for r in rows]))
 
 print()
 print('AND BELOW THE THRESHOLD THE GATE IS STILL SILENT')
@@ -178,7 +201,7 @@ with tempfile.TemporaryDirectory() as d:
     _broken.write_text(GATE.read_text().replace(
         'arm = probe_arm(sid)', 'arm = probe_arm(undefined_name)', 1))
     _ev = {'session_id': CONTROL, 'tool_name': 'Write', 'tool_input': {'file_path': '/tmp/x'}}
-    _env = dict(os.environ, LASERBRAIN_STATE_DIR=str(d))
+    _env = dict(os.environ, LASERBRAIN_STATE_DIR=str(d), LASERBRAIN_GATE_MODE='hard')
     _env.pop('LASERBRAIN_MIN_COVERAGE', None)
     _r = subprocess.run([sys.executable, str(_broken)], input=json.dumps(_ev),
                         capture_output=True, text=True, env=_env, timeout=120)

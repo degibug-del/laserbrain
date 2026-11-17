@@ -1,5 +1,212 @@
 # Changelog
 
+## Unreleased - 2026-11-14
+
+### goal-drift is a note, not an interrupt (2026-11-15, change B)
+
+From research/DAY-FIVE-REAL-SESSIONS.md sections 3 to 5, approved by Diego on 2026-11-15.
+All 7 live goal-drift fires from Oct 17 to Nov 15 were false: 5 were his
+next ask or a new phase, 1 was a rewording, 1 was a redirect he made. In the July corpus
+goal-drift was 24 of 35 fires with 0 real. The reground-on-user-turn rule
+(consumeUserTurn / `user_turn=True`) already existed and did not stop them.
+
+**What changed, in all three implementations** (javascript/mcp-server.mjs, which runs live,
+and its copy in python/laserbrain; `Harness.check` in python/laserbrain/__init__.py;
+typescript/src/drift.ts):
+- A goal-overlap failure returns `drifting: false` and KEEPS reason `goal-drift`, so it is
+  still recorded in the drift log, still counted (judgment and control read `goal_drifts`),
+  and still comparable with the old corpus by reason. The rejected-parent variant is the
+  same and still reports `parent_overlap`.
+- The advice is a note, not an order. It keeps the three readings (the user redirected you:
+  reset_task; a sub-task: parent_goal; otherwise you may be on something else: compare your
+  goal with the ground), ends "Recorded, not an interrupt.", and no longer says "return".
+- goal-drift is no longer a first strike for the warn-then-interrupt rule: it left Python's
+  `_DRIFT`, drift.ts's `isDrift` and the server's two `_prev` lists. Before, a first
+  `stalled` or stuck/circling report right after a goal-drift interrupted; now it warns,
+  as it does after any other non-drift reading. `ungrammatical` is still a strike.
+- No live policy acts on it. grammar.json: `verdicts.interrupt` is now `["ungrammatical"]`
+  and goal-drift has its own `verdicts.note` class with the rule and the evidence;
+  goal-drift left `modulation.modes` and every depth, so `modulate` (server and
+  `laserbrain mcp`) answers `return: false` for it, styled or not, and `_style_return` is
+  False at every depth. lb_gate.py: `HARD_VERDICTS` is `('ungrammatical',)`, so no drift
+  gate mode (shadow, deny, signal) refuses or logs a would-be refusal on goal-drift. The
+  shadow and deny messages no longer quote goal-drift's 14.6% precision for other verdicts.
+- `laserbrain check --against` exits 0 on goal-drift, since its exit code follows
+  `drifting`. supercode `findings()` and research/dogfood.py count fires by `drifting`, so
+  goal-drift readings are no longer fires there; they are still rows with their reason.
+
+**What did not change.** The second signal is the escalation that already existed: when
+goal-drift has fired 3 or more times and more often than reground, control() returns
+decision `reground` (Python and the server; no pace or check-count condition, after the
+budget and prior-sessions `stop` rules), and the judgment returns `wrong-problem` after at
+least 3 checks when pace <= 0 too (drift.ts counts checks over the whole run). Neither rule,
+nor any threshold, moved. The overlap test, goal_min (0.30) and the user-turn reground are
+untouched. test_frozen.py still passes: it pins the reason, not the flag.
+
+**Grammar version not bumped.** The instructions for this change said no version bump, so
+grammar.json still says 2.0.3 with new content, and `content_hash` was left as it was.
+`node scripts/check-grammar-version.mjs` therefore fails ("The content changed and the
+version did not"), which is the true state: bump `laserbrain_grammar` and regenerate the
+hash at release.
+
+Tests: json/drift-vectors.json was re-run through the Python harness on its stored inputs;
+exactly 10 fields changed, all goal-drift `drifting` true -> false. New suites
+python/test_goal_drift_note.py and javascript/test_goal_drift_note.py, and a goal-drift
+section in typescript/test/parity.mjs. Suites that used goal-drift as their example of a
+hard verdict (test_drift_gate, test_gate_modes, test_nudge_default, test_operator_harness,
+test_adapters) now use `ungrammatical` for that and pin that goal-drift alone does nothing.
+
+**After review (same day).**
+- `review_verdicts` lists goal-drift readings again. It filtered on `drifting` before
+  `reason`, so `review_verdicts({reason:'goal-drift'})` returned only rows written before the
+  change and new goal-drift readings could never be labelled. A row is reviewable now if it
+  is drifting or its reason is goal-drift; the answer adds `notes` (how many of the listed
+  rows are drifting:false) and `drifting` per row. mark_verdict already accepted any row.
+- lb_gate.py: the deny/signal refusal named goal-drift's three remedies, including
+  parent_goal, which never cleared an ungrammatical reading. It now names the remedy for
+  the verdict that fired: re-spell a non-empty goal and one progress word. Signal mode
+  (research/EVAL-PLAN.md arm D, defined as "ON_DRIFT=deny, extended to ...") therefore
+  refuses on a narrower set than when the plan was written: goal-drift is no longer in it.
+
+**Comparing across the change.** Every drift-log row still says `grammar_version: 2.0.3`,
+and sessions that started before the change keep running the old server, so neither the
+version nor the timestamp separates the two meanings. Split by the rows themselves: a
+goal-drift row with `drifting: false` was written under the new contract, and one server
+process writes a whole run, so the contract is constant within a run. research/dogfood.py
+still counts fires by `drifting` (not changed here), so goal-drift notes drop out of its
+fires, hits and false alarms; compare fire counts before and after by `reason`.
+`review_verdicts` lists goal-drift either way (above). The old flag can be rebuilt exactly
+from rows of one run in order:
+
+    old_drifting = drifting
+                   or reason == 'goal-drift'
+                   or (reason == 'stalled' or reason.startswith('self-report'))
+                      and the previous check row in that run had reason 'goal-drift'
+
+Checked on 6 sequences driven through the pre-change and current stdio servers (goal-drift
+then stuck, then circling, a stall straddling a goal-drift, four goal-drifts in a row, a
+rejected parent, and stuck-stuck as a control): the rule gave the old flag on every check,
+in the responses and in the drift-log rows. Reasons were identical in both servers.
+
+**The blind/sighted probe (infra/BLIND-PROBE.md) is not affected.** A reviewer flagged it as still running, but its header records that it ENDED on 2026-08-21: `LASERBRAIN_BLIND_PROBE=1` was removed from the hook commands and `blind_arm` returns `sighted` for every unit. Checked 2026-11-15: every `blind` row in `blind-arms.jsonl` is from August; all 108 rows after 08-21 are `sighted`, and `~/.claude/settings.json` no longer sets the variable. The rebuild rule above is kept for anyone comparing drift rates across this change. Two rows from local test sessions (`lbtest-nogrok-0000`, `lbtest-askllm-e2e-…`) are in that log; drop sessions starting `lbtest-` in any analysis.
+
+**Still describing the old contract, outside the files this change touched** (each needs
+its owner): demos/02_refused.py prints that the third write was refused while it now runs,
+and demos/01_two_references.py says the frozen reference "fires" while it prints no fire;
+research/test_quantized.py and research/test_narrow_is_legal.py pin goal-drift as drifting
+and now fail (they pass against the pre-change package; neither pytest nor CI runs
+research/); python/laserbrain/cli.py labels a goal-drift reading "on track" and the demo
+still says it "returned it"; skills/laserbrain/SKILL.md (loaded by every session through
+~/.claude/skills/laserbrain), plugin/skills/drift/SKILL.md, README.md, python/README.md and
+typescript/README.md still describe goal-drift as drifting, a stop, or a refusal; typescript/src/grammar.ts
+(what drift.ts imports, at 2.0.2) still lists goal-drift under interrupt and modulation; and
+the hosted Worker still returns drifting:true for it, so `node typescript/vendor.mjs`, which
+`npm publish` runs first, would copy the old drift.ts, grammar.json and drift-vectors.json
+back over this change.
+
+### failed calls reach the hook, and printed text stops inventing catches (round 2, B3 and B4)
+
+From research/DAY-FOUR-ROUND2.md section 7. In round 2, 40 of 887 lbq tool calls never
+reached lb_coverage, and every one of the 28 "build catches" it recorded came from a
+command that exited 0.
+
+**B3: PostToolUseFailure is wired.** Claude Code skips PostToolUse when a call fails, and
+nothing listened on the failure event, so 26 lbq (19 offq) non-zero exits were never a
+step, a catch or evidence. `laserbrain install`, plugin/hooks/hooks.json and the docs now
+register lb_coverage on PostToolUseFailure, matcher `*`, with the PostToolUse command. An
+existing install gains just that entry. The 14 lb_safety blocks are most likely still
+unseen: Claude Code appears to call the failure hook only after permission has passed. That
+is read from its code, not observed.
+
+**Plugin users: the failure entry checks the package version.** hooks.json ships through the
+plugin marketplace and the package through pip, so the two can be out of step, and a
+laserbrain from before this change miscounts the failure event: a failed check_state becomes
+a check row, a failed reset_task archives and wipes the session, a gate refusal becomes a
+catch. So the plugin's PostToolUseFailure command runs lb_coverage only where
+`from laserbrain.runtime import tool_outcome` works. With an older package it does nothing
+and prints nothing, which is how Claude Code behaved before the event was wired; with no
+package it prints the usual "hooks are inert" notice. The other entries are unchanged.
+`laserbrain install` writes settings from the installed package itself, so it needs no such
+check. For a hand-wired settings.json, land this package before adding the entry.
+
+With the event arriving, four things are kept out of catches and evidence:
+- the coverage gate's refusal, now also read from the event's `error` field, where Claude
+  Code puts it (it sends no tool_response);
+- the enforced drift gate's refusal ("laserbrain drift gate:"). It blocks because a reading
+  fired, so its block coincides with a fire by construction;
+- the user pressing Esc (`is_interrupt`). The step still counts;
+- a failed check_state, reset_task or get_history, which is ignored entirely, as before. It
+  would otherwise have become a 'no-reading' check row, and a failed reset_task would have
+  archived the session.
+
+The claim gate's and lb_safety's refusals stay catches.
+
+**A refusal is recognised by its head.** A message (the event's `error`, or a text field of
+the response) is a refusal when it BEGINS with the deny text, bare or behind Claude Code's
+`PreToolUse:<Tool> hook error: [cmd]: ` prefix, and says THIS CALL DID NOT RUN within its
+first lines. All 474 hook denials in Diego's last 30 days of transcripts have that shape. A
+command that ran and failed starts with "Exit code N" instead. Quoting the deny text later
+does not count, which matters because laserbrain's own source, logs and suites quote it:
+- a red suite whose output quotes the gate stays a catch and an evidence `fail`;
+- a successful Read, grep, cat or Edit of gate source stays an evidence `ok`, and a grep
+  that prints "THIS CALL DID NOT RUN" is not a 'denied' catch. All 112 such successful
+  calls in those transcripts now classify as `ok` with no catch;
+- the hook's evidence leaves a refusal or an interrupt out only when the call did not
+  succeed.
+`is_self_refusal()`, the whole-text search, is kept unchanged for `_looks_failed` and the
+research suites; the live path uses `self_refused(ev)`.
+
+**B4: text fails a call only when the output ends in a red verdict.** Before, any
+_FAIL_PATTERNS phrase in the first 4000 characters of json.dumps(response) did, so
+`git status` outside a repo ("fatal:"), a `cat` of source containing AssertionError and
+errors the worker provoked on purpose were all catches. The rule now has two parts:
+- the structural checks, unchanged: the failure event, exit code, error flags, a string
+  that begins "error";
+- red test-runner and build verdicts (unittest, pytest, jest, xcodebuild) read from the
+  decoded output. The last verdict wins. An output that begins with a hook's denial (as
+  above) is red too: that call did not run.
+
+Every verdict pattern is linear in the output's length. Jest's `^Tests?:\s+.*` and the
+unittest green pattern's `\s*\n\s*\n` had overlapping parts that made one 30,000-character
+output cost seconds; both were rewritten to split one way, with the same verdicts. One event
+is classified twice per hook call (evidence, then the session), not three times.
+
+Verdicts are kept because a pipe hides a red suite's exit status from every host. 108 lbq
+calls exited 0 with a red unittest verdict, and the old scan saw 8 of them, for two reasons:
+its `^` anchors could not see lines in escaped JSON, and the 4000-character cut came before
+unittest's verdict. File-content and subagent tools (Read, Write, Edit, Task, ...) are never
+text-scanned. lb_coverage's evidence now uses the same classifier as the catch
+(runtime.tool_outcome). `_looks_failed` and `_FAIL_PATTERNS` stay importable for the
+research suites and are no longer called.
+
+Replaying all 1539 round-2 calls, with the earlier text catches labelled by hand, gives:
+
+| arm | rule | catches | false |
+|---|---|---|---|
+| lbq | before | 28 | 16 |
+| lbq | before, with B3 delivery | 54 | 23 |
+| lbq | after, with B3 delivery | 134 | 7 |
+| offq | before | 38 | 28 |
+| offq | after, with B3 delivery | 148 | 4 |
+
+All 7 lbq false catches after the fix are structural (git exit 128 in eval worktrees, a zsh
+NOMATCH), and none comes from text.
+
+**Catch rows carry `via`**: one of 'event', 'exit', 'flag', 'verdict' or 'denied' (a hook
+refused it). It is written only on new catches, so rows from before the fix have none.
+
+**Not comparable across the change.** Catches and evidence from before and after
+2026-11-14 measure different things:
+- failed calls are now steps, so coverage falls and, under LASERBRAIN_GATE_MODE=hard, the
+  step gate refuses earlier;
+- exit-0 noise is no longer a catch, and red suites behind a pipe now are;
+- an exit-0 red run now counts as an evidence `fail`, not an `ok`.
+
+Hard-arm and catch data must be split at this date. Not changed: mcp-server.mjs, lb_gate,
+lb_safety, and the lasergear and ~/.grok copies. The hook's embedded fallback gains the
+refusal, interrupt and bookkeeping exclusions and the reply label, but no verdict scan: it
+stays structural only. Grok picks the rule up through its runtime import.
+
 ## 0.55.0 - 2026-08-22
 
 ### one implementation behind every door, and the offline server stops being a stub

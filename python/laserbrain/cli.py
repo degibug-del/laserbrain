@@ -50,14 +50,18 @@ def _demo() -> int:
             tag = _c("⚑ DRIFT → return", RED)
         elif v.reason == "grounded":
             tag = _c("· grounded", DIM)
+        elif v.reason == "goal-drift":
+            tag = _c("◦ goal moved (note)", GOLD)
         else:
             tag = _c("· on track", DIM)
         print(f"    {goal[:38]:38} {dist:>4} {v.phi:>6.2f}  {v.reason:12} {tag}")
-        if v.drifting:
+        if v.drifting or v.reason == "goal-drift":
             print(f"    {'':38} {'':>4} {'':>6}  {_c('↩ ' + v.advice, GOLD)}")
     print()
     print("  It left its goal for a single step. Watching only itself, it wouldn't have noticed —")
-    print("  laserbrain saw it against the fixed reference and returned it, so it " + _c("finished", GREEN) + ".")
+    print("  laserbrain marked the move against the fixed reference, the agent came back, and it " + _c("finished", GREEN) + ".")
+    print("  (A goal that moves is a note, not an interrupt: on its own the wording was usually a")
+    print("  redirect or a new phase. Repeated with no re-ground, it escalates in `judgment`.)")
     print()
     print("  " + _c("from laserbrain import Harness", GOLD) + "   →   Harness().check(goal=…, progress=…, distance=…)")
     print()
@@ -78,6 +82,8 @@ def _verdict_line(v: Verdict) -> str:
         head = _c("⚑ drifting", RED)
     elif v.reason == "grounded":
         head = _c("✓ grounded", GREEN)
+    elif v.reason == "goal-drift":
+        head = _c("◦ goal moved (note)", GOLD)
     else:
         head = _c("· on track", DIM)
     return f"[{head}] {v.reason}  Φ={v.phi:.2f}  ground={ground_score(v.phi):.2f}\n  {_c(v.advice, DIM)}"

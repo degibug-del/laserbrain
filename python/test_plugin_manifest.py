@@ -80,8 +80,11 @@ show('it points at the hosted worker',
 
 print('\n  every hook fails open — the load-bearing property')
 hooks = manifests.get('hooks/hooks.json', {}).get('hooks', {})
-show('all three events are wired',
-     set(hooks) == {'PreToolUse', 'PostToolUse', 'UserPromptSubmit'}, str(sorted(hooks)))
+# PostToolUseFailure since 2026-11-14 (round 2 B3): Claude Code skips PostToolUse for a
+# failed call, so without it 26 lbq non-zero exits never reached lb_coverage.
+show('all four events are wired',
+     set(hooks) == {'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit'},
+     str(sorted(hooks)))
 cmds = [h['command']
         for groups in hooks.values() for g in groups for h in g.get('hooks', [])]
 
@@ -107,6 +110,26 @@ show('lb_gate and lb_safety both run on PreToolUse',
      sorted(modname(h['command'])
             for g in hooks.get('PreToolUse', []) for h in g.get('hooks', []))
      == ['lb_gate', 'lb_safety'], 'PreToolUse')
+_fail_cmds = [h['command'] for g in hooks.get('PostToolUseFailure', []) for h in g.get('hooks', [])]
+_post_cmds = [h['command'] for g in hooks.get('PostToolUse', []) for h in g.get('hooks', [])]
+show('PostToolUseFailure runs lb_coverage only',
+     [modname(c) for c in _fail_cmds] == ['lb_coverage'], str([modname(c) for c in _fail_cmds]))
+# The PostToolUse command with ONE difference, the guard (B3/B4 review, 2026-11-14). This file
+# ships through the plugin marketplace and the package through pip, and a package from before
+# 2026-11-14 miscounts failure events (a failed check_state becomes a check row, a failed
+# reset_task wipes the session). So this entry runs only where runtime.tool_outcome imports,
+# stays silent where an older laserbrain does, and prints the usual notice where none does.
+_GUARD_OLD = ("if [ -n \"$LB_PY\" ] && \"$LB_PY\" -c 'import laserbrain' 2>/dev/null; "
+              "then LASERBRAIN_AGENT=claude \"$LB_PY\" -m laserbrain.hooks.lb_coverage; else")
+_GUARD_NEW = ("if [ -n \"$LB_PY\" ] && \"$LB_PY\" -c 'from laserbrain.runtime import tool_outcome' "
+              "2>/dev/null; then LASERBRAIN_AGENT=claude \"$LB_PY\" -m laserbrain.hooks.lb_coverage; "
+              "elif [ -n \"$LB_PY\" ] && \"$LB_PY\" -c 'import laserbrain' 2>/dev/null; then :; else")
+show('…with the PostToolUse command except its guard, which needs runtime.tool_outcome',
+     len(_fail_cmds) == 1 and len(_post_cmds) == 1 and _post_cmds[0].count(_GUARD_OLD) == 1
+     and _fail_cmds[0] == _post_cmds[0].replace(_GUARD_OLD, _GUARD_NEW), 'PostToolUseFailure')
+show('…and matcher "*", as PostToolUse',
+     [g.get('matcher') for g in hooks.get('PostToolUseFailure', [])] == ['*'],
+     str([g.get('matcher') for g in hooks.get('PostToolUseFailure', [])]))
 for c in cmds:
     name = modname(c)
     # Fails open: every branch reaches exit 0. Denial travels as stdout JSON
@@ -133,6 +156,51 @@ guarded = subprocess.run(
     capture_output=True)
 show('an unguarded missing module exits non-zero', bare.returncode != 0, str(bare.returncode))
 show('the guarded form exits 0', guarded.returncode == 0, str(guarded.returncode))
+
+print('\n  the PostToolUseFailure guard tells a current package from an older one')
+# Three fake `laserbrain` packages on PYTHONPATH, run through the real command string: one
+# with runtime.tool_outcome (runs the hook), one without (an older pip install: runs nothing,
+# says nothing), and none at all (the inert notice). The fake hook module only writes a
+# marker, so nothing real runs. The interpreter is wrapped in `-S` so an installed laserbrain
+# in site-packages cannot stand in for the fakes, HOME is the temp dir, and TMPDIR keeps the
+# notice's marker file there too.
+import os                                                          # noqa: E402
+import tempfile                                                    # noqa: E402
+if _fail_cmds:
+    _tmp = pathlib.Path(tempfile.mkdtemp(prefix='lbguard-'))
+    _py = _tmp / 'py-nosite'
+    _py.write_text(f'#!/bin/sh\nexec "{sys.executable}" -S "$@"\n')
+    _py.chmod(0o755)
+
+    def _fake(name, runtime_src):
+        pkg = _tmp / name / 'laserbrain'
+        (pkg / 'hooks').mkdir(parents=True)
+        (pkg / '__init__.py').write_text('')
+        (pkg / 'hooks' / '__init__.py').write_text('')
+        (pkg / 'runtime.py').write_text(runtime_src)
+        (pkg / 'hooks' / 'lb_coverage.py').write_text(
+            f"import pathlib; pathlib.Path({str(_tmp / (name + '.ran'))!r}).write_text('ran')\n")
+        return str(_tmp / name)
+
+    _cases = {'current': _fake('current', 'def tool_outcome(ev):\n    return True, ""\n'),
+              'older': _fake('older', '# a laserbrain from before 2026-11-14\n'),
+              'none': str(_tmp / 'empty')}
+    (_tmp / 'empty').mkdir()
+    _res = {}
+    for _name, _pp in _cases.items():
+        _env = {k: v for k, v in os.environ.items() if not k.startswith('LASERBRAIN')}
+        _env.update(PYTHONPATH=_pp, LASERBRAIN_PYTHON=str(_py), HOME=str(_tmp),
+                    TMPDIR=str(_tmp / f'tmp-{_name}'))
+        (_tmp / f'tmp-{_name}').mkdir()
+        _r = subprocess.run(['sh', '-c', _fail_cmds[0]], input='{}', capture_output=True,
+                            text=True, env=_env, cwd=str(_tmp), timeout=60)
+        _res[_name] = (_r.returncode, (_tmp / f'{_name}.ran').exists(),
+                       'laserbrain hooks are inert' in _r.stderr)
+    show('a current package runs the hook', _res['current'] == (0, True, False), str(_res['current']))
+    show('an older package runs nothing and prints nothing', _res['older'] == (0, False, False),
+         str(_res['older']))
+    show('no package prints the inert notice and exits 0', _res['none'] == (0, False, True),
+         str(_res['none']))
 
 print('\n  the skill and command came along')
 show('the drift skill is present', (ROOT / 'skills/drift/SKILL.md').is_file())
