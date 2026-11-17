@@ -85,7 +85,9 @@ print()
 print('but an UNDECLARED goal change is still drift — the fix must not erase the rule')
 v2 = run().check(SMALL, 'advancing', 5)
 check('no parent -> goal-drift', v2.reason == 'goal-drift', v2.reason)
-check('  and it IS drifting', bool(v2.drifting))
+# Since 2026-11-15 goal-drift is a note (drifting False): the rule is kept as a reading,
+# not an interrupt. The reason above is what must not be erased.
+check('  and it is recorded as a note, not an interrupt', not v2.drifting)
 
 print()
 print('and the counsel names the mechanism, so obeying it is not a trap')

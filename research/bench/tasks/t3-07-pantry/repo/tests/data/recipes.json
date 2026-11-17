@@ -1,0 +1,47 @@
+{
+  "records": [
+    {
+      "name": "pancakes",
+      "serves": 4,
+      "items": [
+        {
+          "ingredient": "flour",
+          "qty": 200,
+          "unit": "g"
+        },
+        {
+          "ingredient": "milk",
+          "qty": 300,
+          "unit": "ml"
+        },
+        {
+          "ingredient": "sugar",
+          "qty": 2,
+          "unit": "Tbsp"
+        }
+      ]
+    },
+    {
+      "name": "cookies",
+      "serves": 12,
+      "items": [
+        {
+          "ingredient": "Flour",
+          "qty": 250,
+          "unit": "grams"
+        },
+        {
+          "ingredient": "sugar",
+          "qty": 0.5,
+          "unit": "cup"
+        },
+        {
+          "ingredient": "butter",
+          "qty": 115,
+          "unit": "g"
+        }
+      ]
+    }
+  ],
+  "checksum": "4999a07fcb3dd480ca40cf3e42e211521731418fe7c470bc6b46747a7eb4da39"
+}

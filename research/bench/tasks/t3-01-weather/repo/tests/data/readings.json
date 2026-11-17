@@ -1,0 +1,35 @@
+{
+  "records": [
+    {
+      "station": "KSEA",
+      "temp": 12.0,
+      "unit": "C"
+    },
+    {
+      "station": "KSEA",
+      "temp": 59.0,
+      "unit": "F"
+    },
+    {
+      "station": "KSEA",
+      "temp": null,
+      "unit": "C"
+    },
+    {
+      "station": "KPDX",
+      "temp": 20.5,
+      "unit": "C"
+    },
+    {
+      "station": "KPDX",
+      "temp": 18.5,
+      "unit": "C"
+    },
+    {
+      "station": "KBOI",
+      "temp": null,
+      "unit": "F"
+    }
+  ],
+  "digest": "33a2964fb3939f38d432b766e843b43b2badcecfdd4da4dbdce74f9b1d9823d5"
+}

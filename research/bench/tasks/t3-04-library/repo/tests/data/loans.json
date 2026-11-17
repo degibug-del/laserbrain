@@ -1,0 +1,35 @@
+{
+  "records": [
+    {
+      "member": "ana",
+      "title": "Dune",
+      "due": "2026-10-01",
+      "returned": null
+    },
+    {
+      "member": "bo",
+      "title": "Emma",
+      "due": "2026-10-10",
+      "returned": null
+    },
+    {
+      "member": "ana",
+      "title": "Kim",
+      "due": "2026-10-16",
+      "returned": null
+    },
+    {
+      "member": "cy",
+      "title": "Ulysses",
+      "due": "2026-09-01",
+      "returned": "2026-09-20"
+    },
+    {
+      "member": "bo",
+      "title": "Beloved",
+      "due": "2026-10-01",
+      "returned": null
+    }
+  ],
+  "seal": "ec97c49d74ffb48637c069e94b92f6c3948d2c297853a4beb47bf30b6383818e"
+}

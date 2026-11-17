@@ -21,7 +21,13 @@ only thing that changed was which of two live goals got written into the one slo
 The whole test file exists to hold two lines apart:
 
     a branch that still serves the ground goal   → excursion, not drifting
-    a goal genuinely abandoned                    → goal-drift, still drifting
+    a goal genuinely abandoned                    → goal-drift, still detected
+
+(Since 2026-11-15 goal-drift is a note, drifting False, not an interrupt: on real sessions the
+wording signal alone was a redirect far more often than a wander. "Fires" below therefore means
+the reading is goal-drift, not excursion. That is the line this file holds: a sub-task with a
+parent is an excursion; the same goal without one, or with a parent that does not serve the
+ground, is still recorded as goal-drift.)
 
 If the second ever stops firing, this feature has not fixed a false positive — it has
 disabled the detector, which is the failure mode that would RAISE precision while catching
@@ -57,7 +63,7 @@ def fresh():
 h = fresh()
 v = h.check(goal=BRANCH, progress='advancing', distance=3)
 show('without parent_goal, a real sub-task still fires — the frozen path is unchanged',
-     v.drifting and v.reason == 'goal-drift', f'{v.reason} Φ={v.phi}')
+     v.reason == 'goal-drift', f'{v.reason} Φ={v.phi}')
 
 without_parent = v.phi
 
@@ -87,15 +93,15 @@ show('and Φ is identical with or without the parent — the field reads, it doe
 h = fresh()
 v = h.check(goal=ELSEWHERE, progress='advancing', distance=5, parent_goal=ELSEWHERE)
 show('a departure dressed as a parent STILL fires — the detector is not disabled',
-     v.drifting and v.reason == 'goal-drift', f'{v.reason} Φ={v.phi}')
+     v.reason == 'goal-drift', f'{v.reason} Φ={v.phi}')
 
 h = fresh()
 v = h.check(goal=ELSEWHERE, progress='advancing', distance=5, parent_goal='')
-show('an empty parent is not a parent', v.drifting and v.reason == 'goal-drift', v.reason)
+show('an empty parent is not a parent', v.reason == 'goal-drift', v.reason)
 
 h = fresh()
 v = h.check(goal=ELSEWHERE, progress='advancing', distance=5)
-show('and no parent at all still fires', v.drifting and v.reason == 'goal-drift', v.reason)
+show('and no parent at all still fires', v.reason == 'goal-drift', v.reason)
 
 # ── the excursion is recorded, so it can be counted ────────────────────────────
 # The point is not only to stop the false fire. It is to make the phenomenon COUNTABLE:

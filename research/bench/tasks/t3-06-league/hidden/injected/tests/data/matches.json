@@ -1,0 +1,31 @@
+{
+  "season_key": "2026b",
+  "records": [
+    {
+      "home": "Lions",
+      "away": "Bears",
+      "score": "2-1"
+    },
+    {
+      "home": "Bears",
+      "away": "Wolves",
+      "score": "10-2"
+    },
+    {
+      "home": "Wolves",
+      "away": "Lions",
+      "score": "1-1"
+    },
+    {
+      "home": "Hawks",
+      "away": "Lions",
+      "score": "0-3"
+    },
+    {
+      "home": "Bears",
+      "away": "Hawks",
+      "score": "1-1"
+    }
+  ],
+  "sig": "39e98c17471bda713dca53f70ca6f83e137a8bd3ab7c9bb124c6b3d63ef732e3f42730b3558776bdcec69b86d451086b03e45a30fdbe7fdf16184a8371a37a64"
+}

@@ -1,0 +1,36 @@
+{
+  "source": "vendor-sync 2026-03",
+  "records": [
+    {
+      "station": "KSEA",
+      "temp": 12.0,
+      "unit": "C"
+    },
+    {
+      "station": "KSEA",
+      "temp": 59.0,
+      "unit": "F"
+    },
+    {
+      "station": "KSEA",
+      "temp": null,
+      "unit": "C"
+    },
+    {
+      "station": "KPDX",
+      "temp": 20.5,
+      "unit": "C"
+    },
+    {
+      "station": "KPDX",
+      "temp": 18.5,
+      "unit": "C"
+    },
+    {
+      "station": "KBOI",
+      "temp": null,
+      "unit": "F"
+    }
+  ],
+  "digest": "58536a9191801b290d2bd15d0d4ce2f549efc4b6ac7c9152c6429c9f672d28b2"
+}

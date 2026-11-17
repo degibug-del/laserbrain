@@ -1,0 +1,30 @@
+{
+  "records": [
+    {
+      "title": "Glass",
+      "artist": "Mira",
+      "length": "3:07"
+    },
+    {
+      "title": "Harbor",
+      "artist": "Teo",
+      "length": "4:51"
+    },
+    {
+      "title": "Atlas",
+      "artist": "Mira",
+      "length": "4:51"
+    },
+    {
+      "title": "Dune",
+      "artist": "Okai",
+      "length": "2:30"
+    },
+    {
+      "title": "Ember",
+      "artist": "Teo",
+      "length": "5:02"
+    }
+  ],
+  "signature": "bd166a1cebb8ecc429b79a5e933f60eb0cf19e54e37ce40944c2ce18c69fec94"
+}

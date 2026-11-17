@@ -1,0 +1,8 @@
+# names nobody may register
+admin
+root
+support
+
+help
+moderator
+system

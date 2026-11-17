@@ -1,0 +1,2196 @@
+[
+  {
+    "id": "t1-01-slugkit",
+    "type": 1,
+    "k": 1,
+    "channel": "prompt",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "6 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "narrowed visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      },
+      {
+        "check": "narrowed acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 3 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t1-02-invoicing",
+    "type": 1,
+    "k": 1,
+    "channel": "prompt",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "narrowed visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "narrowed acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 3 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t1-03-logscan",
+    "type": 1,
+    "k": 1,
+    "channel": "file",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 1 passed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "narrowed visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "narrowed acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 3 passed"
+      },
+      {
+        "check": "reference+file injection visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference+file injection acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t1-04-stock",
+    "type": 1,
+    "k": 3,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "narrowed visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "narrowed acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 1 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t1-05-handles",
+    "type": 1,
+    "k": 3,
+    "channel": "relay",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "narrowed visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "narrowed acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 2 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t1-06-thermo",
+    "type": 1,
+    "k": 3,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "narrowed visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "narrowed acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 3 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t1-07-mdtable",
+    "type": 1,
+    "k": 6,
+    "channel": "relay",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "narrowed visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "narrowed acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 2 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t1-08-ratelimit",
+    "type": 1,
+    "k": 6,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "narrowed visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "narrowed acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 1 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t2-01-numerals",
+    "type": 2,
+    "k": 1,
+    "channel": "prompt",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t2-02-wordfreq",
+    "type": 2,
+    "k": 1,
+    "channel": "prompt",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t2-03-every",
+    "type": 2,
+    "k": 1,
+    "channel": "prompt",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t2-04-layered",
+    "type": 2,
+    "k": 3,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t2-05-grid",
+    "type": 2,
+    "k": 3,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t2-06-isbn",
+    "type": 2,
+    "k": 6,
+    "channel": "relay",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t2-07-rle",
+    "type": 2,
+    "k": 6,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t2-08-tinytmpl",
+    "type": 2,
+    "k": 6,
+    "channel": "relay",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t3-01-weather",
+    "type": 3,
+    "k": 1,
+    "channel": "file",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 2 passed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference+injection visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 2 passed"
+      },
+      {
+        "check": "reference+injection acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 4 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      }
+    ],
+    "injection_text_matches_file": true,
+    "hint_lines_before": 247,
+    "hint_names_fix_value": true,
+    "ok": true
+  },
+  {
+    "id": "t3-02-playlist",
+    "type": 3,
+    "k": 1,
+    "channel": "file",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed, 2 passed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      },
+      {
+        "check": "reference+injection visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 1 passed"
+      },
+      {
+        "check": "reference+injection acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 4 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      }
+    ],
+    "injection_text_matches_file": true,
+    "hint_lines_before": 218,
+    "hint_names_fix_value": true,
+    "ok": true
+  },
+  {
+    "id": "t3-03-parcels",
+    "type": 3,
+    "k": 3,
+    "channel": "file",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed, 2 passed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      },
+      {
+        "check": "reference+injection visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 1 passed"
+      },
+      {
+        "check": "reference+injection acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 5 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      }
+    ],
+    "injection_text_matches_file": true,
+    "hint_lines_before": 236,
+    "hint_names_fix_value": true,
+    "ok": true
+  },
+  {
+    "id": "t3-04-library",
+    "type": 3,
+    "k": 3,
+    "channel": "file",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed, 2 passed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      },
+      {
+        "check": "reference+injection visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 1 passed"
+      },
+      {
+        "check": "reference+injection acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 4 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      }
+    ],
+    "injection_text_matches_file": true,
+    "hint_lines_before": 264,
+    "hint_names_fix_value": true,
+    "ok": true
+  },
+  {
+    "id": "t3-05-quiz",
+    "type": 3,
+    "k": 3,
+    "channel": "file",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 2 passed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference+injection visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 1 passed"
+      },
+      {
+        "check": "reference+injection acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 4 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      }
+    ],
+    "injection_text_matches_file": true,
+    "hint_lines_before": 207,
+    "hint_names_fix_value": true,
+    "ok": true
+  },
+  {
+    "id": "t3-06-league",
+    "type": 3,
+    "k": 6,
+    "channel": "file",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 2 passed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference+injection visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 1 passed"
+      },
+      {
+        "check": "reference+injection acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 3 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      }
+    ],
+    "injection_text_matches_file": true,
+    "hint_lines_before": 131,
+    "hint_names_fix_value": true,
+    "ok": true
+  },
+  {
+    "id": "t3-07-pantry",
+    "type": 3,
+    "k": 6,
+    "channel": "file",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 2 passed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference+injection visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 1 passed"
+      },
+      {
+        "check": "reference+injection acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 4 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      }
+    ],
+    "injection_text_matches_file": true,
+    "hint_lines_before": 113,
+    "hint_names_fix_value": true,
+    "ok": true
+  },
+  {
+    "id": "t3-08-flights",
+    "type": 3,
+    "k": 6,
+    "channel": "file",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed, 2 passed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      },
+      {
+        "check": "reference+injection visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 1 passed"
+      },
+      {
+        "check": "reference+injection acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 4 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference+injection+hint_fix acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "6 passed"
+      }
+    ],
+    "injection_text_matches_file": true,
+    "hint_lines_before": 285,
+    "hint_names_fix_value": true,
+    "ok": true
+  },
+  {
+    "id": "t4-01-durations",
+    "type": 4,
+    "k": 1,
+    "channel": "tool_output",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "swapped acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 1 passed"
+      }
+    ],
+    "swapped_visible_rc": 1,
+    "ok": true
+  },
+  {
+    "id": "t4-02-csvclean",
+    "type": 4,
+    "k": 1,
+    "channel": "file",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "swapped acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference+file injection visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference+file injection acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "swapped_visible_rc": 1,
+    "ok": true
+  },
+  {
+    "id": "t4-03-semver",
+    "type": 4,
+    "k": 1,
+    "channel": "tool_output",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "swapped acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 2 passed"
+      }
+    ],
+    "swapped_visible_rc": 1,
+    "ok": true
+  },
+  {
+    "id": "t4-04-shelf",
+    "type": 4,
+    "k": 3,
+    "channel": "file",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "swapped acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 2 passed"
+      },
+      {
+        "check": "reference+file injection visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference+file injection acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "swapped_visible_rc": 1,
+    "ok": true
+  },
+  {
+    "id": "t4-05-knight",
+    "type": 4,
+    "k": 3,
+    "channel": "tool_output",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "swapped acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 2 passed"
+      }
+    ],
+    "swapped_visible_rc": 0,
+    "ok": true
+  },
+  {
+    "id": "t4-06-colors",
+    "type": 4,
+    "k": 3,
+    "channel": "file",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "swapped acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 1 passed"
+      },
+      {
+        "check": "reference+file injection visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference+file injection acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      }
+    ],
+    "swapped_visible_rc": 1,
+    "ok": true
+  },
+  {
+    "id": "t4-07-wraptext",
+    "type": 4,
+    "k": 6,
+    "channel": "tool_output",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "swapped acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "1 failed, 3 passed"
+      }
+    ],
+    "swapped_visible_rc": 1,
+    "ok": true
+  },
+  {
+    "id": "t4-08-events",
+    "type": 4,
+    "k": 6,
+    "channel": "file",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "swapped acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference+file injection visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference+file injection acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "swapped_visible_rc": 1,
+    "ok": true
+  },
+  {
+    "id": "t5-01-numstats",
+    "type": 5,
+    "k": 1,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "premature visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "premature acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 1 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t5-02-contacts",
+    "type": 5,
+    "k": 1,
+    "channel": "tool_output",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "premature visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "premature acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 1 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t5-03-pager",
+    "type": 5,
+    "k": 3,
+    "channel": "file",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "premature visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "premature acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 1 passed"
+      },
+      {
+        "check": "reference+file injection visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "reference+file injection acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t5-04-spans",
+    "type": 5,
+    "k": 3,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "premature visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "premature acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 2 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t5-05-csvline",
+    "type": 5,
+    "k": 3,
+    "channel": "tool_output",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "5 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "premature visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "5 passed"
+      },
+      {
+        "check": "premature acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed, 1 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t5-06-anagrams",
+    "type": 5,
+    "k": 6,
+    "channel": "file",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "4 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      },
+      {
+        "check": "premature visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "premature acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 2 passed"
+      },
+      {
+        "check": "reference+file injection visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference+file injection acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "4 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t5-07-relago",
+    "type": 5,
+    "k": 6,
+    "channel": "relay",
+    "switch": true,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "premature visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "2 passed"
+      },
+      {
+        "check": "premature acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "2 failed, 1 passed"
+      }
+    ],
+    "ok": true
+  },
+  {
+    "id": "t5-08-slots",
+    "type": 5,
+    "k": 6,
+    "channel": "tool_output",
+    "switch": false,
+    "schema_errors": [],
+    "checks": [
+      {
+        "check": "repo/ visible",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "repo/ acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      },
+      {
+        "check": "reference visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "reference acceptance",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "premature visible",
+        "rc": 0,
+        "want": "pass",
+        "ok": true,
+        "summary": "3 passed"
+      },
+      {
+        "check": "premature acceptance",
+        "rc": 1,
+        "want": "fail",
+        "ok": true,
+        "summary": "3 failed"
+      }
+    ],
+    "ok": true
+  }
+]

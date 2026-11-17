@@ -1,0 +1,30 @@
+{
+  "records": [
+    {
+      "home": "Lions",
+      "away": "Bears",
+      "score": "2-1"
+    },
+    {
+      "home": "Bears",
+      "away": "Wolves",
+      "score": "10-2"
+    },
+    {
+      "home": "Wolves",
+      "away": "Lions",
+      "score": "1-1"
+    },
+    {
+      "home": "Hawks",
+      "away": "Lions",
+      "score": "0-3"
+    },
+    {
+      "home": "Bears",
+      "away": "Hawks",
+      "score": "1-1"
+    }
+  ],
+  "sig": "21ccd53d4bfdf52ff153a4b96f0da9b29eedabce9bd17361336d4d9ed415b293f04ebebaedff1921b78b07d2f035e7d00ba137af1f5a764ae8c19e933be20198"
+}

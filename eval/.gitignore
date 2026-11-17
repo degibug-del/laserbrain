@@ -1,0 +1,5 @@
+# transcript-derived data (Diego's messages, task texts): keep out of any public push
+*.jsonl
+# model replies (may quote the task texts) and day-two results: local only
+llm-cache/
+day2-*

@@ -1,0 +1,21 @@
+{
+  "records": [
+    {
+      "id": "q1",
+      "answer": "Paris"
+    },
+    {
+      "id": "q2",
+      "answer": "4"
+    },
+    {
+      "id": "q3",
+      "answer": "Mercury"
+    },
+    {
+      "id": "q4",
+      "answer": "H2O"
+    }
+  ],
+  "fingerprint": "6c8863b03d697473290dfed03fa9678f701ca8ba"
+}
