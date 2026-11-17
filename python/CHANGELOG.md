@@ -2,6 +2,46 @@
 
 ## Unreleased - 2026-11-14
 
+### Session files survive parallel hook calls (2026-11-16)
+
+The B6/B7 entry below listed "Session.save is an unlocked read-then-write" as a known limit.
+It was worse than a lost step. Each hook call is its own process, and parallel tool calls and
+subagents share a session_id. `save()` truncated the file and then wrote it, so a process that
+read mid-write got an empty or partial file, `_load` fell back to a FRESH session, and its save
+wiped the goal, steps, checks, catches and events of the whole session.
+
+Measured on the old code, real hook, throwaway HOME, N parallel PostToolUse calls:
+
+| N | steps kept | runs whose goal and checks were wiped |
+|---|---|---|
+| 12 | 11-12 of 12 | 0 of 3 |
+| 48 | 2-45 of 48 | 4 of 6 |
+| 96 | 5-70 of 96 | 3 of 3 |
+
+- Every read-modify-write of `<sid>.json`, in `runtime.Session` and in the lb_coverage
+  fallback path, now runs under one exclusive lock per session: `flock` on a sidecar
+  `<sid>.json.lock`, re-entrant within a process. The wait is bounded (2 s,
+  `LASERBRAIN_LOCK_WAIT`) and then the write proceeds. A call that already gave up does not
+  wait a second time; the review found the bound was really 4 s, and 6 s on camelCase hosts.
+- Every write is atomic: a per-process temp file in the same directory, then `os.replace`.
+  Readers (lb_gate, cli, research scripts) never see a partial file.
+- Inside the lock a session re-reads the file and keeps what siblings wrote since it loaded.
+  A file that is still unparseable inside the lock is copied to `<sid>.json.corrupt` before
+  anything is written over it.
+- `<sid>.agents.json` uses the same bounded sidecar lock and atomic write; its flock used to
+  have no bound. `_evidence.bump` uses a per-process temp name.
+- New `test_session_race.py` (37 checks): parallel calls keep every step, goal and checks
+  survive, no partial reads, the bound holds on both paths, and two Sessions in one process
+  never deadlock. On the old code it fails 14 of 24 of its checks.
+- After: 12, 24, 48 and 96 parallel calls kept every step in every run, with 0 partial reads
+  in about 4,000 reads per run. A whole hook call takes the same ~90 ms (Python startup
+  dominates); the lock and atomic write add ~0.15 ms in process.
+- Known limits: past the 2 s bound the write goes ahead unlocked by design; 256 parallel calls
+  on a 4.4 MB session file kept 153 of 192 steps (the largest real file is 887 KB).
+  `evidence.json` counters can still miss increments under parallel calls; `_evidence.py`
+  accepts that, and the torn read that reset them is gone. Built and reviewed by a workflow:
+  one builder, two reviewers, one fixer.
+
 ### contexts.json is capped, and test_mirror measures the mirror again (2026-11-16)
 
 `test_mirror.py` had failed since September (~23 ms per check against the 20 ms its stub

@@ -409,7 +409,7 @@ def _record_evidence(ok, sig=''):
         d['steps'] = int(d.get('steps', 0)) + 1
 
         EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
-        EVIDENCE.write_text(json.dumps(d))
+        _write_atomic(EVIDENCE, json.dumps(d))    # a reader never sees half of it
     except Exception:
         pass
 
@@ -537,12 +537,16 @@ def _probe_arm(sid):
         return None
 
 
+def _fresh_state(path):
+    return {'id': path.stem, 'started': datetime.datetime.now().isoformat(timespec='seconds'),
+            'goal': None, 'steps': 0, 'checks': [], 'inferred': [], 'catches': [], 'events': []}
+
+
 def load(path):
     try:
         d = json.loads(path.read_text())
     except Exception:
-        d = {'id': path.stem, 'started': datetime.datetime.now().isoformat(timespec='seconds'),
-             'goal': None, 'steps': 0, 'checks': [], 'inferred': [], 'catches': [], 'events': []}
+        d = _fresh_state(path)
     # probe_arm is NOT stamped here any more. It was, for a day, and lost every single
     # write: the SDK's Session in laserbrain/runtime.py owns the same file, holds its dict
     # in memory across this hook's writes, and saves the whole thing back — so the last
@@ -550,6 +554,174 @@ def load(path):
     # arm, including the live one, so the probe was applying arms and recording none.
     # lb_gate.record_arm appends it to probe-arms.jsonl instead, where there is one writer.
     return d
+
+
+# ── one writer at a time, never half a file ─────────────────────────────────────────────
+# This hook's copy of laserbrain.runtime.session_lock / write_atomic, for the fallback path,
+# which runs exactly when that module cannot be imported. The rule and the lock file are the
+# same (<sid>.json.lock, flock, bounded wait then proceed, released when the process exits);
+# see the note above runtime.session_lock for the race it closes and the numbers.
+# test_session_race.py holds one copy's lock and checks the other waits for it.
+#
+# Not re-entrant across threads, because this hook has none; re-entry in one process holds
+# the one descriptor it already has, since a second flock on the same file from the same
+# process would wait on itself until the bound ran out.
+STATE_LOCK_WAIT = 2.0
+_state_held = {}                   # lock path -> [fd, depth]
+
+
+def _state_lock_path(path):
+    p = pathlib.Path(path)
+    return p.with_name(p.name + '.lock')
+
+
+class _state_lock:
+    """`with _state_lock(path) as held:` the session's exclusive lock, or held=False when
+    LASERBRAIN_LOCK_WAIT (default 2 s) ran out first. The block runs either way."""
+
+    def __init__(self, path, wait=None):
+        self.key = str(_state_lock_path(path))
+        if wait is None:
+            try:
+                wait = float(os.environ.get('LASERBRAIN_LOCK_WAIT', STATE_LOCK_WAIT))
+            except ValueError:
+                wait = STATE_LOCK_WAIT
+        self.wait = max(0.0, wait)
+        self.fd = None
+        self.reentered = False
+        self.gave_up = False
+
+    def __enter__(self):
+        slot = _state_held.get(self.key)
+        if slot is not None:       # re-entry: held (fd) or already given up (None)
+            slot[1] += 1
+            self.reentered = True
+            return slot[0] is not None
+        try:
+            import fcntl
+            import time as _time
+        except ImportError:
+            return False
+        try:
+            pathlib.Path(self.key).parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(self.key, os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError:
+            return self._give_up()
+        deadline, delay = _time.monotonic() + self.wait, 0.0005
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.fd = fd
+                _state_held[self.key] = [fd, 1]
+                return True
+            except (BlockingIOError, PermissionError):
+                pass
+            except OSError:
+                break
+            left = deadline - _time.monotonic()
+            if left <= 0:
+                break
+            _time.sleep(min(delay, left))
+            delay = min(delay * 2, 0.005)
+        os.close(fd)
+        return self._give_up()
+
+    def _give_up(self):
+        # The block runs unlocked; a nested _state_lock on the same file re-enters this slot
+        # and proceeds at once rather than waiting the whole bound again.
+        _state_held[self.key] = [None, 1]
+        self.gave_up = True
+        return False
+
+    def __exit__(self, *exc):
+        if self.reentered:
+            _state_held[self.key][1] -= 1
+        elif self.gave_up:
+            _state_held.pop(self.key, None)
+        elif self.fd is not None:
+            _state_held.pop(self.key, None)
+            try:
+                import fcntl
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            except Exception:
+                pass
+            os.close(self.fd)
+            self.fd = None
+        return False
+
+
+def _write_atomic(path, text):
+    """Temp file in the same directory, then os.replace: a reader sees the old file or the
+    new one. Hidden and ending in .tmp so no *.json glob ever picks it up."""
+    path = pathlib.Path(path)
+    tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+    try:
+        with open(tmp, 'w') as fh:
+            fh.write(text)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise                      # the old file is untouched; never truncate it here
+    try:
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        path.write_text(text)
+
+
+def _save_state(path, s):
+    _write_atomic(path, json.dumps(s, indent=2))
+
+
+def _runtime_gave_up(path):
+    """Did laserbrain.runtime, already imported in this process, time out on this lock?"""
+    rt = sys.modules.get('laserbrain.runtime')
+    try:
+        return bool(rt is not None and rt.gave_up(path))
+    except Exception:
+        return False
+
+
+def _load_for_write(path):
+    """load() for the read-modify-write under _state_lock.
+
+    load() starts a fresh session from any file it cannot parse, and the save that follows
+    replaces the file with it: the wipe the lock exists to prevent. Every writer is atomic
+    now, so an unparseable file means a hook from before the swap is mid-write (look again
+    for a few ms) or real damage (copy the bytes to <sid>.json.corrupt first, where no
+    *.json glob reads them, then start fresh as before)."""
+    import time as _time
+    raw = None
+    for i in range(6):
+        if i:
+            _time.sleep(0.002)
+        try:
+            raw = path.read_bytes()
+        except FileNotFoundError:
+            raw = None
+            break
+        except OSError:
+            continue
+        try:
+            d = json.loads(raw)
+        except Exception:
+            continue
+        if isinstance(d, dict):
+            return d
+    if raw is not None and raw.strip():
+        try:
+            aside = path.with_name(path.name + '.corrupt')
+            tmp = aside.with_name(f'.{aside.name}.{os.getpid()}.tmp')
+            tmp.write_bytes(raw)
+            os.replace(tmp, aside)
+        except Exception:
+            pass
+    return _fresh_state(path)      # missing, unreadable or damaged: fresh, as load() does
 
 
 def _sid(ev):
@@ -813,7 +985,11 @@ def _update_agents(ev, ename):
     read that as "N steps since your last check_state" for an agent that had made a fraction
     of N. This file counts per agent_id (the payload names one for subagent calls only;
     'main' otherwise) so lb_gate can attribute each call to the agent that made it. The
-    session file itself is untouched. flock'd, because parallel subagents write at once.
+    session file itself is untouched. Locked, because parallel subagents write at once: the
+    same bounded sidecar lock as the session file (<sid>.agents.json.lock, _state_lock) and
+    an atomic save, so _agent_counts, _honesty_due and _agent_dists, which read it unlocked,
+    never see half a file. It used to flock the file itself with no time limit and rewrite
+    it in place (review, 2026-11-16): the one wait in this hook with no bound.
     """
     try:
         if 'prompt' in ename or 'stop' in ename or 'pretooluse' in ename:
@@ -828,14 +1004,15 @@ def _update_agents(ev, ename):
         if 'failure' in ename and (_is_check(tool) or _is_reset(tool)
                                    or str(tool).lower().endswith('get_history')):
             return
-        import fcntl
         import time as _time
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         key = _agent_key(ev)
-        with open(STATE_DIR / f'{_sid(ev)}.agents.json', 'a+') as fh:
-            fcntl.flock(fh, fcntl.LOCK_EX)
-            fh.seek(0)
-            txt = fh.read()
+        apath = STATE_DIR / f'{_sid(ev)}.agents.json'
+        with _state_lock(apath):
+            try:
+                txt = apath.read_text()
+            except FileNotFoundError:
+                txt = ''
             try:
                 d = json.loads(txt) if txt.strip() else {}
                 if not isinstance(d, dict):
@@ -856,9 +1033,7 @@ def _update_agents(ev, ename):
             d[key] = e
             if len(d) > 200:          # one entry per subagent; keep the most recently active
                 d = dict(sorted(d.items(), key=lambda kv: kv[1].get('t', 0))[-200:])
-            fh.seek(0)
-            fh.truncate()
-            fh.write(json.dumps(d))
+            _write_atomic(apath, json.dumps(d))
     except Exception:
         pass
 
@@ -1254,164 +1429,169 @@ def main():
         tool, args = _unwrap(tool, args)
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         path = STATE_DIR / f'{sid}.json'
-        s = load(path)
-        s.setdefault('inferred', []); s.setdefault('events', []); s.setdefault('goal', None)
+        # One read-modify-write under the session lock, saved atomically (see _state_lock).
+        # If the runtime path just ran in this process and its wait on this same lock ran
+        # out (the camelCase fall-through outside nudge mode), try once without waiting: one
+        # bounded wait per tool call, not two.
+        with _state_lock(path, wait=0.0 if _runtime_gave_up(path) else None):
+            s = _load_for_write(path)
+            s.setdefault('inferred', []); s.setdefault('events', []); s.setdefault('goal', None)
 
-        prompt = ev.get('prompt')
-        if prompt is None:
-            prompt = ev.get('userPrompt') if ev.get('userPrompt') is not None else ev.get('promptText')
-        if prompt is not None and not tool:
-            if not s.get('goal') and is_groundable(prompt):
-                s['goal'] = clean_prompt(prompt)[:400]
-            # Mark that the NEXT check_state is a re-ground, not a drift.
-            #
-            # check_state receives only (goal, progress, distance), and none of those says
-            # whether the goal changed because the user changed it. That missing bit made
-            # goal-drift 24 of 35 fires in the whole recovered corpus with ZERO coinciding
-            # real errors — 22 of the 24 on the first check after Diego spoke. The rule was
-            # faithfully reporting that the subject had changed. It had. He changed it.
-            #
-            # Thresholding on goal overlap cannot substitute: the anchor values at those 24
-            # fires run continuously from 0.00 to 0.29 with no gap, so any cut just weakens
-            # the rule for everyone. The discriminator genuinely lives out here.
-            _mark_user_turn()
-            path.write_text(json.dumps(s, indent=2))
-            return
-
-        # A failed bookkeeping call is ignored, as runtime.normalise ignores it (2026-11-14,
-        # round 2 B3): a failed reset_task must not archive and clear the session, and a
-        # failed check_state is no reading. Before PostToolUseFailure was wired neither ever
-        # arrived, so this keeps the fallback where it was.
-        if 'failure' in ename and (_is_check(tool) or _is_reset(tool)
-                                   or str(tool).lower().endswith('get_history')):
-            return
-
-        if _is_reset(tool):
-            # Archive, then clear — mirroring Session.reset in laserbrain.runtime. This
-            # branch only runs when importing the SDK failed, but it must not behave
-            # differently when it does: a fallback that silently loses data is worse than
-            # one that fails outright, because nothing reports it.
-            if int(s.get('steps', 0)) > 0:
-                s.setdefault('segments', []).append({
-                    'goal': s.get('goal'),
-                    'steps': int(s.get('steps', 0)),
-                    'checks': s.get('checks', []),
-                    'inferred': s.get('inferred', []),
-                    'catches': s.get('catches', []),
-                    'ended': datetime.datetime.now().isoformat(timespec='seconds'),
-                })
-            s.update(steps=0, checks=[], inferred=[], catches=[], events=[], goal=None)
-            path.write_text(json.dumps(s, indent=2))
-            return
-
-        if not tool:
-            return
-
-        s['steps'] = int(s.get('steps', 0)) + 1
-        step = s['steps']
-
-        if _is_check(tool):
-            resp = _resp(ev)
-            ti = args
-            v = _verdict(resp)
-
-            # ── A CHECK IS A READING. NO READING, NO CHECK. ────────────────────────
-            #
-            # This appended a row whatever came back, including when the response was not
-            # observed at all — and then the row held only what the AGENT had typed:
-            # goal, progress, distance, step. No phi, no run id, nothing the instrument
-            # said. Those rows are indistinguishable from real readings in every count
-            # that matters, including the coverage percentage this gate enforces and any
-            # arm comparison the blind probe would make.
-            #
-            # Measured 2026-08-16: 41 of 56 live checks were exactly this shape, all with
-            # phi None and run None. 73% of the recent corpus was the agent talking to
-            # itself with no answer written down, and it looked like data.
-            #
-            # A blind reading is NOT this. Blind carries `arm` and a run id — the server
-            # answered and withheld the verdict on purpose, which is a fact worth keeping.
-            # Only an unobserved response is dropped, and it is kept as an event so the
-            # step is still counted and nothing silently disappears.
-            # `run`, `phi` and `arm` are RECENT fields. Testing only for them called every
-            # one of the 241 archived checks hollow — rows with real verdicts (advancing,
-            # grounded, goal-drift) written by an older hook that stored none of the three.
-            # A reading is evidenced by any of them OR by a reason that is not the
-            # no-reading default, which is what an old genuine row looks like. Caught by
-            # running the rule over the archive before shipping it.
-            _r = v.get('reason')
-            observed = ((v.get('run') is not None) or (v['phi'] is not None) or bool(v.get('arm'))
-                        or (bool(_r) and _r not in ('no-reading', 'unparsed')))
-            if not observed:
-                s.setdefault('events', []).append({
-                    'step': step, 'kind': 'check-unobserved',
-                    'goal': str(ti.get('goal', ''))[:200]})
-                path.write_text(json.dumps(s, indent=2))
+            prompt = ev.get('prompt')
+            if prompt is None:
+                prompt = ev.get('userPrompt') if ev.get('userPrompt') is not None else ev.get('promptText')
+            if prompt is not None and not tool:
+                if not s.get('goal') and is_groundable(prompt):
+                    s['goal'] = clean_prompt(prompt)[:400]
+                # Mark that the NEXT check_state is a re-ground, not a drift.
+                #
+                # check_state receives only (goal, progress, distance), and none of those says
+                # whether the goal changed because the user changed it. That missing bit made
+                # goal-drift 24 of 35 fires in the whole recovered corpus with ZERO coinciding
+                # real errors — 22 of the 24 on the first check after Diego spoke. The rule was
+                # faithfully reporting that the subject had changed. It had. He changed it.
+                #
+                # Thresholding on goal overlap cannot substitute: the anchor values at those 24
+                # fires run continuously from 0.00 to 0.29 with no gap, so any cut just weakens
+                # the rule for everyone. The discriminator genuinely lives out here.
+                _mark_user_turn()
+                _save_state(path, s)
                 return
 
-            # A withheld verdict is a reading of its own. Recording it as 'no-reading'
-            # made the experiment indistinguishable from a parse failure — the probe
-            # poisoning the corpus it exists to be measured in.
-            reason = 'blind' if (v.get('arm') == 'blind' and v['reason'] == 'no-reading') else v['reason']
+            # A failed bookkeeping call is ignored, as runtime.normalise ignores it (2026-11-14,
+            # round 2 B3): a failed reset_task must not archive and clear the session, and a
+            # failed check_state is no reading. Before PostToolUseFailure was wired neither ever
+            # arrived, so this keeps the fallback where it was.
+            if 'failure' in ename and (_is_check(tool) or _is_reset(tool)
+                                       or str(tool).lower().endswith('get_history')):
+                return
 
-            s['checks'].append({'step': step,
-                                'drifting': v['drifting'],
-                                'goal': str(ti.get('goal', ''))[:400],
-                                'progress': str(ti.get('progress', '')),
-                                'distance': ti.get('distance'),
-                                'reason': reason,
-                                'phi': v['phi'],
-                                # The join. `step` above counts tool calls in this session;
-                                # `run`/`run_step` name the row the server wrote. Two
-                                # counters that were never reconcilable now share a key.
-                                'run': v['run'],
-                                'run_step': v['run_step'],
-                                # THE JOIN THAT WAS MISSING. `run` names the server's row by
-                                # UUID; the blind arm names its unit by segment index.
-                                # Neither reaches the other, so the arm is recorded here
-                                # directly and the analysis needs no mapping at all.
-                                # Absent rather than null when unstated — see _verdict.
-                                **({'arm': v['arm']} if v.get('arm') else {}),
-                                # Written only when present, so a row from an older server
-                                # is absent rather than carrying a null that reads like a
-                                # measured "no judgment".
-                                **({'judgment': v['judgment']} if v['judgment'] else {}),
-                                **({'anchored': v['anchored']} if v['anchored'] is not None else {}),
-                                **({'goal_score': v['goal_score']} if v['goal_score'] is not None else {})})
-            path.write_text(json.dumps(s, indent=2))
-            return
+            if _is_reset(tool):
+                # Archive, then clear — mirroring Session.reset in laserbrain.runtime. This
+                # branch only runs when importing the SDK failed, but it must not behave
+                # differently when it does: a fallback that silently loses data is worse than
+                # one that fails outright, because nothing reports it.
+                if int(s.get('steps', 0)) > 0:
+                    s.setdefault('segments', []).append({
+                        'goal': s.get('goal'),
+                        'steps': int(s.get('steps', 0)),
+                        'checks': s.get('checks', []),
+                        'inferred': s.get('inferred', []),
+                        'catches': s.get('catches', []),
+                        'ended': datetime.datetime.now().isoformat(timespec='seconds'),
+                    })
+                s.update(steps=0, checks=[], inferred=[], catches=[], events=[], goal=None)
+                _save_state(path, s)
+                return
 
-        ok_flag = True
-        if 'failure' in ename:
-            ok_flag = False
-        resp0 = _resp(ev)
-        if isinstance(resp0, dict):
-            code = resp0.get('exit_code')
-            if code is None:
-                code = resp0.get('exitCode')
-            if isinstance(code, int):
-                ok_flag = code == 0
-            elif resp0.get('error') or resp0.get('is_error') or resp0.get('isError'):
+            if not tool:
+                return
+
+            s['steps'] = int(s.get('steps', 0)) + 1
+            step = s['steps']
+
+            if _is_check(tool):
+                resp = _resp(ev)
+                ti = args
+                v = _verdict(resp)
+
+                # ── A CHECK IS A READING. NO READING, NO CHECK. ────────────────────────
+                #
+                # This appended a row whatever came back, including when the response was not
+                # observed at all — and then the row held only what the AGENT had typed:
+                # goal, progress, distance, step. No phi, no run id, nothing the instrument
+                # said. Those rows are indistinguishable from real readings in every count
+                # that matters, including the coverage percentage this gate enforces and any
+                # arm comparison the blind probe would make.
+                #
+                # Measured 2026-08-16: 41 of 56 live checks were exactly this shape, all with
+                # phi None and run None. 73% of the recent corpus was the agent talking to
+                # itself with no answer written down, and it looked like data.
+                #
+                # A blind reading is NOT this. Blind carries `arm` and a run id — the server
+                # answered and withheld the verdict on purpose, which is a fact worth keeping.
+                # Only an unobserved response is dropped, and it is kept as an event so the
+                # step is still counted and nothing silently disappears.
+                # `run`, `phi` and `arm` are RECENT fields. Testing only for them called every
+                # one of the 241 archived checks hollow — rows with real verdicts (advancing,
+                # grounded, goal-drift) written by an older hook that stored none of the three.
+                # A reading is evidenced by any of them OR by a reason that is not the
+                # no-reading default, which is what an old genuine row looks like. Caught by
+                # running the rule over the archive before shipping it.
+                _r = v.get('reason')
+                observed = ((v.get('run') is not None) or (v['phi'] is not None) or bool(v.get('arm'))
+                            or (bool(_r) and _r not in ('no-reading', 'unparsed')))
+                if not observed:
+                    s.setdefault('events', []).append({
+                        'step': step, 'kind': 'check-unobserved',
+                        'goal': str(ti.get('goal', ''))[:200]})
+                    _save_state(path, s)
+                    return
+
+                # A withheld verdict is a reading of its own. Recording it as 'no-reading'
+                # made the experiment indistinguishable from a parse failure — the probe
+                # poisoning the corpus it exists to be measured in.
+                reason = 'blind' if (v.get('arm') == 'blind' and v['reason'] == 'no-reading') else v['reason']
+
+                s['checks'].append({'step': step,
+                                    'drifting': v['drifting'],
+                                    'goal': str(ti.get('goal', ''))[:400],
+                                    'progress': str(ti.get('progress', '')),
+                                    'distance': ti.get('distance'),
+                                    'reason': reason,
+                                    'phi': v['phi'],
+                                    # The join. `step` above counts tool calls in this session;
+                                    # `run`/`run_step` name the row the server wrote. Two
+                                    # counters that were never reconcilable now share a key.
+                                    'run': v['run'],
+                                    'run_step': v['run_step'],
+                                    # THE JOIN THAT WAS MISSING. `run` names the server's row by
+                                    # UUID; the blind arm names its unit by segment index.
+                                    # Neither reaches the other, so the arm is recorded here
+                                    # directly and the analysis needs no mapping at all.
+                                    # Absent rather than null when unstated — see _verdict.
+                                    **({'arm': v['arm']} if v.get('arm') else {}),
+                                    # Written only when present, so a row from an older server
+                                    # is absent rather than carrying a null that reads like a
+                                    # measured "no judgment".
+                                    **({'judgment': v['judgment']} if v['judgment'] else {}),
+                                    **({'anchored': v['anchored']} if v['anchored'] is not None else {}),
+                                    **({'goal_score': v['goal_score']} if v['goal_score'] is not None else {})})
+                _save_state(path, s)
+                return
+
+            ok_flag = True
+            if 'failure' in ename:
                 ok_flag = False
+            resp0 = _resp(ev)
+            if isinstance(resp0, dict):
+                code = resp0.get('exit_code')
+                if code is None:
+                    code = resp0.get('exitCode')
+                if isinstance(code, int):
+                    ok_flag = code == 0
+                elif resp0.get('error') or resp0.get('is_error') or resp0.get('isError'):
+                    ok_flag = False
 
-        # Structural only, as before 2026-11-14: the fallback runs when the package cannot be
-        # imported, so it carries no copy of runtime's verdict scan. An interrupt (Esc) is the
-        # user stopping the call, not the build disagreeing.
-        if _is_shell(tool) and not ok_flag and not _is_self_refusal(ev) and not _is_interrupt(ev):
-            cmd = str(args.get('command', ''))[:120]
-            # `clean`: written by code that excludes the coverage gate. See runtime.py.
-            s['catches'].append({'step': step, 'by': 'build',
-                                 'what': f'non-zero exit: {cmd}', 'clean': True,
-                                 **_attribute(s, step)})
+            # Structural only, as before 2026-11-14: the fallback runs when the package cannot be
+            # imported, so it carries no copy of runtime's verdict scan. An interrupt (Esc) is the
+            # user stopping the call, not the build disagreeing.
+            if _is_shell(tool) and not ok_flag and not _is_self_refusal(ev) and not _is_interrupt(ev):
+                cmd = str(args.get('command', ''))[:120]
+                # `clean`: written by code that excludes the coverage gate. See runtime.py.
+                s['catches'].append({'step': step, 'by': 'build',
+                                     'what': f'non-zero exit: {cmd}', 'clean': True,
+                                     **_attribute(s, step)})
 
-        s['events'].append({'sig': _call_sig(tool, args), 'ok': ok_flag})
-        s['events'] = s['events'][-40:]
+            s['events'].append({'sig': _call_sig(tool, args), 'ok': ok_flag})
+            s['events'] = s['events'][-40:]
 
-        s['inferred'].append({'step': step, 'progress': infer_progress(s['events'])})
-        s['inferred'] = s['inferred'][-200:]
+            s['inferred'].append({'step': step, 'progress': infer_progress(s['events'])})
+            s['inferred'] = s['inferred'][-200:]
 
-        last = s['checks'][-1]['step'] if s['checks'] else 0
-        since = step - last
-        path.write_text(json.dumps(s, indent=2))
+            last = s['checks'][-1]['step'] if s['checks'] else 0
+            since = step - last
+            _save_state(path, s)
 
         if since >= NUDGE_AFTER and since % NUDGE_AFTER == 0 and not camel_shape:
             cov = len(s['checks']) / step if step else 0

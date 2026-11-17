@@ -22,7 +22,7 @@ Any runtime with a tool-call boundary can drive this in about ten lines; see
 `from_hook` for any host payload, `from_openai_agents` for that SDK, and `normalise`
 for the contract they all meet.
 """
-import json, os, pathlib, datetime, re
+import contextlib, json, os, pathlib, datetime, re, threading, time as _time
 
 from .observe import Observer
 
@@ -653,6 +653,228 @@ def tool_outcome(ev):
     return _outcome(ev, tool, resp)
 
 
+# ── the session file: one writer at a time, and never half a file ─────────────────────
+#
+# Every hook call is its own process, and parallel tool calls (and parallel subagents, who
+# share the parent's session_id) run those processes at the same moment. The file was read
+# whole, edited, and written back with write_text, unlocked. Measured 2026-11-16 on the
+# real hook under a throwaway HOME: 12 parallel calls kept 11 steps, 24 kept 22-23, 48 kept
+# 30-45. And write_text truncates before it writes, so a process that read in that gap got
+# an empty file, started a FRESH session, and saved it: 4 of 6 runs at 48 parallel calls
+# (3 of 3 at 96) ended with the goal and every check gone.
+#
+# So each read-modify-write of <sid>.json runs under one exclusive lock per session, and
+# every write is a temp file in the same directory renamed over the old one, so a reader
+# sees the old version or the new one and nothing in between.
+#
+#   the lock     flock on <sid>.json.lock. The kernel drops it when the holder exits, so a
+#                crashed hook leaves nothing to steal. The file is never deleted (deleting a
+#                flock file races with the next locker) and matches no *.json glob.
+#   bounded      polled with LOCK_NB up to LOCK_WAIT seconds, then the write proceeds
+#                unlocked. A hook must never hang a tool call; a possibly-lost step is
+#                better than a stalled agent. LASERBRAIN_LOCK_WAIT overrides it.
+#   re-entrant   flock locks taken through two descriptors of one file conflict even inside
+#                one process, so a process holds at most one descriptor per lock file and
+#                counts re-entries. A per-path RLock keeps threads of one process apart.
+#   no nesting   nothing done while the lock is held takes another session lock, so two
+#                processes cannot wait on each other.
+#
+# lb_coverage.py carries its own copy (_state_lock, _write_atomic) for the path that runs
+# when this module cannot be imported. Same lock file, same rule; test_session_race.py
+# checks the two exclude each other.
+try:
+    import fcntl as _fcntl
+except ImportError:            # no flock (Windows): writes stay atomic, updates may race
+    _fcntl = None
+
+LOCK_WAIT = 2.0
+_lock_guard = threading.Lock()
+_thread_locks = {}             # lock path -> threading.RLock
+_held = {}                     # lock path -> [fd, depth] while this process holds it
+
+
+def _lock_wait():
+    try:
+        return max(0.0, float(os.environ.get('LASERBRAIN_LOCK_WAIT', LOCK_WAIT)))
+    except ValueError:
+        return LOCK_WAIT
+
+
+def lock_path(path):
+    """The sidecar lock file for a session file: <sid>.json -> <sid>.json.lock."""
+    p = pathlib.Path(path)
+    return p.with_name(p.name + '.lock')
+
+
+def _flock(key, deadline):
+    """An fd holding LOCK_EX on `key`, or None once `deadline` passes (or no flock here)."""
+    if _fcntl is None:
+        return None
+    try:
+        fd = os.open(key, os.O_RDWR | os.O_CREAT, 0o600)
+    except FileNotFoundError:
+        try:
+            pathlib.Path(key).parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(key, os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError:
+            return None
+    except OSError:
+        return None
+    delay = 0.0005
+    while True:
+        try:
+            _fcntl.flock(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+            return fd
+        except (BlockingIOError, PermissionError):
+            pass
+        except OSError:
+            break
+        left = deadline - _time.monotonic()
+        if left <= 0:
+            break
+        _time.sleep(min(delay, left))
+        delay = min(delay * 2, 0.005)
+    os.close(fd)
+    return None
+
+
+_local = threading.local()     # .gave_up: lock path -> depth of blocks running unlocked
+_timed_out = {}                # lock path -> True while this process's last try timed out
+
+
+def _gave_up():
+    g = getattr(_local, 'gave_up', None)
+    if g is None:
+        g = _local.gave_up = {}
+    return g
+
+
+@contextlib.contextmanager
+def _unlocked(key):
+    """Run the block unlocked after the wait ran out, and say so to nested calls.
+
+    _txn holds the lock around save(), which takes it again. When the outer wait ran out,
+    the inner call used to start a fresh deadline and wait the whole bound a second time
+    (4.1 s on the real hook at the 2 s default, review 2026-11-16), and the snapshot it then
+    wrote was 2 s staler. Marked here, a nested session_lock on the same file in this thread
+    yields False at once: one bounded wait per outermost block."""
+    gave = _gave_up()
+    gave[key] = gave.get(key, 0) + 1
+    _timed_out[key] = True
+    try:
+        yield False
+    finally:
+        gave[key] -= 1
+        if not gave[key]:
+            del gave[key]
+
+
+def gave_up(path):
+    """Did this process's latest attempt on `path`'s lock time out? lb_coverage asks before
+    its fallback takes the same lock in the same process, so one hook call waits once."""
+    return bool(_timed_out.get(str(lock_path(path))))
+
+
+@contextlib.contextmanager
+def session_lock(path, wait=None):
+    """Hold the session's exclusive lock for the block. Yields True when held, False when
+    the wait ran out (the block still runs: bounded wait, then proceed). Inside a block that
+    already gave up, it yields False without waiting again."""
+    key = str(lock_path(path))
+    if _gave_up().get(key):        # an outer block in this thread waited and gave up
+        with _unlocked(key) as got:
+            yield got
+        return
+    wait = _lock_wait() if wait is None else max(0.0, float(wait))
+    deadline = _time.monotonic() + wait
+    with _lock_guard:
+        tl = _thread_locks.setdefault(key, threading.RLock())
+    if not tl.acquire(timeout=wait):
+        with _unlocked(key) as got:  # another thread here held it past the bound
+            yield got
+        return
+    try:
+        slot = _held.get(key)
+        if slot is not None:       # this thread already holds it: re-entry, no second fd
+            slot[1] += 1
+            try:
+                yield True
+            finally:
+                slot[1] -= 1
+            return
+        fd = _flock(key, deadline)
+        if fd is None:
+            with _unlocked(key) as got:
+                yield got
+            return
+        _timed_out.pop(key, None)
+        _held[key] = [fd, 1]
+        try:
+            yield True
+        finally:
+            _held.pop(key, None)
+            try:
+                _fcntl.flock(fd, _fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(fd)
+    finally:
+        tl.release()
+
+
+def write_atomic(path, text):
+    """Write `text` to `path` so a reader sees the old file or the new one, never part.
+
+    The temp file sits in the same directory (os.replace is atomic only within one
+    filesystem), is hidden and ends in .tmp so no *.json glob picks it up, and is named
+    per process and thread so two writers never share one."""
+    path = pathlib.Path(path)
+    tmp = path.with_name(f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp')
+    try:
+        with open(tmp, 'w') as fh:
+            fh.write(text)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise                      # the old file is untouched; never truncate it here
+    try:
+        os.replace(tmp, path)
+    except OSError:                # e.g. Windows, target open elsewhere: the old way
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        path.write_text(text)
+
+
+def _read_session(path):
+    """(text, dict) for a session file: (None, None) when it is missing or cannot be read,
+    (text, None) when it is there but is not a JSON object. Read as bytes and decoded with
+    surrogateescape so a damaged file's exact bytes can be set aside."""
+    try:
+        text = pathlib.Path(path).read_bytes().decode('utf-8', 'surrogateescape')
+    except OSError:
+        return None, None
+    try:
+        d = json.loads(text)
+    except Exception:
+        return text, None
+    return (text, d) if isinstance(d, dict) else (text, None)
+
+
+def _set_aside(path, text):
+    """Copy an unparseable session file to <sid>.json.corrupt before a save replaces it.
+    Matches no *.json glob, so nothing reads it as a session. Never raises."""
+    if not text.strip():
+        return                     # an empty file holds nothing to recover
+    try:
+        path = pathlib.Path(path)
+        aside = path.with_name(path.name + '.corrupt')
+        tmp = aside.with_name(f'.{aside.name}.{os.getpid()}.{threading.get_ident()}.tmp')
+        tmp.write_bytes(text.encode('utf-8', 'surrogateescape'))
+        os.replace(tmp, aside)
+    except Exception:
+        pass
+
+
 class Session:
     """A recorded run, in the shape dogfood.py scores.
 
@@ -665,6 +887,8 @@ class Session:
     def __init__(self, session_id, goal=None, directory=None, nudge_after=NUDGE_AFTER):
         self.path = pathlib.Path(directory or DEFAULT_DIR) / f'{session_id}.json'
         self.nudge_after = nudge_after
+        self._disk = None          # the file's text as last read or written by this object
+        self._base = None          # the dict that text held, before any edit in memory
         self.d = self._load(session_id)
         if goal and not self.d.get('goal'):
             self.d['goal'] = str(goal)[:400]
@@ -683,22 +907,103 @@ class Session:
                     if isinstance(e, dict) and 'sig' in e][-40:]   # not check markers
         return o
 
+    def _fresh(self, sid):
+        return {'id': sid, 'started': datetime.datetime.now().isoformat(timespec='seconds'),
+                'goal': None, 'steps': 0, 'checks': [], 'inferred': [], 'catches': [],
+                'events': []}
+
     def _load(self, sid):
-        try:
-            d = json.loads(self.path.read_text())
-        except Exception:
-            d = {'id': sid, 'started': datetime.datetime.now().isoformat(timespec='seconds'),
-                 'goal': None, 'steps': 0, 'checks': [], 'inferred': [], 'catches': [],
-                 'events': []}
+        # Lock-free: every writer replaces the file whole (write_atomic), so this sees one
+        # complete version. A missing or unreadable file starts fresh, as it always has; an
+        # existing one that cannot be parsed is marked, so _refresh looks again under the
+        # lock and keeps the bytes before any save replaces them.
+        text, d = _read_session(self.path)
+        self._disk = text
+        self._damaged = text is not None and d is None
+        if d is not None:
+            self._base = text
+        else:
+            d = self._fresh(sid)
+            self._base = json.dumps(d)
         if not d.get('agent'):
             d['agent'] = agent_of()
         return d
 
+    def _refresh(self):
+        """Inside the lock: if another process wrote since this object read, start from its
+        version, keeping the top-level keys this object changed in memory since then.
+
+        A hook process reads at construction and writes at the mutation; a sibling that
+        saved in between had its step overwritten (12 parallel calls kept 11). When the file
+        is unchanged, which is every single-writer run, nothing is re-read into memory and
+        the behaviour is exactly what it was. `goal` and `agent` from memory only fill a
+        blank: they are the constructor's and from_hook's defaults, and a goal another
+        process already captured stays the ground."""
+        text, fresh = _read_session(self.path)
+        if text == self._disk and not self._damaged:
+            return
+        if text is not None and fresh is None:
+            # There but unparseable: a writer that is not atomic (an old hook still running
+            # while the files are swapped) is mid-write, or the file is damaged. A torn write
+            # lasts well under a millisecond, so look again briefly.
+            for _ in range(5):
+                _time.sleep(0.002)
+                text, fresh = _read_session(self.path)
+                if text is None or fresh is not None:
+                    break
+        if fresh is None:
+            if text is not None and self._damaged:
+                # Unparseable both when this object read it and now, so memory holds only
+                # the fresh start _load made and the save will replace the file with it.
+                # Keep the bytes beside it first: a damaged session is recoverable by hand,
+                # a silently wiped one is not.
+                _set_aside(self.path, text)
+                self._disk, self._damaged = text, False
+            # Otherwise (missing now, or parseable when this object read it) the version in
+            # memory is the best there is, and the save repairs the file.
+            return
+        try:
+            base = json.loads(self._base) if self._base else {}
+        except Exception:
+            base = {}
+        for k, v in self.d.items():
+            if k in base and base[k] == v:
+                continue
+            if k in ('goal', 'agent') and fresh.get(k) and fresh.get(k) != 'unknown':
+                continue
+            fresh[k] = v
+        for k in base:
+            if k not in self.d:
+                fresh.pop(k, None)
+        if not fresh.get('agent'):
+            fresh['agent'] = agent_of()
+        self.d = fresh
+        self._disk = self._base = text
+        self._damaged = False
+        self._obs = self._observer(self.d.get('goal') or 'unset')
+
+    @contextlib.contextmanager
+    def _txn(self):
+        """One read-modify-write of the session file: lock, catch up, edit, save."""
+        with session_lock(self.path):
+            self._refresh()
+            yield
+
     def save(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.d.get('agent'):
-            self.d['agent'] = agent_of()
-        self.path.write_text(json.dumps(self.d, indent=2))
+        """Write the whole dict, under the session lock and atomically.
+
+        Called on its own it writes what this object holds, as it always did. The methods
+        below call it inside _txn, which has already caught up with the file."""
+        with session_lock(self.path):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self._damaged and self._disk is not None:
+                _set_aside(self.path, self._disk)   # called on its own, without _txn
+            if not self.d.get('agent'):
+                self.d['agent'] = agent_of()
+            text = json.dumps(self.d, indent=2)
+            write_atomic(self.path, text)
+            self._disk = self._base = text
+            self._damaged = False
         return self
 
     # ── the three things a runtime can tell us ──────────────────────────────
@@ -714,18 +1019,30 @@ class Session:
         t = clean_prompt(text)
         if not t:
             return self
-        if self.d.get('goal') or self.d.get('was_reset'):
-            return self
         # A greeting is not a task. Leaving the ground unset costs one session's early
         # verdicts; setting it to 'hello there' corrupts every verdict in the session and
         # then the corpus, which is worse and much harder to notice.
         if not is_groundable(t):
             return self
-        self.d['goal'] = t[:400]
-        self._obs = self._observer(self.d['goal'])
-        return self.save()
+        with self._txn():
+            if self.d.get('goal') or self.d.get('was_reset'):
+                return self
+            self.d['goal'] = t[:400]
+            self._obs = self._observer(self.d['goal'])
+            return self.save()
 
     def tool(self, name, args=None, ok=True, self_refusal=False, via=None):
+        # Evidence first and outside the session lock: it is another file with its own
+        # writer, and nothing held under the lock may wait on anything else.
+        if not self_refusal and not os.environ.get('LASERBRAIN_HOOK_EVIDENCE'):
+            try:
+                _evidence.bump(ok=ok)
+            except Exception:
+                pass          # evidence is an addition to the reading, never a precondition
+        with self._txn():
+            return self._tool(name, args, ok, self_refusal, via)
+
+    def _tool(self, name, args, ok, self_refusal, via):
         self.d['steps'] += 1
         # FEED THE OBSERVED CHANNEL. This session has always known every tool call and its
         # outcome; the harness's corroboration channel had no wire to it and depended on the
@@ -738,12 +1055,7 @@ class Session:
         # its own interruptions.
         # Not when the hook is the writer (LASERBRAIN_HOOK_EVIDENCE, set by lb_coverage in its
         # own process): it already counted this call, and two writers counted it twice
-        # (round 2, B5).
-        if not self_refusal and not os.environ.get('LASERBRAIN_HOOK_EVIDENCE'):
-            try:
-                _evidence.bump(ok=ok)
-            except Exception:
-                pass          # evidence is an addition to the reading, never a precondition
+        # (round 2, B5). The bump itself is in tool(), above the lock.
         self._obs.record(name, args, ok=ok)
         self.d['events'] = [{'sig': e['sig'], 'ok': e['ok']} for e in self._obs.events][-40:]
         self.d['inferred'].append({'step': self.d['steps'], 'progress': self._obs.progress(),
@@ -820,64 +1132,66 @@ class Session:
         stay distinguishable from a real run so those rows can be excluded rather than
         silently joined to nothing.
         """
-        self.d['steps'] += 1
-        rec = {'step': self.d['steps'], 'drifting': bool(drifting),
-               'goal': str(goal)[:400], 'progress': str(progress),
-               'distance': distance}
-        if reason is not None:
-            rec['reason'] = str(reason)
-        if phi is not None:
-            rec['phi'] = phi
-        if run is not None:
-            rec['run'] = str(run)
-        if run_step is not None:
-            rec['run_step'] = run_step
-        # THE THREE FIELDS THIS RECORD WAS MISSING, and the reason they had to land HERE.
-        #
-        # lb_coverage was taught to extract them on 2026-08-04 and they never reached a
-        # file. This method is the writer that wins: Session owns the session path, holds
-        # its dict across the hook's writes and saves the whole thing back, so a richer row
-        # written next door is overwritten by this one. The same race is already documented
-        # against `probe_arm`, which is why arms.jsonl exists — and it ate the new fields
-        # for a full day before anyone looked at a stored row.
-        #
-        #   anchored    how much of Phi rests outside the agent's own account of itself.
-        #               0.5 on the published calibration and reported on every verdict
-        #               since it was added; without it stored, "does corroboration predict
-        #               a true catch" cannot be asked.
-        #   goal_score  still the errand that was asked for? Phi does not answer that: a
-        #               faithful goal sits at high Phi when the work is hard.
-        #   judgment    what the harness told the agent to DO — abandon, narrow, unbacked.
-        #               The strongest counsel it owns, and the corpus held none of it.
-        #
-        # Optional in the same way `reason` and `run` are: an older caller omits them, and
-        # an absent key stays distinguishable from a measured None.
-        if anchored is not None:
-            rec['anchored'] = anchored
-        if goal_score is not None:
-            rec['goal_score'] = goal_score
-        # THE PROBE'S OUTCOME VARIABLE, and until 2026-08-19 nothing collected it.
-        #
-        # The blind probe exists to say what a session spent with a verdict against what it
-        # spent without one. Zero of 3,392 drift rows had ever carried a token count, so the
-        # comparison it was registered to make could not be computed from its own data at any
-        # sample size. Assignment worked; there was simply no outcome to assign.
-        #
-        # Cumulative, not per-step: what a step cost is the difference between consecutive
-        # checks, and a difference is recoverable from cumulative counts while the reverse is
-        # not — a dropped row loses one interval instead of corrupting the total.
-        if tokens is not None:
-            rec['tokens'] = int(tokens)
-        if judgment:
-            rec['judgment'] = judgment
-        self.d['checks'].append(rec)
-        # After a reset the agent's own spelled goal is authoritative — it is the task as
-        # the agent states it, which is exactly what a ground should be.
-        if not self.d.get('goal') and str(goal).strip():
-            self.d['goal'] = str(goal)[:400]
-            self.d['was_reset'] = False
-            self._obs = self._observer(self.d['goal'])
-        return self.save()
+        # One read-modify-write under the session lock (see session_lock).
+        with self._txn():
+            self.d['steps'] += 1
+            rec = {'step': self.d['steps'], 'drifting': bool(drifting),
+                   'goal': str(goal)[:400], 'progress': str(progress),
+                   'distance': distance}
+            if reason is not None:
+                rec['reason'] = str(reason)
+            if phi is not None:
+                rec['phi'] = phi
+            if run is not None:
+                rec['run'] = str(run)
+            if run_step is not None:
+                rec['run_step'] = run_step
+            # THE THREE FIELDS THIS RECORD WAS MISSING, and the reason they had to land HERE.
+            #
+            # lb_coverage was taught to extract them on 2026-08-04 and they never reached a
+            # file. This method is the writer that wins: Session owns the session path, holds
+            # its dict across the hook's writes and saves the whole thing back, so a richer row
+            # written next door is overwritten by this one. The same race is already documented
+            # against `probe_arm`, which is why arms.jsonl exists — and it ate the new fields
+            # for a full day before anyone looked at a stored row.
+            #
+            #   anchored    how much of Phi rests outside the agent's own account of itself.
+            #               0.5 on the published calibration and reported on every verdict
+            #               since it was added; without it stored, "does corroboration predict
+            #               a true catch" cannot be asked.
+            #   goal_score  still the errand that was asked for? Phi does not answer that: a
+            #               faithful goal sits at high Phi when the work is hard.
+            #   judgment    what the harness told the agent to DO — abandon, narrow, unbacked.
+            #               The strongest counsel it owns, and the corpus held none of it.
+            #
+            # Optional in the same way `reason` and `run` are: an older caller omits them, and
+            # an absent key stays distinguishable from a measured None.
+            if anchored is not None:
+                rec['anchored'] = anchored
+            if goal_score is not None:
+                rec['goal_score'] = goal_score
+            # THE PROBE'S OUTCOME VARIABLE, and until 2026-08-19 nothing collected it.
+            #
+            # The blind probe exists to say what a session spent with a verdict against what it
+            # spent without one. Zero of 3,392 drift rows had ever carried a token count, so the
+            # comparison it was registered to make could not be computed from its own data at any
+            # sample size. Assignment worked; there was simply no outcome to assign.
+            #
+            # Cumulative, not per-step: what a step cost is the difference between consecutive
+            # checks, and a difference is recoverable from cumulative counts while the reverse is
+            # not — a dropped row loses one interval instead of corrupting the total.
+            if tokens is not None:
+                rec['tokens'] = int(tokens)
+            if judgment:
+                rec['judgment'] = judgment
+            self.d['checks'].append(rec)
+            # After a reset the agent's own spelled goal is authoritative — it is the task as
+            # the agent states it, which is exactly what a ground should be.
+            if not self.d.get('goal') and str(goal).strip():
+                self.d['goal'] = str(goal)[:400]
+                self.d['was_reset'] = False
+                self._obs = self._observer(self.d['goal'])
+            return self.save()
 
     def reset(self):
         """Close the current segment and start a new one.
@@ -895,19 +1209,21 @@ class Session:
         whole session averages a disciplined stretch together with the ungrounded scramble
         before the first check; per segment, each is visible for what it was.
         """
-        if int(self.d.get('steps', 0)) > 0:
-            self.d.setdefault('segments', []).append({
-                'goal': self.d.get('goal'),
-                'steps': int(self.d.get('steps', 0)),
-                'checks': self.d.get('checks', []),
-                'inferred': self.d.get('inferred', []),
-                'catches': self.d.get('catches', []),
-                'ended': datetime.datetime.now().isoformat(timespec='seconds'),
-            })
-        self.d.update(steps=0, checks=[], inferred=[], catches=[], events=[], goal=None,
-                      was_reset=True)
-        self._obs = self._observer('unset')   # events were just cleared
-        return self.save()
+        # Under the lock and caught up first, so the archive holds every sibling's steps.
+        with self._txn():
+            if int(self.d.get('steps', 0)) > 0:
+                self.d.setdefault('segments', []).append({
+                    'goal': self.d.get('goal'),
+                    'steps': int(self.d.get('steps', 0)),
+                    'checks': self.d.get('checks', []),
+                    'inferred': self.d.get('inferred', []),
+                    'catches': self.d.get('catches', []),
+                    'ended': datetime.datetime.now().isoformat(timespec='seconds'),
+                })
+            self.d.update(steps=0, checks=[], inferred=[], catches=[], events=[], goal=None,
+                          was_reset=True)
+            self._obs = self._observer('unset')   # events were just cleared
+            return self.save()
 
     # ── what it gives back ──────────────────────────────────────────────────
     @property

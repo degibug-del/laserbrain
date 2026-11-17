@@ -30,6 +30,7 @@ labelled as such — and never to an exception in the middle of someone's agent 
 """
 import json
 import os
+import threading
 
 from ._paths import config
 
@@ -51,12 +52,18 @@ def bump(ok=True):
         # Written whole and replaced, not appended: two writers racing on a counter lose an
         # increment at worst, and an increment is not a judgment. The contexts store needed a
         # lock because a dropped write there SUPPRESSES a verdict; here it delays one.
-        tmp = p.with_suffix('.tmp')
+        # The temp name is per process and thread: one shared evidence.tmp let a writer
+        # rename another's half-written file into place, and the next reader then reset the
+        # counters to zero (review, 2026-11-16).
+        tmp = p.with_name(f'.{p.name}.{os.getpid()}.{threading.get_ident()}.tmp')
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_text(json.dumps(d))
         os.replace(tmp, p)
     except Exception:
-        pass
+        try:
+            tmp.unlink()           # NameError when it failed before naming one: also fine
+        except Exception:
+            pass
     return None
 
 
