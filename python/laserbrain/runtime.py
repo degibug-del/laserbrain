@@ -668,7 +668,20 @@ class Session:
         self.d = self._load(session_id)
         if goal and not self.d.get('goal'):
             self.d['goal'] = str(goal)[:400]
-        self._obs = Observer(self.d.get('goal') or 'unset')
+        self._obs = self._observer(self.d.get('goal') or 'unset')
+
+    def _observer(self, goal):
+        """An Observer that starts from the trace this session already saved.
+
+        Each hook call is its own process, so a bare Observer(goal) saw only the call being
+        made: every inferred row in round 2 (698 of them) read "advancing, 1 recent call(s)",
+        and tool() then saved that one-call trace over the real one (B6, fixed 2026-11-16).
+        The goal is still set once and held; only the event history carries over."""
+        o = Observer(goal)
+        o.events = [{'sig': str(e.get('sig', '')), 'ok': bool(e.get('ok'))}
+                    for e in (self.d.get('events') or [])
+                    if isinstance(e, dict) and 'sig' in e][-40:]   # not check markers
+        return o
 
     def _load(self, sid):
         try:
@@ -709,7 +722,7 @@ class Session:
         if not is_groundable(t):
             return self
         self.d['goal'] = t[:400]
-        self._obs = Observer(self.d['goal'])
+        self._obs = self._observer(self.d['goal'])
         return self.save()
 
     def tool(self, name, args=None, ok=True, self_refusal=False, via=None):
@@ -863,7 +876,7 @@ class Session:
         if not self.d.get('goal') and str(goal).strip():
             self.d['goal'] = str(goal)[:400]
             self.d['was_reset'] = False
-            self._obs = Observer(self.d['goal'])
+            self._obs = self._observer(self.d['goal'])
         return self.save()
 
     def reset(self):
@@ -893,7 +906,7 @@ class Session:
             })
         self.d.update(steps=0, checks=[], inferred=[], catches=[], events=[], goal=None,
                       was_reset=True)
-        self._obs = Observer('unset')
+        self._obs = self._observer('unset')   # events were just cleared
         return self.save()
 
     # ── what it gives back ──────────────────────────────────────────────────

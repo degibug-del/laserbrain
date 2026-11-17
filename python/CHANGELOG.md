@@ -2,6 +2,39 @@
 
 ## Unreleased - 2026-11-14
 
+### Round-2 bugs B6 and B7: the inferred trace (2026-11-16)
+
+From research/DAY-FOUR-ROUND2.md section 7, after Diego approved fixing both together.
+Both are about what the runtime infers from the tool trace. Neither changes a drift verdict;
+B7 also reaches check_state's `observed` contrast and the judgment's `verify` branch.
+- **B6.** `runtime.Session` rebuilt its Observer in every hook process without the trace it
+  had saved, so inferred progress only ever saw the call being made (all 698 inferred rows
+  in round 2 read "advancing, 1 recent call(s)"), and `tool()` then saved that one-call
+  trace over the real one. `Session._observer()` now starts every Observer from the saved
+  `events` (last 40). The goal is still set once and held.
+- **B7.** The hook signed a call as `str(args)[:200]` on its main path and `json[:400]` on
+  its fallback, and observe.py used `json[:400]`, so different heredoc edits that began the
+  same way were "the same call": a finishing run read `observed: circling`, which can also
+  turn the judgment to `verify`. A signature is now the tool, the first 120 characters of
+  the JSON arguments, and a hash of all of them (`observe._sig`, duplicated as the hook's
+  `_call_sig`). Fewer false `circling` and `verify` readings; real repeats still read as
+  circling. Signatures written before this date do not match new ones, which costs at most
+  one window (6 calls) of repeat detection.
+- From an independent review of the fix, also changed: a Bash or Agent `description` is not
+  part of the signature (a new label on the same command is the same call); a stuck
+  reading's explanation counts the failures at the end, not every failure in the trace
+  (newly reachable once the trace carries over); and the fallback path's
+  `check-unobserved` marker, kept in the same `events` list, is no longer read as a call.
+  Read as one it raised KeyError on every later step and the hook stopped saving until a
+  reset; seeded into an Observer it would have been a fake failure.
+- New `test_round2_b6b7.py` drives the real hook under a throwaway HOME (5/14 on the old
+  code, 14/14 now) and holds the two signature functions equal.
+- Known, not changed: subagents share their parent's session file, so their calls share
+  one inferred trace (three agents each running `git status` once read as circling); and
+  Session.save is an unlocked read-then-write, so parallel calls can drop a step (12
+  parallel calls kept 11). Both affect only the stored inferred rows and step counts, which
+  dogfood.py and cli.py count; no verdict reads them.
+
 ### goal-drift is a note, not an interrupt (2026-11-15, change B)
 
 From research/DAY-FIVE-REAL-SESSIONS.md sections 3 to 5, approved by Diego on 2026-11-15.

@@ -318,13 +318,38 @@ def is_groundable(text):
     return t.strip().lower().rstrip('.!?') not in _NOT_A_TASK
 
 
+def _call_sig(tool, args):
+    """'The same call again', signed the way laserbrain.observe._sig signs it: the tool, a
+    readable head of the JSON arguments, and a hash of ALL of them. DUPLICATED on purpose,
+    like infer_progress below; test_round2_b6b7.py fails if the two ever disagree.
+
+    Until 2026-11-16 this hook signed a call as str(args)[:200] here and json[:400] on the
+    fallback path, so different heredoc edits that began the same way read as repeats and
+    a finishing run came back `observed: circling` (round 2, B7). `description` is left out,
+    as in observe._sig: a new label on the same command is not a new call."""
+    import hashlib
+    if isinstance(args, dict) and 'description' in args:
+        args = {k: v for k, v in args.items() if k != 'description'}
+    try:
+        a = json.dumps(args, sort_keys=True, default=str) if args else ''
+    except Exception:
+        a = str(args)
+    h = hashlib.sha1(a.encode('utf-8', 'replace')).hexdigest()[:12]
+    return f'{tool}|{a[:120]}#{h}'
+
+
 def infer_progress(events):
     """advancing | stuck | circling, from the tool trace alone.
 
     Deliberately DUPLICATED from laserbrain.observe.Observer rather than imported. A hook
     runs against whatever python3 is on PATH, and that interpreter may lag the working
     tree. The copy is small and test_hook_parity.py fails if the two ever disagree.
+
+    Only tool calls count. The fallback path also keeps a `check-unobserved` marker in the
+    same list, with no sig or ok; read as a call it raised KeyError on every later step, the
+    hook swallowed it, and nothing was saved again until a reset (review of B6/B7, 2026-11-16).
     """
+    events = [e for e in events if isinstance(e, dict) and 'sig' in e]
     w = events[-WINDOW:]
     if not w:
         return 'advancing'
@@ -1030,7 +1055,7 @@ def main():
         if not (_is_check(_t0) or _is_reset(_t0) or str(_t0).lower().endswith('get_history')):
             _ok0 = _event_ok(ev, ename)
             if _ok0 or not (_is_self_refusal(ev) or _is_interrupt(ev)):
-                _record_evidence(_ok0, f'{_tool(ev)}|{str(_args(ev))[:200]}')
+                _record_evidence(_ok0, _call_sig(_tool(ev), _args(ev)))
         os.environ['LASERBRAIN_HOOK_EVIDENCE'] = '1'
     _gm_env = _gate_mode_env()
     if _gm_env == 'nudge':
@@ -1378,11 +1403,7 @@ def main():
                                  'what': f'non-zero exit: {cmd}', 'clean': True,
                                  **_attribute(s, step)})
 
-        try:
-            args_s = json.dumps(args, sort_keys=True, default=str)[:400]
-        except Exception:
-            args_s = ''
-        s['events'].append({'sig': f'{tool}|{args_s}', 'ok': ok_flag})
+        s['events'].append({'sig': _call_sig(tool, args), 'ok': ok_flag})
         s['events'] = s['events'][-40:]
 
         s['inferred'].append({'step': step, 'progress': infer_progress(s['events'])})

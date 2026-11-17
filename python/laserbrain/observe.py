@@ -31,21 +31,35 @@ false alarms — the right direction for something that interrupts people. It do
 make inferred checks equivalent to spelled ones, and `state()` marks them so nobody
 scores the two together and calls it one number.
 """
+import hashlib
 import json
 
 _WINDOW = 6          # how many recent events the progress rules look at
 _REPEAT = 3          # identical calls within the window that read as circling
 _FAILS = 2           # consecutive failures that read as stuck
+_SIG_HEAD = 120      # readable start of the arguments kept in a signature
 
 
 def _sig(tool, args):
     """A stable signature for 'the same call again'. Arguments are included because
-    re-running the same tool on different inputs is work, not repetition."""
+    re-running the same tool on different inputs is work, not repetition.
+
+    The WHOLE argument string decides sameness, through a hash; only the readable head is
+    cut. Until 2026-11-16 the signature was the first 400 characters here and the first 200
+    of str(args) in the hook, so two heredoc edits that began the same way were the same
+    call, and a run writing three different files read as circling (round 2, B7).
+    Duplicated in hooks/lb_coverage.py as _call_sig; test_round2_b6b7.py holds them equal.
+
+    `description` is left out: it is the agent's label for the call (Bash, Agent), not what
+    the call does, so the same command re-run under a new label is still the same call."""
+    if isinstance(args, dict) and 'description' in args:
+        args = {k: v for k, v in args.items() if k != 'description'}
     try:
         a = json.dumps(args, sort_keys=True, default=str) if args else ''
     except Exception:
         a = str(args)
-    return f'{tool}|{a[:400]}'
+    h = hashlib.sha1(a.encode('utf-8', 'replace')).hexdigest()[:12]
+    return f'{tool}|{a[:_SIG_HEAD]}#{h}'
 
 
 class Observer:
@@ -116,6 +130,10 @@ class Observer:
             top = sigs[-1]
             return f'this call has run {sigs.count(top)}x in the last {len(w)}: {top.split("|")[0]}'
         if p == 'stuck':
-            n = sum(1 for e in reversed(self.events) if not e['ok'])
+            n = 0
+            for e in reversed(self.events):     # the run at the end, as progress() counts it
+                if e['ok']:
+                    break
+                n += 1
             return f'{n} consecutive failure(s) with no successful call since'
         return f'{len(w)} recent call(s), no repetition or failure run'
