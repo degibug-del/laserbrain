@@ -79,12 +79,11 @@ else
 fi
 
 git add pyproject.toml laserbrain/__init__.py CHANGELOG.md
+# The message used to carry one release's notes (0.5x, the frozen-ground change) and every
+# later release repeated them. What changed lives in CHANGELOG.md under "## $VERSION".
 git commit -q -m "release $VERSION
 
-The frozen ground is returned on every verdict rather than only on a firing
-goal-drift. Measured: unconditional re-presentation takes rule survival across
-relayed hand-offs from 0/8 chains to 8/8, with no detector in the loop; a generic
-reminder to honour standing rules, fired just as often, scores 0/6.
+What changed: CHANGELOG.md, section $VERSION.
 
 Published to PyPI before this commit, so the repo version and the live version
 never disagree in a commit — check-laserbrain-parity.mjs asserts they match."

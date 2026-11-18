@@ -541,7 +541,9 @@ These are in laserbrain itself. They come from the laserbrain audit, except wher
 "checked". The others are as the audit reports them. Nothing was edited.
 
 **Fixed 2026-11-14, with Diego's approval: B1, B2, B5 and B8; then B3 and B4.** B6 and B7 were
-fixed 2026-11-16, also approved (python/CHANGELOG.md, test_round2_b6b7.py). B9 is unchanged.
+fixed 2026-11-16, also approved (python/CHANGELOG.md, test_round2_b6b7.py). B9 was fixed
+2026-11-17, also approved (python/CHANGELOG.md 0.58.0, test_safety_b9.py): text is let through
+only when the call cannot run it; real deletes, scratch-folder cleanups included, still stop.
 - **B1.** `lb_coverage._reply_event()` answers with the event that was asked, so the prompt reply is labelled
   `UserPromptSubmit`.
 - **B2.** `runtime.normalise()` no longer cuts a check reply. Tool text keeps its 600-character cap.

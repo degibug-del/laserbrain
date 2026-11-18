@@ -1,6 +1,6 @@
 {
   "name": "laserbrain",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "The laserbrain detector for TypeScript — holds the goal your agent stated first, frozen where it cannot revise it, and checks every later step against it. Detector only: no Operator, no PreToolUse hook, no framework adapters — those are in the Python package.",
   "keywords": [
     "agent",

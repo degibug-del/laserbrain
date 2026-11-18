@@ -1,6 +1,44 @@
 # Changelog
 
-## Unreleased - 2026-11-14
+## 0.58.0 - 2026-11-17
+
+The first PyPI release since 0.57.0 (2026-08-30). Everything under this heading since then
+ships in it: the nudge-mode gate default, the round-2 fixes B1-B9, goal-drift as a note
+(grammar 2.1.0), the contexts.json cap, the session-file lock, and this entry.
+
+### B9: a quoted phrase is not a command (2026-11-17)
+
+`lb_safety` matched its patterns anywhere in the command string, so a call that only
+MENTIONED a guarded command was refused like the real thing: `grep -n "<pattern>" notes.md`,
+a commit message naming a publish step, a here-document documenting the guard. In round 2
+(research/DAY-FOUR-ROUND2.md §7) that stopped auditors reading laserbrain's own files.
+
+Now a match is let through only when the call provably cannot run text, now or later: every
+command just prints or searches (grep, rg, echo, printf, cat, head, sort, jq, `sed -n N,Mp`,
+git commit/log/show/grep, …); nothing can execute text (no pipe into a shell, interpreter,
+xargs or awk; no `$(…)` except the `"$(cat <<'EOF' … EOF)"` a commit message is built with;
+no backticks, `<(`, `>(`, `=(`, `$'…'`, `${ cmd; }`; no variable assignment; no `$` in an
+unquoted here-document); output goes only to /dev/null or a .md/.txt file outside .git; and
+with quotes, comments and here-document bodies blanked, no pattern matches. Any doubt in
+parsing falls back to the old whole-string check. A real recursive delete is refused exactly
+as before, scratch folders included.
+
+The denial now tells a helper agent with no one to ask to leave the command undone and name
+it in its final report, instead of "have Diego run it". The text NOTE appears only when the
+phrase really is only text, so a real delete of `"$S"` is not told to rephrase a literal.
+
+Evidence. An adversarial review (3 agents) found that the first version let text through
+into files that run later (.zprofile, .envrc, .git/config, Makefile, package.json, ~/bin/ls),
+plus bash 5.3 `${ cmd; }` and env-assignment prefixes; all are now refused and pinned in
+test_safety_b9.py. On every real denial in the transcripts (72 unique commands), 0 of 55 real
+guarded actions pass and the text-only reads that motivated B9 do; across 27,418 ordinary
+commands the decision is unchanged. A differential probe runs crafted and random command
+shapes through zsh and bash with a harmless marker in the guarded slot and flags any shape
+the shell executes but the scanner lets through. It found one more bypass class (`}#` read
+as a comment start), fixed and pinned; after the fix, six seeds (38,940 shapes, 3,490
+crafted ones each time) found 0. A control hook that blocks nothing shows the probe does
+catch bypasses (346 of 790). The probe covers immediate execution; text written to run
+later is refused structurally by the write-target rule, not by the probe.
 
 ### Session files survive parallel hook calls (2026-11-16)
 

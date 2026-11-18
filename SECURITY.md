@@ -50,5 +50,8 @@ readings, bypass the safety hook, or execute code through the install path.
   another host means writing that integration.
 - `lb_safety.py` blocks destructive and publish-once commands by pattern matching. It is a
   guard rail, **not a sandbox**, and it can be worked around by anyone determined to.
+  Since 0.58.0 a match that is provably only text (a quoted phrase in a call that only
+  prints or searches and writes nothing that can run) is let through; any doubt blocks.
+  A script written with a file tool and run in a later call was never visible to it.
 - Detection precision has a measured lower bound of **4 of 50 — 8%**. Do not build a
   control that assumes it catches everything.
