@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.58.1 - 2026-11-21
+
+Three fixes to `lb_safety`. Nothing else changed.
+
+- **The Monitor tool is read.** Claude Code's `Monitor` runs `tool_input.command` in a shell,
+  but its name holds none of the shell-tool words the hook looks for, so a guarded command
+  sent through it ran unchecked. It is now matched by its whole name (so an MCP tool that only
+  has "monitor" somewhere in its name is still not read).
+- **An allowance exempts only the deploy rule.** Up to 0.58.0 a command holding an allowed
+  Worker name and `wrangler deploy` skipped every rule, so a deploy chained with a recursive
+  delete, a hard reset, a force push or a publish went through. Now only the `wrangler deploy`
+  rule is dropped for that command and every other rule still applies; such a command is
+  refused for its other part. On the fixed golden list (`tests/safety-decisions-5d5b02b.json`)
+  this changes exactly two decisions with the allowance on, both a deploy of the allowed
+  Worker chained with a recursive delete (listed under `fix_0_58_1` in that file). With no
+  allowance file, every decision is unchanged.
+- **The allowance also matches the folder the call runs in.** It used to count only a name
+  typed in the command, so a plain `npx wrangler deploy` run from the allowed Worker's folder
+  (Claude Code's Bash keeps its folder between calls) was refused. The hook payload's `cwd`
+  now counts too, when it holds the allowed name as whole path components and the command does
+  not point wrangler elsewhere: no `cd` or `pushd`, no `--cwd`, `--name`, `--prefix` or `-C`,
+  and no `--config`/`-c` unless its path is a plain relative one. Those commands deploy only if
+  they name the Worker themselves. A missing or non-string `cwd` matches nothing.
+
+The allowance file is now read only when the deploy rule matches (before, whenever any rule
+matched). It still fails closed, and the hook still lets the call through if it errors itself.
+
 ## 0.58.0 - 2026-11-20
 
 The first PyPI release since 0.57.0 (2026-08-30). Everything under this heading ships in it:

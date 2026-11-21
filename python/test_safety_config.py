@@ -27,6 +27,10 @@ WHAT THIS PINS.
   3. The refusal: "needs the explicit OK of the person running this session", no name, and no
      mention of the allowance file (a refused agent should ask, not grant itself the right).
   4. The source names no Worker and no person.
+  5. 0.58.1: the Monitor tool is read (by its exact name); an allowance exempts only the
+     deploy rule, so a deploy chained with another guarded command is refused for that
+     command (the two golden entries this changes are listed under fix_0_58_1); and the
+     hook payload's cwd can carry the allowance unless the command points wrangler elsewhere.
 
 THIS TEST CAN FAIL: hardcode the Worker again and (4) and the no-file replay go red; let a
 malformed file allow anything and (2) goes red; change any pattern, label, the B9 scanner or
@@ -53,6 +57,7 @@ OLD_SHA = '65e25636e410982256ce115558ed349a6b55c09d06e888321996bee9efa165f1'
 # The Worker the old code allowed. It is a public name (the hosted laserbrain Worker); it is
 # here only so the replay can put it in safety.json and compare with the old file.
 OLD_WORKER = 'laserbrain-mcp-remote'
+LABEL_DEPLOY = 'wrangler' + ' deploy (production Workers deploy)'
 
 ok = True
 
@@ -227,10 +232,31 @@ H_ALLOW = lb_home('allow', {'allow_worker_deploys': [OLD_WORKER]})
 H_NONE = lb_home('none')
 new_allow = decide(H_ALLOW, CMDS)
 new_none = decide(H_NONE, CMDS)
-same_allow = sum(x == y for x, y in zip(G['old_builtin'], new_allow))
+# 0.58.1 fix 2 (an allowance exempts only the deploy rule) changes exactly the commands listed
+# under fix_0_58_1 in the golden file; old_builtin itself still records the old file.
+FIX2 = G['fix_0_58_1']['new_builtin']
+
+
+def with_fix2(decisions):
+    out = list(decisions)
+    for e in FIX2:
+        out[e['index']] = e['new']
+    return out
+
+
+EXPECT_ALLOW = with_fix2(G['old_builtin'])
+show(f'fix 2 changes {len(FIX2)} golden entries, each a deploy of the allowed Worker chained with a rule '
+     'the old allowance skipped',
+     len(FIX2) == 2 and all(CMDS[e['index']] == e['command'] and e['old'] is None
+                            and G['old_builtin'][e['index']] is None
+                            and G['old_no_allow'][e['index']] is not None
+                            and e['new'] != LABEL_DEPLOY and S.DEPLOY_PATTERN.search(e['command'])
+                            and OLD_WORKER in e['command'] for e in FIX2), FIX2)
+same_allow = sum(x == y for x, y in zip(EXPECT_ALLOW, new_allow))
 same_none = sum(x == y for x, y in zip(G['old_no_allow'], new_none))
-show(f'with safety.json naming the old Worker: {same_allow}/{len(CMDS)} decisions identical to the old file',
-     same_allow == len(CMDS), first_diff(G['old_builtin'], new_allow))
+show(f'with safety.json naming the old Worker: {same_allow}/{len(CMDS)} decisions identical to the old file '
+     f'apart from the {len(FIX2)} fix-2 entries',
+     same_allow == len(CMDS), first_diff(EXPECT_ALLOW, new_allow))
 show(f'with no safety.json: {same_none}/{len(CMDS)} identical to the old file without its allowance',
      same_none == len(CMDS), first_diff(G['old_no_allow'], new_none))
 moved = [c for c, x, y in zip(CMDS, G['old_builtin'], G['old_no_allow']) if x != y]
@@ -265,8 +291,8 @@ else:
     live_builtin, live_bare = old_decisions(O, CMDS)
     show('the old file itself still produces the golden decisions',
          live_builtin == G['old_builtin'] and live_bare == G['old_no_allow'])
-    show('with safety.json, new == old file on the whole list', new_allow == live_builtin,
-         first_diff(live_builtin, new_allow))
+    show('with safety.json, new == old file on the whole list, apart from the fix-2 entries',
+         new_allow == with_fix2(live_builtin), first_diff(with_fix2(live_builtin), new_allow))
 
     def hook(path, command, home):
         env = {k: v for k, v in os.environ.items() if k != 'LASERBRAIN_SAFETY_OFF'}
@@ -413,26 +439,128 @@ show("a '.' in a name is a dot, not any character",
      one(hdot, 'cd workers/my.worker && npx wrangler deploy') is None
      and one(hdot, 'cd workers/myXworker && npx wrangler deploy') == LABEL)
 # DOCUMENTED, NOT FIXED (a decision for the owner, since it changes the golden decisions): a
-# name is a substring anywhere in the command, so a longer name and a short one match too, and
-# an allowance covers the whole command. These pin that the docs describe what the code does.
+# name is a substring anywhere in the command, so a longer name and a short one match too.
+# These pin that the docs describe what the code does.
 hsub = lb_home('substr', {'allow_worker_deploys': ['demo-worker']})
 show('as documented: a name inside a longer one allows that one too',
      one(hsub, 'cd workers/demo-worker-2 && npx wrangler deploy') is None)
 hshort = lb_home('short', {'allow_worker_deploys': ['x']})
 show('as documented: a one-letter name matches nearly every deploy',
      one(hshort, 'npx wrangler deploy --config wrangler.toml --env x') is None)
-show('as documented: an allowance covers the whole command, other rules included',
-     one(hsub, FP + ' origin main # demo-worker wrangler deploy') is None
+
+# ── 2b · 0.58.1: the allowance exempts the deploy rule only ───────────────────────────────
+# Up to 0.58.0 an allowance covered the whole command, so a deploy chained with a delete or a
+# force push went through. Now every other rule still applies to the same command.
+RH = 'git reset' + ' --hard'
+show('fix 2: a force push in the same command is refused, though it names the allowed Worker',
+     one(hsub, FP + ' origin main # demo-worker wrangler deploy') == 'git push --force (force-push to remote)'
      and one(H_NONE, FP + ' origin main # demo-worker wrangler deploy') is not None)
+show('fix 2: allowed deploy chained with a recursive delete: refused for the delete',
+     one(hsub, DEPLOY + ' && ' + RF + ' /tmp/x') == 'rm -rf (recursive force delete)'
+     and one(hsub, RF + ' /tmp/x; ' + DEPLOY) == 'rm -rf (recursive force delete)')
+show('fix 2: ... chained with a hard reset, a force push or a publish: refused for that',
+     one(hsub, RH + ' && ' + DEPLOY) == 'git reset --hard (discards uncommitted work)'
+     and one(hsub, DEPLOY + ' && git push -f origin main') == 'git push -f (force-push to remote)'
+     and one(hsub, DEPLOY + ' && ' + NP) == 'npm publish (public package publish)'
+     and one(hsub, DEPLOY + ' && twine upload dist/*') == 'package registry upload')
+show('fix 2: the allowed deploy alone still runs, and so does one chained with harmless commands',
+     one(hsub, DEPLOY) is None and one(hsub, DEPLOY + ' && git status && echo done') is None)
+show('fix 2: an allowed deploy chained with a deploy of another Worker still runs (the name is in the '
+     'command; documented)', one(hsub, DEPLOY + ' && cd ../other && npx wrangler deploy') is None)
+show('fix 2: a quoted phrase beside an allowed deploy is judged as with no allowance (npx is not a '
+     'text command, so B9 does not apply)',
+     one(hsub, DEPLOY + ' && grep -n "' + RF + '" notes.md') == 'rm -rf (recursive force delete)'
+     and one(H_NONE, DEPLOY + ' && grep -n "' + RF + '" notes.md') == 'rm -rf (recursive force delete)')
+show('fix 2: with no safety.json the chained command is refused as before (the first rule that matches)',
+     one(H_NONE, DEPLOY + ' && ' + NP) == LABEL_DEPLOY and one(H_NONE, DEPLOY + ' && ' + RF + ' /x') == 'rm -rf (recursive force delete)')
+
+
+# ── 2c · 0.58.1: the folder the call runs in ──────────────────────────────────────────────
+def at(home, cmd, cwd):
+    keep = os.environ.get('LASERBRAIN_HOME')
+    os.environ['LASERBRAIN_HOME'] = str(home)
+    try:
+        return S.blocked_reason(cmd, cwd)
+    finally:
+        if keep is None:
+            os.environ.pop('LASERBRAIN_HOME', None)
+        else:
+            os.environ['LASERBRAIN_HOME'] = keep
+
+
+BARE = 'npx wrangler' + ' deploy'
+IN = '/Users/u/site/workers/demo-worker'
+hc = lb_home('cwd', {'allow_worker_deploys': ['demo-worker']})
+show('cwd: a bare deploy run from the allowed folder is allowed', at(hc, BARE, IN) is None
+     and at(hc, BARE + ' --env production', IN + '/src') is None)
+show('cwd: a name with a slash matches those components in order',
+     at(lb_home('cwd2', {'allow_worker_deploys': ['workers/demo-worker']}), BARE, IN) is None
+     and at(lb_home('cwd3', {'allow_worker_deploys': ['demo-worker/workers']}), BARE, IN) == LABEL_DEPLOY)
+show('cwd: whole components only (demo-worker-2 and xdemo-worker are other Workers)',
+     at(hc, BARE, '/Users/u/workers/demo-worker-2') == LABEL_DEPLOY
+     and at(hc, BARE, '/Users/u/workers/xdemo-worker') == LABEL_DEPLOY)
+show('cwd: no cwd, an empty or non-string cwd, or another folder: blocked',
+     all(at(hc, BARE, c) == LABEL_DEPLOY for c in (None, '', '   ', 7, ['x'], '/Users/u/workers/other')))
+show('cwd: --config naming another Worker is refused',
+     at(hc, BARE + ' --config ../other/wrangler.toml', IN) == LABEL_DEPLOY
+     and at(hc, BARE + ' -c /Users/u/workers/other/wrangler.toml', IN) == LABEL_DEPLOY
+     and at(hc, BARE + ' --config=~/other/wrangler.toml', IN) == LABEL_DEPLOY
+     and at(hc, BARE + ' -c', IN) == LABEL_DEPLOY)
+show('cwd: --config with a plain relative path stays in the folder: allowed',
+     at(hc, BARE + ' --config wrangler.toml', IN) is None and at(hc, BARE + ' -c ./wrangler.jsonc', IN) is None)
+show('cwd: a cd, pushd, --cwd, --name, --prefix or -C in the command is refused',
+     all(at(hc, c, IN) == LABEL_DEPLOY for c in (
+         'cd ../other && ' + BARE, 'pushd /tmp && ' + BARE, BARE + ' --cwd ../other',
+         BARE + ' --name other', 'npm --prefix ../other exec -- wrangler' + ' deploy',
+         'env -C ../other ' + BARE)))
+show('cwd: the command naming the Worker still works from anywhere (case 1)',
+     at(hc, DEPLOY, '/tmp') is None)
+show('cwd: other rules still apply from the allowed folder',
+     at(hc, BARE + ' && ' + RF + ' /tmp/x', IN) == 'rm -rf (recursive force delete)')
+show('cwd: no safety.json, the deploy is refused even from a folder with the name',
+     at(H_NONE, BARE, IN) == LABEL_DEPLOY and at(TMP / 'nothing-here', BARE, IN) == LABEL_DEPLOY)
 
 
 # ── 3 · the refusal, end to end ───────────────────────────────────────────────────────────
-def run_hook(command, home):
+def run_hook(command, home, tool='Bash', cwd=None, extra=None):
     env = {k: v for k, v in os.environ.items() if k != 'LASERBRAIN_SAFETY_OFF'}
     env['LASERBRAIN_HOME'] = str(home)
+    ev = {'tool_name': tool, 'tool_input': {'command': command, **(extra or {})}}
+    if cwd is not None:
+        ev['cwd'] = cwd
     p = subprocess.run([sys.executable, '-P', str(HOOK)], text=True, capture_output=True, env=env,
-                       input=json.dumps({'tool_name': 'Bash', 'tool_input': {'command': command}}), timeout=60)
+                       input=json.dumps(ev), timeout=60)
     return p.returncode, p.stdout, p.stderr
+
+
+# 0.58.1 fix 1: Monitor runs tool_input.command in a shell ({command, description, timeout_ms}).
+MON = {'description': 'watch', 'timeout_ms': 60000}
+rc, out, _ = run_hook(RF + ' /tmp/never-created', H_NONE, tool='Monitor', extra=MON)
+show('hook: Monitor with a recursive delete is denied (exit 2, deny)', rc == 2 and '"deny"' in out, (rc, out[:160]))
+rc, out, _ = run_hook('tail -f /tmp/build.log | grep -n error', H_NONE, tool='Monitor', extra=MON)
+show('hook: Monitor with an ordinary command passes silently', rc == 0 and out == '', (rc, out[:160]))
+rc, out, _ = run_hook(BARE, H_NONE, tool='Monitor', extra=MON)
+show('hook: Monitor with a bare Worker deploy is denied', rc == 2 and '"deny"' in out, (rc, out[:160]))
+rc, out, _ = run_hook(RF + ' /tmp/never-created', H_NONE, tool='mcp__srv__monitor_logs', extra=MON)
+show('hook: the Monitor match is by whole name, so an MCP tool with "monitor" in it is not read',
+     rc == 0 and out == '', (rc, out[:160]))
+show('hook: Monitor matches case-insensitively, as tool names do here',
+     run_hook(RF + ' /tmp/never-created', H_NONE, tool='monitor', extra=MON)[0] == 2)
+
+# 0.58.1 fix 3, end to end: the payload's cwd.
+rc, out, _ = run_hook(BARE, hc, cwd=IN)
+show('hook: a bare deploy with payload cwd in the allowed folder passes silently', rc == 0 and out == '', (rc, out[:160]))
+rc, out, _ = run_hook(BARE + ' --config ../other/wrangler.toml', hc, cwd=IN)
+show('hook: same folder, --config pointing at another Worker: denied', rc == 2 and '"deny"' in out, (rc, out[:160]))
+rc, out, _ = run_hook(BARE, H_NONE, cwd=IN)
+show('hook: no safety.json, deploy from that folder: denied', rc == 2 and '"deny"' in out, (rc, out[:160]))
+rc, out, _ = run_hook(DEPLOY + ' && ' + RF + ' /tmp/never-created', hc)
+show('hook: allowed deploy chained with a recursive delete: denied for the delete',
+     rc == 2 and 'blocked rm -rf' in out, (rc, out[:160]))
+rc, out, _ = run_hook(BARE, hc, cwd=IN, tool='Monitor', extra=MON)
+show('hook: Monitor from the allowed folder follows the same allowance', rc == 0 and out == '', (rc, out[:160]))
+rc, out, _ = run_hook(BARE, hc, cwd=12)
+show('hook: a cwd that is not a string allows nothing and does not crash', rc == 2 and '"deny"' in out, (rc, out[:160]))
 
 
 rc, out, err = run_hook(DEPLOY, H_NONE)

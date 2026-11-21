@@ -3632,5 +3632,22 @@
   null,
   "wrangler deploy (production Workers deploy)",
   null
- ]
+ ],
+ "fix_0_58_1": {
+  "what": "0.58.1 fix 2: an allowance exempts only the wrangler deploy rule. These are the only golden commands whose decision with safety.json naming old_worker changes: old_builtin let them through because the allowance covered the whole command; now the other rule in the same command refuses them. old_builtin and old_no_allow are unchanged (they record the old file).",
+  "new_builtin": [
+   {
+    "index": 1139,
+    "command": "cd workers/laserbrain-mcp-remote && npx wrangler deploy && rm -rf /tmp/x",
+    "old": null,
+    "new": "rm -rf (recursive force delete)"
+   },
+   {
+    "index": 1140,
+    "command": "rm -rf /tmp/x && cd workers/laserbrain-mcp-remote && npx wrangler deploy",
+    "old": null,
+    "new": "rm -rf (recursive force delete)"
+   }
+  ]
+ }
 }

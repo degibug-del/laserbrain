@@ -38,15 +38,25 @@ has matched a deny rule:
 {"allow_worker_deploys": ["my-worker"]}
 ```
 
-Each name lets a `wrangler deploy` run when the same command names that Worker (by `cd` or
-`--config`).
+Each name lets a `wrangler deploy` run in two cases:
 
-Read what an allowance does before you add one. Any command that contains an allowed name
-and `wrangler deploy` anywhere skips **every** rule, including one that also force-pushes or
-deletes. The name is matched as plain text, case-insensitively, anywhere in the command, so
-`my-worker` also allows `my-worker-2`, and a short or common name (`x`, `npx`, `workers`)
-matches nearly every deploy. Only allow a distinctive name, for a Worker you would let an
-agent deploy unattended.
+- the same command names that Worker (by `cd` or `--config`), or
+- the folder the call runs in (the `cwd` the agent host sends the hook) has the name as whole
+  path components (`my-worker` matches `.../workers/my-worker/src` but not
+  `.../my-worker-2`), and the command does not point wrangler elsewhere: no `cd` or `pushd`,
+  no `--cwd`, `--name`, `--prefix` or `-C`, and no `--config`/`-c` unless its path is a plain
+  relative one inside that folder. A command that does any of these deploys only if it names
+  the Worker itself.
+
+Read what an allowance does before you add one. Since 0.58.1 it exempts **only** the deploy
+rule. Every other rule still applies to the same command, so a deploy of an allowed Worker
+chained with a force push, a hard reset, a recursive delete or a publish is refused for that
+part. (Up to 0.58.0 a command holding an allowed name and `wrangler deploy` skipped every
+rule.) The name is matched as plain text, case-insensitively, anywhere in the command, so
+`my-worker` also allows `my-worker-2`, a short or common name (`x`, `npx`, `workers`) matches
+nearly every deploy, and a command that names the allowed Worker can deploy another one in
+the same call. Only allow a distinctive name, for a Worker you would let an agent deploy
+unattended.
 
 A missing, unreadable, oversized or malformed file allows nothing, and so does anything at
 that path that is not a regular file. A name that is not a plain path fragment (so `""` or

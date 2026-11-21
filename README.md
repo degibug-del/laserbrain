@@ -121,11 +121,13 @@ conda — set `LASERBRAIN_PYTHON` to it.
 {"allow_worker_deploys": ["my-worker"]}
 ```
 
-A `wrangler deploy` whose command also names `my-worker` (by `cd` or `--config`) then runs.
-An allowance covers the whole command it matches: a command that contains the allowed name and
-`wrangler deploy` anywhere skips every rule, including one that would also force-push or
-delete. So allow only a distinctive name, for a Worker you would let an agent deploy
-unattended (SECURITY.md has the details). A missing, unreadable or malformed file allows
+A `wrangler deploy` then runs when its command names `my-worker` (by `cd` or `--config`), or
+when the folder the call runs in has `my-worker` as a path component and the command does not
+point wrangler elsewhere (no `cd`, no `--config` outside that folder). Since 0.58.1 an
+allowance exempts only the deploy rule: every other rule still applies to the same command, so
+a deploy chained with a force push or a recursive delete is refused for that part. The name is
+matched as plain text anywhere in the command, so allow only a distinctive name, for a Worker
+you would let an agent deploy unattended (SECURITY.md has the details). A missing, unreadable or malformed file allows
 nothing. To switch the guard off entirely, set `LASERBRAIN_SAFETY_OFF=1` where
 the agent host is launched; a prefix on the command does nothing.
 

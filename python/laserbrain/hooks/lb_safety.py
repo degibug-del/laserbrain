@@ -72,6 +72,14 @@ BASH_TOOLS = (
     'bash', 'run_terminal_command', 'shell', 'terminal',
     'run_command', 'execute', 'local_shell',
 )
+# Tools that run a shell command but whose name holds none of the words above, matched by
+# the WHOLE name (lower-cased) so an unrelated MCP tool with the word in it is not read.
+# Claude Code's Monitor runs tool_input.command in a shell and streams its output; until
+# 0.58.1 it was not read at all, so a guarded command passed through it unchecked.
+EXACT_SHELL_TOOLS = frozenset(('monitor',))
+
+# The one rule an allowance can exempt (see ALLOWANCES).
+DEPLOY_PATTERN = next(p for p, label in DENY_PATTERNS if label.startswith('wrangler deploy'))
 
 
 # ── ALLOWANCES: standing permissions, from the user's own config only (since 0.58.0) ──────
@@ -85,18 +93,33 @@ BASH_TOOLS = (
 #
 #     {"allow_worker_deploys": ["my-worker"]}
 #
-# Each name lets a `wrangler deploy` run when the same command also contains that name,
-# before or after the verb: `cd workers/my-worker && npx wrangler deploy`, or
-# `wrangler deploy --config workers/my-worker/wrangler.toml`. Keying on the path is sound
-# because shell state does not persist between tool calls: a deploy has to carry its own
-# `cd` or --config in the same command, so there is no way to be "already in" the directory.
-# Every other Worker still stops. The name is matched as plain text (re.escape, so a `.` in it
-# is a dot), case-insensitively, ANYWHERE in the command, so a name contained in a longer one
-# (my-worker in my-worker-2) allows that one too, and a short or common name (x, npx,
-# workers, toml) matches nearly every deploy. As before 0.58.0, an allowance covers the WHOLE
-# command it matches: a command holding an allowed name and `wrangler deploy` skips every
-# rule, a force push or a recursive delete in the same command included. Allow only a
-# distinctive name, for a Worker you would let an agent deploy unattended.
+# Each name lets a `wrangler deploy` run in two cases:
+#
+#   1. The same command also contains that name, before or after the verb:
+#      `cd workers/my-worker && npx wrangler deploy`, or
+#      `wrangler deploy --config workers/my-worker/wrangler.toml`. The name is matched as
+#      plain text (re.escape, so a `.` in it is a dot), case-insensitively, ANYWHERE in the
+#      command, so a name contained in a longer one (my-worker in my-worker-2) allows that
+#      one too, and a short or common name (x, npx, workers, toml) matches nearly every
+#      deploy.
+#   2. (0.58.1) The command does not name it, but the folder the call runs in does: the hook
+#      payload's `cwd` holds the name as whole path components (my-worker matches
+#      .../workers/my-worker/src, not .../my-worker-2; workers/my-worker must appear as those
+#      two components in that order), case-insensitively. A host whose shell keeps its
+#      folder between calls (Claude Code's Bash does) runs a plain `npx wrangler deploy`
+#      from there, and until 0.58.1 that deploy stopped although the Worker was allowed.
+#      This case does not apply when the command could point wrangler somewhere else:
+#      a `cd` or `pushd`, a --cwd, --name or --prefix flag, a -C, or a --config/-c whose
+#      path is not a plain relative one (no `..`, not absolute, no ~ or $). Those cases fall
+#      back to case 1, so they deploy only if the command names the Worker.
+#      A payload with no usable `cwd` matches nothing here.
+#
+# Every other Worker still stops. Since 0.58.1 an allowance exempts ONLY the wrangler deploy
+# rule, and every other rule still applies to the same command: a deploy of an allowed
+# Worker chained with a force push, a hard reset, a recursive delete or a publish is refused
+# for that other part. (Up to 0.58.0 an allowance covered the whole command it matched and
+# skipped every rule.) Allow only a distinctive name, for a Worker you would let an agent
+# deploy unattended.
 #
 # Why allow one at all: a verified fix to a hosted Worker once sat staged for hours because
 # its deploy could be prepared but not shipped, and the hosted answer stayed wrong where the
@@ -110,9 +133,8 @@ BASH_TOOLS = (
 # hook (a hook killed at its timeout would let the refused command run). A name that is not
 # a plain path fragment (letters, digits, . _ / -, starting with a letter or digit, at most
 # 200 characters) is skipped, so "" or ".*" is never read as a pattern; that is all the
-# check does, and it does not stop a short name (see above). The file is read only after a
-# deny pattern has matched, so a call that names
-# nothing guarded never touches the disk. The refusal text does not mention this file: an
+# check does, and it does not stop a short name (see above). The file is read only after the
+# wrangler deploy rule has matched, so a call that deploys nothing never touches the disk. The refusal text does not mention this file: an
 # agent that was refused should ask, not grant itself the permission. An agent with file
 # tools could still write it; this is a guard rail, not a sandbox.
 ALLOW_FILE = 'safety.json'
@@ -152,18 +174,78 @@ def allowed_worker_deploys():
         return []
 
 
-def allow_patterns():
+def allow_patterns(names=None):
     """One compiled pattern per allowed Worker, the shape the built-in entry had before 0.58.0.
 
     Either order, because the path can appear before the command (`cd X && npx ...`) or after
     it (`--config X`); the first version of the built-in entry only handled the second case.
+    names defaults to the allowance file's list.
     """
     pats = []
-    for name in allowed_worker_deploys():
+    for name in (allowed_worker_deploys() if names is None else names):
         n = re.escape(name)
         pats.append(re.compile(r'\bwrangler\s+deploy\b[\s\S]*' + n
                                + r'|' + n + r'[\s\S]*\bwrangler\s+deploy\b', re.I))
     return pats
+
+
+# Anything that could send wrangler to another folder or Worker than the call's cwd. A
+# --config/-c is let through only with a plain relative path (no `..`, not absolute, no ~ or
+# $), which stays inside the cwd and so inside the allowed folder.
+_POINTS_ELSEWHERE = re.compile(
+    r'(?<![\w.-])(?:cd|pushd)(?![\w.-])'
+    r'|(?<!\S)(?:-C|--cwd|--name|--prefix)(?=[=\s]|$)')
+_CONFIG_FLAG = re.compile(r'(?<!\S)(?:-c|--config)(?=[=\s]|$)(?:=|\s+)?(\S*)')
+_PLAIN_REL = re.compile(r'[\w.+-][\w./+-]*')
+
+
+def _points_elsewhere(cmd):
+    if _POINTS_ELSEWHERE.search(cmd):
+        return True
+    for m in _CONFIG_FLAG.finditer(cmd):
+        v = m.group(1).strip('\'"')
+        if not _PLAIN_REL.fullmatch(v) or '..' in v.split('/'):
+            return True
+    return False
+
+
+def _components(path):
+    return [c for c in re.split(r'[\\/]+', path.lower()) if c and c != '.']
+
+
+def _cwd_names(cwd, name):
+    """True if cwd holds name as whole path components, in order. False on any doubt."""
+    try:
+        if not isinstance(cwd, str) or not cwd.strip():
+            return False
+        want = _components(name)
+        if not want or '..' in want:
+            return False
+        have = _components(os.path.normpath(cwd))
+        k = len(want)
+        return any(have[i:i + k] == want for i in range(len(have) - k + 1))
+    except Exception:
+        return False
+
+
+def deploy_allowed(cmd, cwd=None):
+    """True if the user's allowance covers the wrangler deploy in cmd (run from cwd).
+
+    Case 1, the command names the Worker; case 2, the call's folder does and the command
+    points nowhere else (see ALLOWANCES). Exempts the deploy rule only: blocked_reason still
+    applies every other rule. Never raises; any doubt is False.
+    """
+    try:
+        names = allowed_worker_deploys()
+        if not names:
+            return False
+        if any(p.search(cmd) for p in allow_patterns(names)):
+            return True
+        if _points_elsewhere(cmd):
+            return False
+        return any(_cwd_names(cwd, n) for n in names)
+    except Exception:
+        return False
 
 
 # ── B9: a quoted phrase is not a command ──────────────────────────────────────────────
@@ -438,7 +520,7 @@ def command_of(ev):
     return str(ti.get('command') or ti.get('cmd') or ti.get('script') or '')
 
 
-def blocked_reason(cmd):
+def blocked_reason(cmd, cwd=None):
     """The label of the rule that stops this command, or None if it may run.
 
     THE decision, in one function, so it can be tested without a subprocess. It was inline
@@ -446,23 +528,25 @@ def blocked_reason(cmd):
     not see the allow-list at all, and reported two authorized commands as blocked. A rule
     reachable only through stdin is a rule nothing checks.
 
-    An allowance is a statement about the WHOLE command and cannot be written as a
-    lookaround inside a deny pattern, because the path may sit on either side of the verb
-    and Python has no variable-length lookbehind. It is consulted once a deny pattern has
-    matched, which decides exactly what consulting it first did (an allowed command is never
-    blocked, and a command no pattern matches runs either way), and it means an ordinary
-    call never reads the allowance file.
+    An allowance cannot be written as a lookaround inside a deny pattern, because the path
+    may sit on either side of the verb and Python has no variable-length lookbehind. Since
+    0.58.1 it exempts the wrangler deploy rule ONLY: when that rule matches and
+    deploy_allowed(cmd, cwd) says the Worker is allowed, the rule is dropped for this call
+    and every other rule is applied exactly as without an allowance, the B9 text check
+    included. It is consulted only when the deploy rule matches, so an ordinary call never
+    reads the allowance file. cwd is the hook payload's folder (case 2 in ALLOWANCES).
 
     A match that is only text — a quoted phrase, a comment, a cat here-document, in a call
     that cannot run text — is let through (B9; see text_only_view). The view is built only
     after a pattern has matched, so a call that names no guarded command pays nothing.
     """
-    for pat, label in DENY_PATTERNS:
+    rules = DENY_PATTERNS
+    if DEPLOY_PATTERN.search(cmd) and deploy_allowed(cmd, cwd):
+        rules = [r for r in DENY_PATTERNS if r[0] is not DEPLOY_PATTERN]
+    for pat, label in rules:
         if pat.search(cmd):
-            if any(p.search(cmd) for p in allow_patterns()):
-                return None
             view = text_only_view(cmd)
-            if view is not None and not any(p.search(view) for p, _l in DENY_PATTERNS):
+            if view is not None and not any(p.search(view) for p, _l in rules):
                 return None
             return label
     return None
@@ -495,12 +579,12 @@ def main():
     except Exception:
         return
     t = tool_name(ev)
-    if not any(b in t for b in BASH_TOOLS):
+    if t not in EXACT_SHELL_TOOLS and not any(b in t for b in BASH_TOOLS):
         return
     cmd = command_of(ev)
     if not cmd.strip():
         return
-    label = blocked_reason(cmd)
+    label = blocked_reason(cmd, ev.get('cwd'))
     if label:
             deny(
                 f'laserbrain safety: blocked {label}.\n'
