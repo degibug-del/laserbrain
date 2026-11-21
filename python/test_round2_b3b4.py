@@ -446,10 +446,14 @@ res['wiring-13 install HOOKS has PostToolUseFailure/lb_coverage/*'] = (r.returnc
 # before both gains exactly those two (test_install.py pins the rest of the new wiring). It
 # also drops the mcpServers.laserbrain entry an older install left in settings.json, because
 # Claude Code reads user-scope servers from ~/.claude.json, never from settings.json.
-adds = [x for x in items if not x.startswith('mcpServers.laserbrain removed')]
+# When `claude` is on PATH, the dry run also says it would register the MCP server with
+# `claude mcp add --scope user` (the server lives in ~/.claude.json, not settings.json).
+# Without `claude` it prints the command instead. Neither is a hook change.
+MCP_ITEMS = ('mcpServers.laserbrain removed', 'Claude Code MCP server laserbrain')
+adds = [x for x in items if not x.startswith(MCP_ITEMS)]
 res['wiring-13 dry run on the live shape adds the self-test and PostToolUseFailure/lb_coverage only'] = (
     adds == ['SessionStart/lb_safety', 'PostToolUseFailure/lb_coverage']
-    and len(items) - len(adds) <= 1, (items, r.stdout[-300:]))
+    and len(items) - len(adds) <= 2, (items, r.stdout[-300:]))
 res['wiring-13 dry run writes nothing'] = (settings.read_text() == before, 'settings.json changed')
 
 # Every hook call failed open.
