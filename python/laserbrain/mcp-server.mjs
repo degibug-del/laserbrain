@@ -596,9 +596,9 @@ const displacement = (s, g) =>
  * process and share its MCP connection, so every one of them lands here, on this object.
  *
  * Measured 2026-08-05: a subagent's hook called reset_task and check_state on the parent's
- * server. The drift log carries run ccdb41cb with 39 rows under the goal "Play the
- * tr87-cd924810 grid puzzle" — the child's task, written into the parent's ground. The
- * parent's next check scored its own BYTE-IDENTICAL goal at 0.03 and read goal-drift.
+ * server. The drift log shows one run with 39 rows under the child's task, written into the
+ * parent's ground. The parent's next check scored its own BYTE-IDENTICAL goal at 0.03 and
+ * read goal-drift.
  *
  * THE PROBLEM IS THAT NOTHING IDENTIFIES A CALLER. A tools/call carries a name and
  * arguments; there is no session, no client id, nothing per-connection that differs between
@@ -763,15 +763,22 @@ const viaBridge = async (op, args) => {
 const TOOLS = [
   {
     name: 'check_state',
+    // ONCE AT THE START, NOT EVERY STEP. 2026-11-19. The old text asked for a check on EACH
+    // step. Measured over 2026-09-20..11-19 on one machine's transcripts, 14.5% of all tool
+    // calls were check_state and 10.1% of tool-using responses held a check and nothing
+    // else: turns spent on the instrument, not the work. A check now rides along with real
+    // tool calls, and the judges that read it watch from outside.
+    // 0.58.0: the first sentence names the two moments a check is for, when a task starts and
+    // when it changes, so the rule reads the same here, in the skill and in the first reply.
     description:
-      'The smart recursion harness. Call EACH step with your working state spelled against the ' +
-      'grammar (goal, progress: ONE word advancing|stuck|circling, distance 0-10; a progress note ' +
-      'goes in `doing`). It remembers your ground ' +
-      'state and returns {drifting, reason, phi, advice}. You have drifted — stop and return to your ' +
-      'goal — if you cannot spell a clear goal+progress, if you report stuck/circling after moving ' +
-      'from ground, or if distance stops falling. A goal that no longer matches the one you first ' +
-      'stated comes back as reason goal-drift with drifting false: a note to compare with your ' +
-      'ground, not an order. Call reset_task on a new task; get_history for the run so far.',
+      'laserbrain drift check. Check in when a task starts and when it changes, not on every ' +
+      'step. Call it once at the start, in the same response as your other tool calls; it never ' +
+      'needs a response of its own. Check again when the task changes (the user asks for ' +
+      'something new) or when you are stuck or circling. ' +
+      'Spell goal (the task as you understand it), progress (ONE word: advancing|stuck|circling; ' +
+      'a note goes in `doing`) and distance 0-10. Returns {drifting, reason, advice}. reason ' +
+      'goal-drift with drifting false is a note to compare with your ground, not an order. ' +
+      'reset_task starts a new task.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1159,6 +1166,72 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
 ]
+
+/* ── the local server config: which tools are listed, judgment, policy ─────────────
+   OPTIONAL AND LOCAL. <config dir>/server.json (lb_paths configDir, so LASERBRAIN_HOME
+   relocates it with everything else) may hold:
+
+     tools     'core' (or absent): check_state, reset_task and get_history. 'all': every
+               tool above. Or a comma list of names ('core' and 'all' may appear in it). A
+               value that names no known tool falls back to the core, so a typo can never
+               leave an agent with an empty surface.
+     judgment  'off' leaves the observed/observed_over contrast and the judgment block out
+               of check_state replies. Both read machine-global evidence, so on a busy
+               machine they quoted other sessions' work back to this one.
+     policy    a label stamped on every drift-log row, so readings taken under one policy
+               can be separated from readings taken under another.
+
+   THE CORE IS THE DEFAULT since 0.58.0. Until then it was opt-in and every session was
+   shown every tool: about 32 definitions and 16,800 characters, paid for in context on
+   every turn, when most sessions call three of them. The rest are one setting away:
+   tools 'all' in server.json, or LASERBRAIN_TOOLS=all in the server's environment.
+
+   LASERBRAIN_TOOLS, LASERBRAIN_JUDGMENT and LASERBRAIN_POLICY override the file. It is
+   read on every call rather than once, so an edit needs no restart to reach tools/call
+   (a host reads tools/list at session start, so a listing change shows in new sessions).
+   Any error reads as {}, which is the default: the core, judgment on, no policy.
+
+   NOT ~/.claude.json. The host rewrites that file constantly, and a setting this server
+   owns belongs in the directory this server already owns.
+
+   tools/call is NOT filtered. A hidden tool still answers by name; the listing only
+   decides what an agent is shown, and so what it pays for in context on every turn. */
+const CORE_TOOLS = ['check_state', 'reset_task', 'get_history']
+function readServerConfig() {
+  let file = {}
+  try {
+    const j = JSON.parse(readFileSync(join(LB_CONFIG, 'server.json'), 'utf8'))
+    if (j && typeof j === 'object' && !Array.isArray(j)) file = j
+  } catch { file = {} }
+  const pick = (envName, v) => {
+    const e = process.env[envName]
+    if (typeof e === 'string' && e.trim()) return e.trim()
+    if (Array.isArray(v)) v = v.join(',')
+    return typeof v === 'string' && v.trim() ? v.trim() : undefined
+  }
+  const out = {}
+  const tools = pick('LASERBRAIN_TOOLS', file.tools)
+  const judgment = pick('LASERBRAIN_JUDGMENT', file.judgment)
+  const policy = pick('LASERBRAIN_POLICY', file.policy)
+  if (tools !== undefined) out.tools = tools
+  if (judgment !== undefined) out.judgment = judgment
+  if (policy !== undefined) out.policy = policy
+  return out
+}
+const coreTools = () => TOOLS.filter((t) => CORE_TOOLS.includes(t.name))
+function listedTools(cfg = readServerConfig()) {
+  const want = String(cfg.tools ?? '').trim().toLowerCase()
+  if (!want || want === 'core') return coreTools()
+  const names = new Set()
+  for (const x of want.split(',').map((s) => s.trim()).filter(Boolean)) {
+    if (x === 'all') return TOOLS
+    if (x === 'core') CORE_TOOLS.forEach((n) => names.add(n))
+    else names.add(x)
+  }
+  const picked = TOOLS.filter((t) => names.has(t.name))
+  return picked.length ? picked : coreTools()
+}
+const judgmentOff = (cfg) => String(cfg?.judgment ?? '').trim().toLowerCase() === 'off'
 
 /* ── corroboration: is the self-report backed by anything observed? ─────────────
    `distance` and `progress` are whatever the agent typed. The goal term is anchored — the
@@ -1645,7 +1718,7 @@ function judgeWork() {
       counsel = 'Run something and read the output before reporting progress again. Half of '
         + 'this score is your own account of yourself, and nothing has agreed with it yet.'
     } else if (judged && goalDrifts >= 3 && goalDrifts > regrounds && pace <= 0) {
-      // IT MAY ONLY COMMAND WITH CORROBORATION. Diego's call, 2026-08-16, after this
+      // IT MAY ONLY COMMAND WITH CORROBORATION. The owner's call, 2026-08-16, after this
       // branch told an agent to stop working while it was working correctly.
       //
       // What happened: a subagent's reset_task had destroyed the parent's ground, so the
@@ -2110,6 +2183,11 @@ async function _call(name, args) {
     // leaks onto the next one.
     const _rg = LAST_RESUMED
     LAST_RESUMED = null
+    // Read once per check: the policy label for the drift rows, and whether the judgment
+    // and the observed contrast are left out of the reply. See readServerConfig.
+    const _cfg = readServerConfig()
+    const _policy = _cfg.policy ? { policy: _cfg.policy } : {}
+    const _judgmentOff = judgmentOff(_cfg)
     const { goal, distance, parent_goal, next, blocked } = args || {}
     // Spelling (case, whitespace, a full stop) is forgiven at the door — see spellProgress. `progress` is
     // the word the ladder judges; `spelled` says how it was got when it was not sent as-is.
@@ -2220,8 +2298,10 @@ async function _call(name, args) {
         dist_recent: drift.distHist.slice(-4),
         arm: _arm.arm, unit: _arm.unit,
         grammar_version: GRAMMAR.laserbrain_grammar ?? null,
-        logged_by: 'laserbrain/javascript/mcp-server.mjs', ...extra })
-      const obs = observedProgress()
+        logged_by: 'laserbrain/javascript/mcp-server.mjs', ..._policy, ...extra })
+      // With judgment off, not read at all: evidence.json is one file for the whole
+      // machine, so its progress word belongs to whichever session wrote it last.
+      const obs = _judgmentOff ? null : observedProgress()
       // Reported only when it DISAGREES. A field that always appears gets skimmed; one
       // that appears when the trace contradicts the claim is worth reading.
       const contrast = (obs && progress && obs.progress !== progress)
@@ -2258,8 +2338,11 @@ async function _call(name, args) {
       // flawless descent — would have been filtered out entirely: nothing surfaced,
       // nothing logged, the one reading worth having discarded for being unremarkable on
       // the self-report side. So an unquiet control attaches the judgment by itself.
+      // judgment off (server.json or LASERBRAIN_JUDGMENT): not computed, not attached, not
+      // logged. judgeWork has no side effects, so skipping it moves no later verdict, and
+      // the phronesis tool still answers when an agent asks for it by name.
       let judgment
-      try {
+      if (!_judgmentOff) try {
         const j = judgeWork()
         const notable = j && j.verdict && !['continue', 'finish', 'ungrounded'].includes(j.verdict)
         const controlSpeaks = j && j.control && j.control.decision !== 'proceed'
@@ -2333,7 +2416,7 @@ async function _call(name, args) {
             ? (judgment.control.decision !== 'proceed') ===
               ['abandon', 'over-budget', 'wrong-problem'].includes(judgment.verdict)
             : null,
-          logged_by: 'laserbrain/javascript/mcp-server.mjs' })
+          logged_by: 'laserbrain/javascript/mcp-server.mjs', ..._policy })
       }
       // BLIND ARM. Everything above already ran — the verdict is computed, the drift is
       // logged, the corpus is identical to a sighted session. Only the agent is not told.
@@ -2463,7 +2546,7 @@ async function _call(name, args) {
       drift.firstGoal = [...toWords(goal)]
       drift.distHist = [asDist(distance)]
       runId = (globalThis.crypto?.randomUUID?.() ?? String(Date.now()))
-      return record(false, 'grounded', 'Ground state set — this is where you started. Continue, and check_state each step.')
+      return record(false, 'grounded', 'Ground state set: this is where you started. Carry on; check again only if you get stuck, the user changes what they want, or the task changes.')
     }
     const phi = displacement({ goal, progress, distance }, drift.ground)
     const g = toWords(goal), first = new Set(drift.firstGoal)
@@ -2504,7 +2587,7 @@ async function _call(name, args) {
     if (anchor < GOAL_MIN) {
       // A goal that changed right after the user spoke was REPLACED, not drifted from.
       // goal-drift was 24 of 35 fires in the recovered corpus with zero coinciding real
-      // errors, and 22 of those 24 were the first check after Diego spoke. The rule was
+      // errors, and 22 of those 24 were the first check after the user spoke. The rule was
       // right that the subject changed and wrong about what that meant.
       //
       // consumeUserTurn() DELETES the flag, and that is the load-bearing part: it licenses
@@ -2588,8 +2671,8 @@ async function _call(name, args) {
       // control() (goal_drifts) and still comparable with the old corpus by reason. What
       // changed is only that it no longer interrupts on its own. Evidence
       // (research/DAY-FIVE-REAL-SESSIONS.md §3): all 7 live goal-drift fires from Oct 17
-      // to Nov 15 were false (5 were Diego's next ask or a new phase, 1 a rewording, 1 a
-      // redirect he made), and in the July corpus it was 24 of 35 fires with 0 real. The
+      // to Nov 15 were false (5 were the user's next ask or a new phase, 1 a rewording, 1 a
+      // redirect the user made), and in the July corpus it was 24 of 35 fires with 0 real. The
       // reground rule (consumeUserTurn above) already existed and did not stop them. The
       // advice keeps the three readings and drops the order to return.
       //
@@ -2685,7 +2768,7 @@ process.stdin.on('data', async (chunk) => {
           },
         })
       } else if (req.method === 'tools/list') {
-        send({ jsonrpc: '2.0', id: req.id, result: { tools: TOOLS } })
+        send({ jsonrpc: '2.0', id: req.id, result: { tools: listedTools() } })
       } else if (req.method === 'tools/call') {
         const text = await call(req.params?.name, req.params?.arguments)
         send({ jsonrpc: '2.0', id: req.id, result: { content: [{ type: 'text', text }] } })

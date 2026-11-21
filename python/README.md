@@ -1,36 +1,60 @@
 # laserbrain
 
-**AI agents are made up of language. laserbrain is a goal-alignment harness that asserts any
-user-directed context in order to interrupt agentic context misalignment during a task.**
+laserbrain is a small drift check for AI agents. We measured it over 60 days of real use on
+one machine: the old every-step check caught 1 of 16 drifted helpers and cost about a tenth of
+the agents' responses. What it is, what it is not, and every number:
+[phronesis.world/laserbrain](https://phronesis.world/laserbrain).
 
-The context is frozen where the agent cannot revise it — it moves when you speak, and never
-when the agent decides it should. Every step after is asserted against it, and over the line
-the agent is interrupted before its next tool call rather than told afterwards. Local, in
-milliseconds: no network call, no telemetry.
+It freezes the goal an agent states for a request and scores later check-ins against it with
+a fixed formula: Φ = 0.5 · word overlap with the frozen goal + 0.3 · |change in distance| / 10
++ 0.2 · [progress word changed]. The agent cannot revise the reference; with the hooks
+installed, after each message from the person the reference becomes the agent's own
+restatement of the new ask. A drift verdict is a note, not a block.
 
-An agent watching only itself provably can't catch its own drift: each step looks
-fine next to the last while it wanders far from where it began. laserbrain is a
-**fixed reference** it checks against instead. There's a proof.
-[The theorem and the studies (nulls included).](https://phronesis.world/laserbrain/research)
-· [Watch it work.](https://phronesis.world/laserbrain/demo)
+Check in when a task starts and when it changes, not after every action.
 
-The check is a pure function, so it runs **locally and offline** — no key, no account,
-no network call, no telemetry.
+What it is not: it does not check whether the work is right, and it compares words, so a
+paraphrase of the same goal can read as a change. The core check is a pure function, so it
+runs **locally and offline**: no model, no key, no account, no network call, no telemetry,
+and the same verdict for the same input.
 
 ```bash
 pip install laserbrain
 ```
 
+## Wire it into Claude Code
+
+```bash
+laserbrain install          # the MCP server and two hooks, into ~/.claude/settings.json
+laserbrain uninstall        # takes out what install added
+```
+
+`laserbrain install` sets up Claude Code only. It backs up `settings.json` first and checks
+that the hooks run before it reports success. It wires the offline stdio MCP server, which
+shows the agent three tools by default (`check_state`, `reset_task`, `get_history`;
+`LASERBRAIN_TOOLS=all` shows the rest), and two hooks:
+
+- `lb_safety` on `PreToolUse`: refuses a short fixed list of shell commands (three force-push
+  forms, a hard reset, a recursive force delete, an unguarded Workers deploy, and package
+  publishing). It reads shell tools only and lets the call through if it errors. It is not a
+  sandbox. One Worker deploy can be allowed by name in `~/.config/laserbrain/safety.json`:
+  `{"allow_worker_deploys": ["my-worker"]}`; a missing or malformed file allows nothing.
+- `lb_coverage` after each tool call: records steps, and marks the first check after a new
+  message from the person as a re-ground. It refuses nothing.
+
+`lb_gate` is wired only with `--with-gate`. It reminds the agent to check in when coverage
+falls, and refuses on the step count only under `LASERBRAIN_GATE_MODE=hard`.
+
 ## There is also a TypeScript package, and it is smaller
 
-`npm install laserbrain` is the same detector — byte-identical verdicts, the same grammar —
-and **only** the detector. It has no `Operator`, no `PreToolUse` hook, no LangGraph or CrewAI
+`npm install laserbrain` is the same check — byte-identical verdicts, the same grammar —
+and **only** the check. It has no `Operator`, no `PreToolUse` hook, no LangGraph or CrewAI
 adapters, no context store. Its version number is higher (2.x against this package's 0.x),
 which reads backwards; the two lines are independent because these are different surfaces at
 different maturity, and forcing them to agree would make the number mean nothing.
 
-Use the TypeScript package to **score** a step in a TS codebase. Use this one to **stop** an
-agent.
+Use the TypeScript package to **score** a step in a TS codebase. Use this one when you also
+want the hooks, the `Operator` or the framework adapters.
 
 
 ## The same rule, outside Python
@@ -57,8 +81,7 @@ that. Exit 0 on pass, flag or no_signal; 1 on block or drift; 2 on bad usage.
 The argument underneath both, with the derivation and six times we broke it in working
 code: [The Frozen Reference](https://phronesis.world/papers/frozen-reference/). Every
 threshold in this package was set by a judgement and corrected by a measurement, and
-[the corrections are published](https://phronesis.world/laserbrain/evidence) — including
-the gate that once blocked 74.3% of correct answers.
+[the corrections are published](https://phronesis.world/laserbrain/evidence).
 
 ## Give it to your agent — MCP, offline, no key
 
@@ -74,8 +97,8 @@ Point any MCP client at it:
 { "mcpServers": { "laserbrain": { "command": "laserbrain", "args": ["mcp"] } } }
 ```
 
-That's the whole installation. Your agent now has `check_state`, `modulate`,
-`get_history`, `reset_task`, `similarity`, `laserscore`, `capabilities`, and
+By default the server shows three tools: `check_state`, `reset_task` and `get_history`.
+`LASERBRAIN_TOOLS=all` adds `modulate`, `similarity`, `laserscore`, `capabilities`, and
 `store_list` / `store_find` / `store_vend` — the prefabricated workflows and
 recursion-team presets below, discoverable over the wire instead of only from
 Python. No dependencies, and it keeps working with the network unplugged. The tools
@@ -98,11 +121,11 @@ laserbrain key           # a free key, saved to ~/.config/laserbrain/key
 No form, no email, no card. It prints what that key actually allows — the numbers the API
 enforces, not the ones the docs claim.
 
-**What a key buys is a *place*, not a better detector.** One machine needs no server: the
+**What a key buys is a *place*, not a better check.** One machine needs no server: the
 check is complete, and every session is written to your disk and kept there forever with no
 expiry we control. What one machine physically cannot do is be awake while you sleep, be
 read by a colleague's laptop, or notice that a *second* agent is already deploying the same
-thing. That's the whole paid line — [machines, not features](https://phronesis.world/laserbrain).
+thing. That is what the hosted service is for. Whatever you send it leaves your machine.
 
 ## The check (local, free)
 
@@ -213,9 +236,7 @@ Verdicts: `finish`, `continue`, `narrow`, `verify`, `repeating`, `wrong-problem`
 ever counsel continuing is offering encouragement, not judgment, and the agent already
 supplies plenty of that itself.
 
-Thresholds come from replaying the recorded drift corpus, not from taste. Over 146 real
-runs at the time of writing, the verdicts land `continue` 52.7%, `finish` 41.1%, and the
-hard ones on 6.2% between them — selective, and deliberately not inert. Over the MCP
+Thresholds come from replaying the recorded drift corpus, not from taste. Over the MCP
 server the judgment is attached to the check itself whenever it is one that changes what
 to do next: a tool you have to *remember* to call is a tool that does not run.
 
@@ -263,14 +284,13 @@ predict?**
 import laserbrain as lb
 
 lb.risk(900)
-# {'band': '5-30 minutes', 'rate': 0.3852, 'n': 257, 'drift': 99, 'known': True}
+# {'band': '5-30 minutes', 'rate': …, 'n': …, 'drift': …, 'known': True}
 
 lb.next_check_in(elapsed=0, tolerance=0.25)
-# 300.0    seconds until the expected drift rate crosses 25%
+# seconds until the expected drift rate crosses 25%
 
 lb.advise(2400)
-# '40 min since you last spoke. In "over 30 minutes", 19 of 22 readings were
-#  goal-drift (86%). That is past your tolerance — worth a look.'
+# one sentence: the band you are in, its count, and whether that is past your tolerance
 ```
 
 ```
@@ -278,21 +298,15 @@ laserbrain attention                # the table, with the agent's own clock besi
 laserbrain attention --since 900    # one sentence, and when to look next
 ```
 
-Drift against time since the user last spoke, measured on the shipped corpus:
+The table counts goal-drift verdicts against time since the person last spoke, on the
+shipped corpus. Read it with its caveat: that verdict was mostly false alarms on legitimate
+redirects, so a band's rate says when the wording changed, not when the work went wrong.
+The measured bands, with that caveat beside them, are on
+[phronesis.world/laserbrain](https://phronesis.world/laserbrain).
 
-| since a person spoke | goal-drift | rate |
-|---|---|---|
-| under a minute   |    0 / 29    | **0.0%** |
-| 1-5 minutes      |   40 / 209   | **19.1%** |
-| 5-30 minutes     |   99 / 257   | **38.5%** |
-| over 30 minutes  |   19 / 22    | **86.4%** |
-
-z = 4.548 between the two best-powered bands (n = 466).
-
-**Why it asks no verdict.** Precision on clearly-labelled fires is 14.6%. The per-step
-question is contested; the per-clock question is not, and answering it needs only a
-timestamp. An agent scoring itself generously cannot move these numbers, because it is
-never asked.
+**Why it asks no verdict.** The per-step question is contested; the per-clock question needs
+only a timestamp. An agent scoring itself generously cannot move these numbers, because it
+is never asked.
 
 **It refuses rather than guesses.** A band with fewer than `20` readings carries
 `rate: null`, `known: False`, and every function propagates it — `next_check_in` will not
@@ -303,12 +317,12 @@ worse than no schedule, because it looks like one.
 gives drift against steps since the agent last spelled its state — and returns
 `censored: True` past 8 steps, because the coverage gate forced a
 check at 4 (it still does under `LASERBRAIN_GATE_MODE=hard`; the default since 2026-10-16
-only nudges) and gaps that long are 0.31% of the sample. The interval
+only nudges) and gaps that long are rare in the sample. The interval
 cannot be evaluated against data the interval produced, so there is deliberately no
 `agent_next_check_in()`.
 
 **The calibration is measured, and it is not yours.** `attention.json` ships with the
-package and was computed from one machine, 93% one agent,
+package and was computed from one machine, mostly one agent,
 2026-07-28 to 2026-08-03. It carries that caveat in its own provenance block.
 Recompute it against your own corpus rather than inheriting these habits — the numbers are a
 starting point, not a constant.
@@ -324,14 +338,14 @@ then publish.
 
 ## The grammar — bring your own
 
-The theorem blesses *a* fixed reference, never a particular vocabulary. The default is
+The argument needs *a* fixed reference, never a particular vocabulary. The default is
 frozen and zero-dependency: lowercase, drop stopwords, stem anything over four
 characters, then Jaccard. That already handles inflection — "building billboards" and
 "build a billboard" score 1.0 and trip nothing.
 
 The gap is **synonyms**. "build the JSON parser" and "construct the JSON decoder" share
 only `json` — an overlap of 0.20, under the 0.30 threshold — so a faithful restatement
-reads as drift. No amount of stemming fixes that; it needs meaning. Pass `similarity=` and the same theorem runs on a better vocabulary:
+reads as drift. No amount of stemming fixes that; it needs meaning. Pass `similarity=` and the same check runs on a better vocabulary:
 
 ```python
 from laserbrain.vocab import embedding_similarity   # pip install 'laserbrain[semantic]'
@@ -349,14 +363,13 @@ crashing the check.
 
 ## The act layer — close the loop
 
-Give laserbrain your step function and it detects drift *and* injects the return. Your
-step reads `ctx["return"]` and steers back.
+Give laserbrain your step function and it scores what each step reports *and* injects the
+return. Your step reads `ctx["return"]` and steers back.
 
-**Precisely what that buys.** The return **cuts steps** — that part is measured. Whether it
-keeps the answer *as good* is **not established**: it was tested three ways, each frozen
-before it ran, and where the evidence is legible it leans the other way. Fewer steps is also
-not fewer tokens. The rule we hold ourselves to is **claim detection, not cure** — detection
-is the theorem; the cure is a study we ran three times and did not win.
+**Precisely what that buys.** On 18 open-ended tasks it stopped runs in about half the steps
+(median 5 against 10). A better result was tested three ways, each frozen before it ran, and
+is **not established**; where the evidence is legible it leans the other way (offline). Fewer
+steps is also not fewer tokens.
 [The studies, nulls included.](https://phronesis.world/laserbrain/research)
 
 ```python
@@ -386,8 +399,8 @@ print(hz.report())
 ## Modulation — the verdict, and what your role should do about it
 
 The check says whether you've drifted. **Modulation says what to do about it, in the voice
-of the role the agent is playing** — and the two are deliberately separate. Detection is the
-theorem and is identical for everyone. What a role *tolerates* is negotiable, which is why
+of the role the agent is playing** — and the two are deliberately separate. The check is
+identical for everyone. What a role *tolerates* is negotiable, which is why
 it lives in a team template rather than in the instrument.
 
 ```python
@@ -451,8 +464,8 @@ prod. That fault exists only between them and is invisible from inside either.
 
 Agents decompose. "Build the parser" becomes "write the tokenizer", which becomes
 "handle string escapes" — and each subtask is its own recursion with its own ground.
-`sub()` opens one. Every node runs the same proven check against *its own* goal, so a
-subtask is judged on its own terms.
+`sub()` opens one. Every node runs the same check against *its own* goal, so a subtask is
+judged on its own terms.
 
 What no node can see is the tree. Every agent can report **advancing** on its own
 sub-goal while the whole decomposition never brings the root any closer — the same
@@ -473,15 +486,15 @@ print(root.tree_report())
 #   ⚑ the TREE is spinning — 6 steps across the set since the root got closer
 ```
 
-Each node's check is the proven detector; the tree-level signal is a prototype
-extension, like the teams below — useful, not a theorem.
+Each node's check is the core check; the tree-level signal is a prototype
+extension, like the teams below.
 
 ## Recursion teams — styled multi-agent oversight
 
 A **recursion team** styles each role's recursion: a `deep` explorer tolerates
-displacement, a `tight` checker returns fast. laserbrain runs the team, watches the
-shared goal (the fixed reference), and injects the return per role — catching the
-**echo/agreement spiral** a self-watching group can't see.
+displacement, a `tight` checker returns fast. laserbrain runs the team, scores each turn
+against the shared goal (the fixed reference), and injects the return per role. It is aimed
+at the **echo/agreement spiral**, where a group agreeing with itself drifts together.
 
 ```python
 from laserbrain import Team
@@ -621,8 +634,8 @@ so changing the published instrument turns the build red rather than shipping qu
 
 ## Attaching without spelling — inferred state
 
-The harness asks you to spell goal, progress and distance every step. That is the honest
-interface and it is also why coverage is low in practice. A runtime already knows which
+The harness asks the agent to spell goal, progress and distance at each check. That is the
+honest interface and it is also why coverage is low in practice. A runtime already knows which
 tool ran, with what arguments, and whether it failed — which is most of `progress`.
 
 ```python
@@ -717,17 +730,19 @@ if v.drifting: reinject(v.advice)
 Each adapter runs the check locally and free; pass `key=`/`run_id=` (or your own
 `Harness`) to also retain history. The LangGraph path is verified end to end against
 a real `StateGraph` — see [`example_langgraph.py`](example_langgraph.py) (`pip install
-laserbrain langgraph`): the agent drifts to a different goal, `langgraph_node` catches
+laserbrain langgraph`): the agent switches to a different goal, `langgraph_node` flags
 it, and the conditional edge routes it back.
 
-## What's proven, and what isn't
+## What's measured, and what isn't
 
-The **single-agent** detector mirrors the frozen, published instrument
-(`drift.ts @ 6b483de7`) and rests on a theorem: detection is sound and complete, and
-no self-monitoring agent can be. The **multi-agent** dialogue and recursion teams are
-a prototype extension — useful, not (yet) a theorem. Whether *returning* an agent
-keeps the answer as good is [an honest open question](https://phronesis.world/laserbrain/research);
-this SDK gives you the detection and the return mechanism, and says plainly what each is.
+The **single-agent** check mirrors the frozen, published instrument
+(`drift.ts @ 6b483de7`). Its argument is about construction: a reference the agent cannot
+revise is the one thing a self-check lacks. That is not a measure of how much real drift it
+finds. In a month of labelled real use, the live check caught 1 of 16 drifted helper agents
+(live · one session · AI-labelled). The **multi-agent** dialogue and recursion teams are a
+prototype extension. Whether *returning* an agent keeps the answer as good is
+[an open question](https://phronesis.world/laserbrain/research); this SDK gives you the check
+and the return mechanism, and says plainly what each is.
 
 MIT · [phronesis.world/laserbrain](https://phronesis.world/laserbrain)
 

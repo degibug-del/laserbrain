@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """lb_safety.py — PreToolUse deny for irreversible shell actions under always-approve.
 
-permission_mode=always-approve is intentional for speed, but force-push, production
-deploys, and rm -rf must still stop for human confirmation. This hook denies the tool
-call with a clear reason; the agent must ask Diego and only reissue after explicit OK.
+permission_mode=always-approve is intentional for speed, but force-push, hard reset,
+recursive force delete, production deploys and package publishing must still stop for a
+person's confirmation. This hook denies the tool call with a clear reason: the command
+needs the explicit OK of the person running the session, and that person runs it.
 
-Fail OPEN on any parse/error path — same rule as lb_gate.
+Fail OPEN on any parse/error path — same rule as lb_gate. The one optional input, the
+allowance file (ALLOWANCES below), fails the other way: a file that is missing, unreadable
+or malformed allows nothing, so an error there can only leave a command blocked.
 """
-import sys, json, os, re
+import sys, json, os, re, stat
 
 # Patterns against the shell command string (case-insensitive).
 # Keep this list short and high-confidence — false positives halt real work.
@@ -22,27 +25,15 @@ DENY_PATTERNS = [
      'git reset --hard (discards uncommitted work)'),
     (re.compile(r'\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-rf|-fr)\b', re.I),
      'rm -rf (recursive force delete)'),
-    # Two carve-outs, both narrow on purpose.
+    # One carve-out in the pattern itself, narrow on purpose: --dry-run builds and validates
+    # without publishing anything, so blocking it stops a syntax check rather than a
+    # deploy. Caught on 2026-07-25 trying to validate a new Durable Object binding. A guard
+    # that blocks the safe rehearsal of a risky action pushes people toward doing the risky
+    # one untested.
     #
-    # 1. --dry-run builds and validates without publishing anything, so blocking it stops a
-    #    syntax check rather than a deploy. Caught on 2026-07-25 trying to validate a new
-    #    Durable Object binding. A guard that blocks the safe rehearsal of a risky action
-    #    pushes people toward doing the risky one untested.
-    #
-    # 2. workers/laserbrain-mcp-remote, authorized by Diego on 2026-07-27: "u should be
-    #    able to bypass that". Recorded here rather than re-asked every time — the same
-    #    treatment `pages deploy` got below.
-    #
-    #    Scoped to that ONE directory, not to wrangler generally. Keying on the path is
-    #    sound because shell state does not persist between tool calls: a deploy has to
-    #    carry its own `cd` or --config in the same command, so there is no way to be
-    #    "already in" the directory. Every other Worker still stops here.
-    #
-    #    The day it was granted is the day it earned itself. The laserbrain Worker sat on a
-    #    stale cycle detector for hours because the fix could be staged but not shipped,
-    #    and the hosted endpoint answered `stalled` where the package answered
-    #    `oscillating` on identical input. A guard that makes the correct version wait is
-    #    not protecting anything.
+    # A deploy of a Worker the user has named can also run, from the user's own config file
+    # and from nowhere else: see ALLOWANCES below. Until 0.58.0 one such Worker was named
+    # here in the code, so every install carried one machine's standing permission.
     #
     # NOTE for whoever edits this next: this file cannot be patched from a shell heredoc,
     # because the patch text contains the very patterns below and the hook scans the whole
@@ -51,21 +42,19 @@ DENY_PATTERNS = [
     # mentioned a blocked command, noted further down.
     (re.compile(r'\bwrangler\s+deploy\b(?![^\n|;&]*--dry-run)', re.I),
      'wrangler deploy (production Workers deploy)'),
-    # `wrangler pages deploy` was here until 2026-07-25, when Diego gave standing
-    # authorization: "i want u to deploy things as soon as they are built, unless it is
-    # something i'm building with you. when i just tell you things, i want u to upload them
-    # automatically."
+    # `wrangler pages deploy` was here until 2026-07-25, when the owner of the machine this
+    # hook was written on gave a standing authorization for deploying finished work.
     #
-    # That is the explicit OK this hook was written to wait for, so it is recorded here
-    # rather than asked for again every time. It is deliberately the ONLY rule removed —
+    # That is the explicit OK this hook was written to wait for, so it was recorded rather
+    # than asked for again every time. It is deliberately the ONLY rule removed —
     # force-push, reset --hard, rm -rf, npm publish and registry uploads all still stop,
     # because none of those were authorized and they destroy or publish rather than
     # republish. A Pages deploy is reversible: every deployment is retained and the
     # previous one can be promoted back.
     #
-    # The standing OK covers deploys of work Diego ASKED for. While a thing is being
-    # iterated on together, hold — that is his carve-out, and it is a judgement the hook
-    # cannot make, so it stays with the agent.
+    # The standing OK covered deploys of work that was ASKED for. While a thing is still
+    # being iterated on with the person, hold: that is a judgement the hook cannot make, so
+    # it stays with the agent.
     (re.compile(r'\bnpm\s+publish\b', re.I),
      'npm publish (public package publish)'),
     # Alternation binds looser than it reads: `\bpypi|twine\s+upload\b` is
@@ -85,19 +74,96 @@ BASH_TOOLS = (
 )
 
 
-# Explicitly authorized, checked before anything is denied. Each entry records WHO
-# authorized it and WHEN — a standing permission with no provenance is indistinguishable
-# from one somebody added quietly.
-ALLOW_PATTERNS = [
-    # Diego, 2026-07-27: "u should be able to bypass that" — asked three times across one
-    # session while a verified fix sat staged and unshippable. Scoped to this ONE Worker;
-    # every other deploy still stops. Matching either order because the path can appear
-    # before the command (`cd X && npx ...`) or after it (`--config X`), and the first
-    # attempt only handled the second case.
-    (re.compile(r'\bwrangler\s+deploy\b[\s\S]*laserbrain-mcp-remote'
-                r'|laserbrain-mcp-remote[\s\S]*\bwrangler\s+deploy\b', re.I),
-     'laserbrain MCP Worker deploy, authorized 2026-07-27'),
-]
+# ── ALLOWANCES: standing permissions, from the user's own config only (since 0.58.0) ──────
+#
+# A standing permission is a statement by the person who owns the machine, so it lives in a
+# file under their own config directory and never in this code. Until 0.58.0 one entry was
+# hardcoded here (one Worker deploy, authorized on the machine this hook was written on),
+# which shipped that one person's permission to every install.
+#
+#     ~/.config/laserbrain/safety.json     ($LASERBRAIN_HOME/config/safety.json when set)
+#
+#     {"allow_worker_deploys": ["my-worker"]}
+#
+# Each name lets a `wrangler deploy` run when the same command also contains that name,
+# before or after the verb: `cd workers/my-worker && npx wrangler deploy`, or
+# `wrangler deploy --config workers/my-worker/wrangler.toml`. Keying on the path is sound
+# because shell state does not persist between tool calls: a deploy has to carry its own
+# `cd` or --config in the same command, so there is no way to be "already in" the directory.
+# Every other Worker still stops. The name is matched as plain text (re.escape, so a `.` in it
+# is a dot), case-insensitively, ANYWHERE in the command, so a name contained in a longer one
+# (my-worker in my-worker-2) allows that one too, and a short or common name (x, npx,
+# workers, toml) matches nearly every deploy. As before 0.58.0, an allowance covers the WHOLE
+# command it matches: a command holding an allowed name and `wrangler deploy` skips every
+# rule, a force push or a recursive delete in the same command included. Allow only a
+# distinctive name, for a Worker you would let an agent deploy unattended.
+#
+# Why allow one at all: a verified fix to a hosted Worker once sat staged for hours because
+# its deploy could be prepared but not shipped, and the hosted answer stayed wrong where the
+# package's was right. A guard that makes the correct version wait is not protecting
+# anything. Why per name: that authorization covered one Worker, not wrangler.
+#
+# FAILS CLOSED. No file, an unreadable file, a file over 64 KiB, text that is not JSON, a
+# top-level value that is not an object, or an `allow_worker_deploys` that is not a list:
+# no allowance, and so does anything at that path that is not a regular file: it is opened
+# non-blocking and checked with fstat before it is read, so a FIFO there cannot hang the
+# hook (a hook killed at its timeout would let the refused command run). A name that is not
+# a plain path fragment (letters, digits, . _ / -, starting with a letter or digit, at most
+# 200 characters) is skipped, so "" or ".*" is never read as a pattern; that is all the
+# check does, and it does not stop a short name (see above). The file is read only after a
+# deny pattern has matched, so a call that names
+# nothing guarded never touches the disk. The refusal text does not mention this file: an
+# agent that was refused should ask, not grant itself the permission. An agent with file
+# tools could still write it; this is a guard rail, not a sandbox.
+ALLOW_FILE = 'safety.json'
+_ALLOW_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,199}')
+_ALLOW_MAX_BYTES = 65536
+
+
+def allowance_path():
+    """The allowance file: the lb_paths config root (LASERBRAIN_HOME moves it), safety.json."""
+    h = os.environ.get('LASERBRAIN_HOME')
+    if h:
+        return os.path.join(os.path.expanduser(h), 'config', ALLOW_FILE)
+    return os.path.join(os.path.expanduser('~'), '.config', 'laserbrain', ALLOW_FILE)
+
+
+def allowed_worker_deploys():
+    """The Worker names the user's config allows to deploy. [] on any doubt; never raises."""
+    try:
+        fd = os.open(allowance_path(), os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0))
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                return []
+            fh, fd = os.fdopen(fd, 'rb'), None          # the file object owns it now
+        finally:
+            if fd is not None:
+                os.close(fd)
+        with fh:
+            raw = fh.read(_ALLOW_MAX_BYTES + 1)
+        if len(raw) > _ALLOW_MAX_BYTES:
+            return []
+        cfg = json.loads(raw.decode('utf-8-sig'))
+        names = cfg.get('allow_worker_deploys') if isinstance(cfg, dict) else None
+        if not isinstance(names, list):
+            return []
+        return [n for n in names if isinstance(n, str) and _ALLOW_NAME.fullmatch(n)]
+    except Exception:
+        return []
+
+
+def allow_patterns():
+    """One compiled pattern per allowed Worker, the shape the built-in entry had before 0.58.0.
+
+    Either order, because the path can appear before the command (`cd X && npx ...`) or after
+    it (`--config X`); the first version of the built-in entry only handled the second case.
+    """
+    pats = []
+    for name in allowed_worker_deploys():
+        n = re.escape(name)
+        pats.append(re.compile(r'\bwrangler\s+deploy\b[\s\S]*' + n
+                               + r'|' + n + r'[\s\S]*\bwrangler\s+deploy\b', re.I))
+    return pats
 
 
 # ── B9: a quoted phrase is not a command ──────────────────────────────────────────────
@@ -380,19 +446,21 @@ def blocked_reason(cmd):
     not see the allow-list at all, and reported two authorized commands as blocked. A rule
     reachable only through stdin is a rule nothing checks.
 
-    Allow before deny: an authorization is a statement about the WHOLE command and cannot
-    be written as a lookaround inside a deny pattern, because the path may sit on either
-    side of the verb and Python has no variable-length lookbehind.
+    An allowance is a statement about the WHOLE command and cannot be written as a
+    lookaround inside a deny pattern, because the path may sit on either side of the verb
+    and Python has no variable-length lookbehind. It is consulted once a deny pattern has
+    matched, which decides exactly what consulting it first did (an allowed command is never
+    blocked, and a command no pattern matches runs either way), and it means an ordinary
+    call never reads the allowance file.
 
     A match that is only text — a quoted phrase, a comment, a cat here-document, in a call
     that cannot run text — is let through (B9; see text_only_view). The view is built only
     after a pattern has matched, so a call that names no guarded command pays nothing.
     """
-    for pat, _why in ALLOW_PATTERNS:
-        if pat.search(cmd):
-            return None
     for pat, label in DENY_PATTERNS:
         if pat.search(cmd):
+            if any(p.search(cmd) for p in allow_patterns()):
+                return None
             view = text_only_view(cmd)
             if view is not None and not any(p.search(view) for p, _l in DENY_PATTERNS):
                 return None
@@ -410,9 +478,9 @@ def main():
     # bump with instructions attached.
     #
     # The message below used to advertise it as though the prefix worked. On 2026-08-05 an
-    # agent (me) confirmed a destructive remote action with Diego in chat, was blocked,
-    # reissued, was blocked again, then tried the advertised bypass and was blocked a third
-    # time — three round trips spent discovering that the documented escape hatch does not
+    # agent confirmed a destructive remote action with the person running the session, was
+    # blocked, reissued, was blocked again, then tried the advertised bypass and was blocked
+    # a third time — three round trips spent discovering that the documented escape hatch does not
     # open the way it is written. An instruction that cannot be followed is worse than
     # none: it turns a correct refusal into a puzzle, and the moment to find that out is
     # not whatever made someone reach for the override.
@@ -437,10 +505,10 @@ def main():
             deny(
                 f'laserbrain safety: blocked {label}.\n'
                 f'THIS CALL DID NOT RUN.\n'
-                f'permission_mode may be always-approve, but irreversible shared-remote / '
-                f'destructive actions still need Diego\'s explicit OK in chat.\n'
-                f'Ask, then have DIEGO run it — reissuing will be blocked again, and '
-                f'that is intended.\n'
+                f'permission_mode may be always-approve, but this command is irreversible or '
+                f'destructive, so it needs the explicit OK of the person running this session.\n'
+                f'Ask them, then have them run it themselves — reissuing will be blocked '
+                f'again, and that is intended.\n'
                 f'If you are a helper agent with no one to ask: do not retry it or work '
                 f'around it. Leave it undone and name the blocked command in your final '
                 f'report, so the session that started you can ask.\n'

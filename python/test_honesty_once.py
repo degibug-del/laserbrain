@@ -16,6 +16,7 @@ NOTE = "distance has not fallen across the last two checks"
 def run(pkg_dir, events):
     state = tempfile.mkdtemp(prefix="lbstate-")
     env = {k: v for k, v in os.environ.items() if not k.startswith("LASERBRAIN_")}
+    env['LASERBRAIN_STUDY'] = '1'  # the pre-2026-11-19 text; the quiet default is test_quiet_default.py
     env.update(PYTHONPATH=pkg_dir, LASERBRAIN_STATE_DIR=state, LASERBRAIN_AGENT="claude", HOME=state)
     hits = []
     for i, ev in enumerate(events):

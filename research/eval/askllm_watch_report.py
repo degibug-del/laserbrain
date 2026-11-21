@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""askllm_watch_report.py — summarise the live askllm watch for the end-of-week review.
+"""askllm_watch_report.py — summarise the live askllm check (watch, then note mode).
 
-The watch (python/laserbrain/hooks/lb_askllm_watch.py) scored each helper agent once, at its
-first check_state, with the frozen ask_match_llm.py scorer, from 2026-11-15 to 2026-11-22, and
-wrote one line per agent to <STATE_DIR>/askllm-watch.jsonl. This prints:
+The check (python/laserbrain/hooks/lb_askllm_watch.py) scores each helper agent once, at its
+first check_state, with the frozen ask_match_llm.py scorer, and writes one line per agent to
+<STATE_DIR>/askllm-watch.jsonl: watch-only from 2026-11-15, then in note mode (the default since
+the Unreleased entry after 0.58.0), where a flag also writes a note that reaches the agent and
+its parent session, each delivery logged as its own line. This prints:
 
   counts by status (scored / skipped / error), skip reasons, errors
   flags: how many, where, which verdict, drift scores
+  notes: written, delivered to the agent and to the parent, how long after, expired, pending
   per day and per workflow: agents scored and flagged, model calls, cost
   latency: hook milliseconds, call seconds
   which inputs were present (relayed request, user messages, early text)
@@ -23,6 +26,12 @@ rate here may be the missing inputs, not the scorer. To compare fairly, re-score
 agents offline once they finish (score_fresh.py) and compare the two on the same agents.
 A flag here is not a verdict: label the flagged agents (and a sample of the rest) by hand.
 
+By trigger and by policy: from 2026-11-19 every judge row carries `trigger` and `policy`
+(lb_askllm_watch.py's STAMPS), so the counts are also split by each. A row without the field
+was written before the stamps went live and counts as 'unstamped'; a row whose policy is null
+(LASERBRAIN_POLICY unset) counts as 'none'. Note-delivery lines are not judge rows and are
+left out of both splits.
+
 Read-only. Snippets in the log were redacted when written; nothing here prints more.
 
 Usage:
@@ -37,6 +46,8 @@ import statistics
 import sys
 
 OFFLINE = {'caught': 10, 'positives': 12, 'caught_at_start': 9, 'false_flags': 8, 'negatives': 537}
+PRE_STAMP = 'unstamped'           # a row written before the trigger/policy stamps went live
+NO_POLICY = 'none'                # a stamped row whose policy is null (LASERBRAIN_POLICY unset)
 
 
 def default_log():
@@ -100,6 +111,36 @@ def pct(vals, q):
     return vals[k]
 
 
+def stamp_label(r, field):
+    """The row's trigger or policy as a group name: PRE_STAMP when the field is absent,
+    NO_POLICY when it is present but null."""
+    if field not in r:
+        return PRE_STAMP
+    v = r.get(field)
+    return NO_POLICY if v is None or v == '' else str(v)
+
+
+def by_stamp(rows, field):
+    """Judge-row counts grouped by `field` (trigger or policy). Note-delivery lines are left out."""
+    out = collections.defaultdict(lambda: {'lines': 0, 'scored': 0, 'flagged': 0, 'skipped': 0,
+                                           'errors': 0, 'with_row_sha': 0})
+    for r in rows:
+        s = str(r.get('status') or '')
+        if s.startswith('note_'):
+            continue
+        g = out[stamp_label(r, field)]
+        g['lines'] += 1
+        g['with_row_sha'] += bool(r.get('row_sha'))
+        if s == 'scored':
+            g['scored'] += 1
+            g['flagged'] += bool(r.get('flag'))
+        elif s == 'skipped':
+            g['skipped'] += 1
+        elif s == 'error':
+            g['errors'] += 1
+    return {k: dict(v) for k, v in sorted(out.items())}
+
+
 def summarise(rows):
     st = collections.Counter(r.get('status') for r in rows)
     scored = [r for r in rows if r.get('status') == 'scored']
@@ -135,6 +176,34 @@ def summarise(rows):
             w['skipped'] += 1
         elif s == 'error':
             w['errors'] += 1
+    # NOTE MODE: a flag writes a note (scored line with note == 'written'); each delivery is its
+    # own line (note_delivered_agent / note_delivered_parent), and so is a note that never went
+    # out (note_expired_agent / note_expired_parent past its TTL, note_dropped_mode after a switch
+    # away from note mode, with kind agent or parent).
+    written = [r for r in scored if r.get('note') == 'written']
+    deliv = collections.defaultdict(list)
+    for r in rows:
+        if str(r.get('status') or '').startswith('note_'):
+            deliv[r['status']].append(r)
+    notes = {
+        'modes': dict(collections.Counter(r.get('mode') or 'watch (before note mode)' for r in scored)),
+        'written': len(written),
+        'write_errors': sum(1 for r in scored if str(r.get('note') or '').startswith('error')),
+        'delivered_agent': len(deliv['note_delivered_agent']),
+        'delivered_parent': len(deliv['note_delivered_parent']),
+        'expired_agent': len(deliv['note_expired_agent']),
+        'expired_parent': len(deliv['note_expired_parent']),
+        'dropped_mode': len(deliv['note_dropped_mode']),
+        'delay_s_p50_agent': pct([r.get('delay_s') for r in deliv['note_delivered_agent']], 0.5),
+        'delay_s_p50_parent': pct([r.get('delay_s') for r in deliv['note_delivered_parent']], 0.5),
+        'pending': max(0, len(written) - len(deliv['note_delivered_agent']) - len(deliv['note_expired_agent'])
+                       - sum(1 for r in deliv['note_dropped_mode'] if r.get('kind') == 'agent')),
+        'deliveries': [{k: r.get(k) for k in ('ts', 'status', 'session', 'agent_id', 'label', 'workflow',
+                                               'event', 'note_written_ts', 'delay_s')}
+                       for k in ('note_delivered_agent', 'note_delivered_parent', 'note_expired_agent',
+                                 'note_expired_parent', 'note_dropped_mode')
+                       for r in deliv[k]],
+    }
     inputs = collections.Counter()
     n_recent = []
     for r in scored:
@@ -163,12 +232,15 @@ def summarise(rows):
         'cost_usd': round(sum(float(r.get('cost_usd') or 0) for r in rows), 4),
         'per_day': {k: {**v, 'cost_usd': round(v['cost_usd'], 4)} for k, v in sorted(per_day.items())},
         'per_workflow': {k: {**v, 'labels': sorted(v['labels'])} for k, v in sorted(per_wf.items())},
+        'by_trigger': by_stamp(rows, 'trigger'),
+        'by_policy': by_stamp(rows, 'policy'),
         'frozen_shas': sorted({r.get('frozen_sha') for r in rows if r.get('frozen_sha')}),
         'flagged_agents': [{k: r.get(k) for k in ('ts', 'session', 'agent_id', 'workflow', 'label',
                                                    'lane', 'where', 'verdict', 'drift_score', 'why',
                                                    'missing', 'snippets', 'inputs')}
                            for r in flagged],
         'offline_reference': OFFLINE,
+        'notes': notes,
     }
 
 
@@ -200,12 +272,27 @@ def show(s, path):
     p(f"  latency: hook p50 {lt['hook_ms_p50']} ms, max {lt['hook_ms_max']} ms; "
       f"call p50 {lt['call_s_p50']} s, max {lt['call_s_max']} s")
     p(f"  model calls {s['calls']}, cost ${s['cost_usd']}")
+    n = s.get('notes') or {}
+    p(f"  notes: modes {n.get('modes')}; written {n.get('written', 0)}"
+      f"{' (' + str(n['write_errors']) + ' write errors)' if n.get('write_errors') else ''}, "
+      f"delivered to the agent {n.get('delivered_agent', 0)} (p50 {n.get('delay_s_p50_agent')} s after writing), "
+      f"to the parent {n.get('delivered_parent', 0)} (p50 {n.get('delay_s_p50_parent')} s), "
+      f"expired undelivered: agent {n.get('expired_agent', 0)}, parent {n.get('expired_parent', 0)}; "
+      f"dropped on a mode switch {n.get('dropped_mode', 0)}; agent notes still pending {n.get('pending', 0)}")
+    for d in (n.get('deliveries') or [])[:20]:
+        p(f"    {d['ts']}  {d['status']:22s} {str(d.get('session'))[:8]}  {d.get('agent_id')}  "
+          f"{d.get('label') or ''}  on {d.get('event')}  {d.get('delay_s')} s")
     if len(s['frozen_shas']) > 1:
         p(f"  WARNING: more than one frozen sha in the log: {s['frozen_shas']}")
     p('  per day:')
     for day, d in s['per_day'].items():
         p(f"    {day}  scored {d['scored']:3d}  flagged {d['flagged']:2d}  calls {d['calls']:3d}  "
           f"${d['cost_usd']}")
+    for field in ('trigger', 'policy'):
+        p(f'  by {field}:')
+        for k, g in (s.get(f'by_{field}') or {}).items():
+            p(f"    {k}: lines {g['lines']}, scored {g['scored']}, flagged {g['flagged']}, "
+              f"skipped {g['skipped']}, errors {g['errors']}, with row_sha {g['with_row_sha']}")
     p('  per workflow:')
     for wf, w in s['per_workflow'].items():
         nm = f" ({w['name']})" if w['name'] else ''

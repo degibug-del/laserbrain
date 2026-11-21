@@ -51,7 +51,7 @@ try:
     _spec.loader.exec_module(_paths)
 except Exception as _e:                              # noqa: BLE001
     # A HOOK MUST STILL LOAD. lb_paths.py is a FOURTH file the hooks now depend on, and
-    # every way this file travels copies a fixed list: sync_from_icloud.sh named three, and
+    # every way this file travels copies a fixed list: the old sync script named three, and
     # test_proportional_gate copies lb_gate.py alone into a temp directory to corrupt it.
     # An ImportError at module scope happens ABOVE the handler that exists to fail open, so
     # a missing sibling would not fail open — it would take the hook out entirely, and on
@@ -63,7 +63,7 @@ except Exception as _e:                              # noqa: BLE001
     import sys as _sys, types as _t
     print(f'laserbrain: lb_paths.py unavailable ({type(_e).__name__}: {_e}) — using the '
           f'historical defaults; LASERBRAIN_HOME will be IGNORED in this process. '
-          f'Run sync_from_icloud.sh.', file=_sys.stderr)
+          f'Reinstall laserbrain, or copy lb_paths.py next to this hook.', file=_sys.stderr)
     _paths = _t.SimpleNamespace(
         home=lambda: None,
         config_dir=lambda: pathlib.Path.home() / '.config' / 'laserbrain',   # one-root: fallback
@@ -107,7 +107,7 @@ WRITE_TOOLS = (
 #
 #     12 -> 8%     6 -> 14%     4 -> 20%     3 -> 25%     2 -> 33%     1 -> 50%
 #
-# Set to 4 by Diego, 2026-07-25: a 20% floor. That is more than three times the 6% that
+# Set to 4 by the owner, 2026-07-25: a 20% floor. That is more than three times the 6% that
 # discipline produced, and it does NOT clear the 50% dogfood.py needs — only 1 does, and
 # a check between every single tool call is a tax nobody would keep paying. 20% is the
 # honest trade: the corpus stays attributable and dense enough to be worth reading, and
@@ -348,7 +348,7 @@ def blind_arm(unit_id):
     """'sighted' or 'blind' — does SEEING the verdict change the work? Off unless enabled.
 
     RE-CUT 2026-08-08 TO KEY ON A SEGMENT, NOT A SESSION. The first version randomised per
-    session and was unrunnable: Diego works in ONE session, and the corpus proves it — a
+    session and was unrunnable: the owner works in ONE session, and the corpus proves it — a
     single session holds 2,436 of 2,483 checks, 98% of everything. Randomising per session
     gives n=1, and the pre-registration asked for 20 per arm. It could never have completed.
 
@@ -379,7 +379,7 @@ def blind_arm(unit_id):
     That distinction is the whole point. Every session in the corpus to date ran with the
     harness visible, so there is no arm in which the instrument was measuring without also
     intervening — and "does it help?" has therefore never been answerable, only asserted.
-    Diego's own read on 2026-08-07 was "yes, noticeably better", which is exactly the kind
+    The owner's own read on 2026-08-07 was that it felt better, which is exactly the kind
     of belief that needs a control rather than a testimonial.
 
     WHY NOT SIMPLY TURN THE HARNESS OFF for the control arm: then the control sessions
@@ -809,10 +809,14 @@ try:
 except Exception:
     _HOSTS = {}
 
+# 0.58.0: the exception is said, not implied. The skill and both servers say to check in
+# alongside other tool calls; only while this gate refuses on its step count does that race.
 CHECK_HOWTO_DEFAULT = _HOSTS.get('default') or (
     'Call mcp__laserbrain__check_state now with your CURRENT goal, progress '
-    '(advancing|stuck|circling) and distance 0-10, then reissue the blocked call. '
-    'Do not batch check_state with other tools (gate race).'
+    '(advancing|stuck|circling) and distance 0-10, then reissue the blocked call. While '
+    'the gate is refusing on its step count, send check_state on its own: a call batched '
+    'beside it can be refused before the check counts. Otherwise check in alongside your '
+    'other tool calls.'
 )
 
 
@@ -849,8 +853,8 @@ def load_session(ev):
 #
 # That is a real distance between what the instrument measures and what it enforces. The
 # detector's claim is about the relationship between a spelled goal and the goal a run
-# began with; the enforcement was about how often you spoke. Observed live in session
-# 18d090f0 on 2026-08-27: a check returned {"drifting": true, "reason": "goal-drift",
+# began with; the enforcement was about how often you spoke. Observed live in one session
+# on 2026-08-27: a check returned {"drifting": true, "reason": "goal-drift",
 # "phi": 0.54} and the very next tool call ran unopposed.
 #
 # WHY IT SHIPS IN SHADOW MODE, AND WHY THAT IS NOT TIMIDITY. Published precision on
@@ -902,7 +906,7 @@ def gate_on_drift_mode():
 #
 # THE DEFAULT CHANGED THE SAME DAY. The day-one experiment (research/DAY-ONE-RESULTS.md)
 # counted 4,775 gate blocks, every one from the step count; signal mode kept 0 of them and 30
-# of 30 sampled were false alarms. Diego approved the change on 2026-10-16. So unset is
+# of 30 sampled were false alarms. The owner approved the change on 2026-10-16. So unset is
 # now `nudge`.
 #
 #     unset / nudge  the step count never refuses. Each call hard would have warned on or
@@ -985,7 +989,7 @@ def agent_key(ev):
     Claude Code's hook input carries agent_id "only when the hook fires from within a
     subagent" (its own schema text) and omits it on the main thread. Every subagent shares
     the parent's session_id, so before this the session file had ONE step counter for all of
-    them: on 2026-10-16 three concurrent goals checked in to session 4038b8f4 and each was
+    them: on 2026-10-16 three concurrent goals checked in to one session and each was
     told "N steps since your last check_state" counting the others' calls.
     """
     a = ev.get('agent_id') or ev.get('agentId')

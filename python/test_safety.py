@@ -2,15 +2,20 @@
 """test_safety.py — irreversible shell actions denied under always-approve."""
 import json, os, pathlib, subprocess, sys, tempfile
 
-# See the note in test_gate_hosts.py: lasergear is a separate repo, this reaches into it,
-# and CI on a clean runner is what made that visible. LASERGEAR_DIR overrides; absent, this
-# skips with exit 77 rather than failing, because "could not run" and "ran and failed" are
-# different facts.
-_GEAR = pathlib.Path(os.environ.get('LASERGEAR_DIR') or (
-    pathlib.Path.home() / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis/lasergear'))
-HOOK = _GEAR / 'lb_safety.py'
-if not HOOK.exists():
-    print(f'  SKIP  lb_safety.py not found at {HOOK} — set LASERGEAR_DIR to a lasergear checkout')
+# THE HOOK UNDER TEST IS THIS REPO'S OWN COPY, python/laserbrain/hooks/lb_safety.py: the
+# file the settings wiring runs (see test_safety_wiring.py). This used to default to a
+# lasergear checkout under the home directory and skip with exit 77 when there was none,
+# so on any machine without that checkout the guard's own tests never ran while the copy
+# that actually runs went untested.
+#
+# LASERGEAR_DIR still points it at another checkout (CI clones lasergear for the suites that
+# need it). A directory named that way and missing the file is "could not run", exit 77; this
+# repo's copy missing is a failure, since it ships here.
+_HERE = pathlib.Path(__file__).resolve().parent
+_GEAR = pathlib.Path(os.environ['LASERGEAR_DIR']) if os.environ.get('LASERGEAR_DIR') else None
+HOOK = (_GEAR or _HERE / 'laserbrain' / 'hooks') / 'lb_safety.py'
+if _GEAR is not None and not HOOK.exists():
+    print(f'  SKIP  lb_safety.py not found at {HOOK} — LASERGEAR_DIR names no lasergear checkout')
     raise SystemExit(77)
 ok = True
 

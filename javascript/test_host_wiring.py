@@ -178,7 +178,9 @@ else:
     try:
         out = subprocess.run(['node', str(server_path)], input=probe, capture_output=True,
                              text=True, timeout=60,
-                             env={**os.environ, 'LASERBRAIN_AGENT': CLIENT})
+                             # every tool the server serves, not the 3-tool default listing
+                             env={**os.environ, 'LASERBRAIN_AGENT': CLIENT,
+                                  'LASERBRAIN_TOOLS': 'all'})
         names = set()
         for line in out.stdout.splitlines():
             try:

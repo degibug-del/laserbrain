@@ -3,3 +3,6 @@
 # model replies (may quote the task texts) and day-two results: local only
 llm-cache/
 day2-*
+# turnwatch dev evaluation (research/eval/turn_dev_eval.py): rows and replies quote real
+# messages. Only the frozen block eval/turnwatch-frozen.json (hashes, numbers) is tracked.
+turnwatch-dev/

@@ -8,9 +8,9 @@ no telemetry, nothing to sign up for.
 WHY THIS SHIPS IN THE PACKAGE
 
 Until 0.25.0 `pip install laserbrain` gave you a library and a CLI, and the only way to
-reach the instrument over MCP was the hosted Worker. The stdio server that Diego actually
-uses is a Node file living on one machine, distributed to nobody. So the way the author
-uses his own product was the one way a user could not.
+reach the instrument over MCP was the hosted Worker. The stdio server the author actually
+used was a Node file living on one machine, distributed to nobody. So the way the author
+used the product was the one way a user could not.
 
 That is backwards for a tool whose headline claim is that the check is local, free, and
 needs no server. Most agents cannot `import laserbrain` — they speak MCP. Making the local
@@ -32,10 +32,17 @@ offering them here would produce an MCP server that silently fails the moment it
 the way it advertises. They live on the hosted Worker, which is honest about being a
 server. `capabilities` says so, in as many words, rather than leaving a user to discover
 it by failure.
+
+WHAT IT LISTS BY DEFAULT (0.58.0)
+
+Three tools: check_state, reset_task and get_history. LASERBRAIN_TOOLS=all, or
+"tools": "all" in <config dir>/server.json, lists the rest. Every tool still answers
+tools/call by name. The rule is the node server's, and _listed_names() below spells it out.
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any
 
@@ -495,9 +502,12 @@ TOOLS: dict[str, dict[str, Any]] = {
     'check_state': {
         'fn': _check_state,
         'description': (
-            'Spell where you are. The FIRST call freezes the ground — every later reading is '
-            'measured against it, which is what makes this different from asking yourself. '
-            'Call it each step. Returns one of nine verdicts, Φ, and what to do.'),
+            'laserbrain drift check. Check in when a task starts and when it changes, not on '
+            'every step. Call it once at the start, in the same response as your other tool '
+            'calls; check again when the task changes (the user asks for something new) or '
+            'when you are stuck or circling. The FIRST call freezes the ground: every later '
+            'reading is measured against it. Returns one of nine verdicts, Φ, and what to do. '
+            'reset_task starts a new task.'),
         'schema': {
             'type': 'object',
             'properties': {
@@ -632,9 +642,60 @@ TOOLS: dict[str, dict[str, Any]] = {
 
 
 # ── JSON-RPC, on a pipe ──────────────────────────────────────────────────────────────
+# WHICH TOOLS ARE LISTED (0.58.0). The same rule as listedTools() in mcp-server.mjs, so the
+# two servers show the same surface for the same settings:
+#
+#   LASERBRAIN_TOOLS, else `tools` in <config dir>/server.json (a string or a list):
+#     absent, empty or 'core'   check_state, reset_task and get_history
+#     'all' anywhere in it      every tool
+#     a comma list of names     those tools ('core' may be in it); a value that names no
+#                               known tool falls back to the core, so a typo can never leave
+#                               an agent with an empty surface
+#
+# An agent pays for every listed definition in context on every turn, and most sessions
+# call three of them. tools/call is NOT filtered: a hidden tool still answers by name. Any
+# error reading the file reads as no file, which is the core. The file is read on every
+# tools/list, so an edit shows in the next session without a reinstall.
+CORE_TOOLS = ('check_state', 'reset_task', 'get_history')
+
+
+def _tools_setting() -> str:
+    env = os.environ.get('LASERBRAIN_TOOLS')
+    if isinstance(env, str) and env.strip():
+        return env.strip()
+    try:
+        from ._paths import config
+        j = json.loads(config('server.json').read_text(encoding='utf-8'))
+    except Exception:
+        return ''
+    v = j.get('tools') if isinstance(j, dict) else None
+    if isinstance(v, list):
+        v = ','.join('' if x is None else str(x) for x in v)
+    return v.strip() if isinstance(v, str) else ''
+
+
+def _listed_names(setting: str | None = None) -> list[str]:
+    want = (_tools_setting() if setting is None else setting).strip().lower()
+    core = [n for n in TOOLS if n in CORE_TOOLS]
+    if not want or want == 'core':
+        return core
+    names: set[str] = set()
+    for x in (s.strip() for s in want.split(',')):
+        if not x:
+            continue
+        if x == 'all':
+            return list(TOOLS)
+        if x == 'core':
+            names.update(CORE_TOOLS)
+        else:
+            names.add(x)
+    picked = [n for n in TOOLS if n in names]
+    return picked or core
+
+
 def _tool_list() -> list[dict]:
-    return [{'name': n, 'description': t['description'], 'inputSchema': t['schema']}
-            for n, t in TOOLS.items()]
+    return [{'name': n, 'description': TOOLS[n]['description'], 'inputSchema': TOOLS[n]['schema']}
+            for n in _listed_names()]
 
 
 def handle(msg: dict) -> dict | None:

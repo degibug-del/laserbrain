@@ -58,7 +58,8 @@ HOSTED = {'ask_alice', 'analyze_language', 'compare_phrasings',
           'remember_self', 'resume_self', 'forget_self'}
 
 PY_CMD = [sys.executable, '-m', 'laserbrain.cli', 'mcp']
-res = _serve(PY_CMD, [])
+# The full surface, not the 3-tool core it lists by default since 0.58.0.
+res = _serve(PY_CMD, [], env={'LASERBRAIN_TOOLS': 'all'})
 served = {t['name'] for t in res.get(99, {}).get('result', {}).get('tools', [])}
 
 show('the offline server serves a real surface, not a stub', len(served) >= 20,

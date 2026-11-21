@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "laserbrain"
 version = "0.57.0"
-description = "AI agents are made up of language. laserbrain is an automatic grammatical control layer to reduce agent drift — it scores an agent's goal before execution, then checks each step against that fixed reference. Works across tools."
+description = "A small drift check for AI agents: it freezes the goal an agent states for a request and scores later check-ins against it. Measured, with its misses: phronesis.world/laserbrain."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [{ name = "phronesis" }]
-keywords = ["ai", "agents", "oversight", "drift", "mcp", "llm", "multi-agent"]
+keywords = ["ai", "agents", "drift", "mcp", "llm", "multi-agent"]
 dependencies = []
 
 [project.scripts]

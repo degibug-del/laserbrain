@@ -173,9 +173,20 @@ out = op.shell('ls -la', reversible=True, run=lambda c: seen.append(c) or 'listi
 check('shell() runs a benign command with no authorizer', out == 'listing' and seen == ['ls -la'])
 
 # ── 19 · the carve-out does not downgrade ──────────────────────────────────────────────
-CARVE = 'wrangler deploy workers/laserbrain-mcp-remote'
+# Since grammar 2.1.1 (0.58.0) the grammar ships no carve-out, so one is put in here to
+# prove the rule: a carve-out is reported, and never downgrades.
+CARVE = 'wrangler deploy workers/example-worker'
 rev, outw, why = classify(CARVE, reversible=True)
-check('an authorized carve-out still asks', rev is False and 'carve-out' in why)
+check('the grammar ships no carve-out: a Worker deploy is irreversible, with no note',
+      rev is False and 'carve-out' not in why)
+import re                                                  # noqa: E402
+from laserbrain import operator as _operator_mod          # noqa: E402
+_operator_mod._patterns()['allow'].append((re.compile(r'example-worker', re.I), 'example carve-out'))
+try:
+    rev, outw, why = classify(CARVE, reversible=True)
+    check('an authorized carve-out still asks', rev is False and 'carve-out' in why)
+finally:
+    _operator_mod._patterns()['allow'].pop()
 
 # ── 20 · write: reversibility is read off the disk, not declared ───────────────────────
 import os          # noqa: E402

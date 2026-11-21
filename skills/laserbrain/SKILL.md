@@ -1,14 +1,14 @@
 ---
 name: laserbrain
-description: How to work under laserbrain, the drift harness that checks whether an agent is still on the goal it started with. Use it on any long or multi-step task (several files, a build, a migration, an investigation), whenever you run subagents or a workflow, whenever a "laserbrain:" reminder says to call check_state, when check_state answers drifting or goal-drift, when the user changes what they want mid-task, and whenever the user mentions laserbrain, drift, check_state, staying on track or "are you going in circles". Covers what to spell, when, how to read the verdict, lanes for subagents, starting a new task, the hooks, and a script that does the same check where the laserbrain MCP server is not connected.
+description: How to work under laserbrain, the drift harness that checks whether an agent is still on the goal it started with. Use it on any long or multi-step task (several files, a build, a migration, an investigation), whenever you run subagents or a workflow, whenever a "laserbrain:" line appears, when check_state answers drifting or goal-drift, when the user changes what they want mid-task, and whenever the user mentions laserbrain, drift, check_state, staying on track or "are you going in circles". Covers what to spell, when, how to read the verdict, lanes for subagents, starting a new task, the hooks, and a script that does the same check where the laserbrain MCP server is not connected.
 ---
 
 # Working under laserbrain
 
 An agent that has drifted is the one least able to notice: a loop feels coherent from the inside, because
 the same thought restated agrees with itself. laserbrain is the outside reference. You state your goal once,
-then at each milestone you spell where you are against a fixed grammar, and it compares that with the ground
-you started from. It catches four things: a goal that quietly changed, a distance that stopped falling,
+then whenever you check in you spell where you are against a fixed grammar, and it compares that with the ground
+you started from. It flags four things: a goal that quietly changed, a distance that stopped falling,
 "stuck" or "circling" after you had moved, and a state you can no longer spell at all.
 
 It only works if what you spell is true. A hopeful "advancing" on a step that went nowhere hides the very
@@ -39,9 +39,11 @@ What to spell:
   chose), name the larger goal here. Without it a legitimate sub-task reads as drift.
 - **session**: a stable id for this agent's lane (see Subagents).
 
-When to check: at the start (it sets the ground), at each real milestone (a file done, a test passing, a
-phase finished), before spawning subagents or a workflow, right after the user changes direction, and
-whenever a `laserbrain:` reminder appears. Every few tool calls is about right; every call is noise.
+When to check: when a task starts and when it changes, not each step. The first check sets the ground (and, in
+a helper where the askllm judge is set up, starts that judge). Make it in the same response as your other tool
+calls; a check never needs a response of its own. If a hook line says "laserbrain: new user message", include
+one check with your first tool call. Beyond that, check in only when you are stuck or circling, or when the user
+changes direction.
 
 ## Reading the verdict
 
@@ -72,21 +74,28 @@ script, run it with `--reset` (and the same `--session`). Never reset just to ma
 
 Subagents share their parent's connection to the server, so without their own lane a child's first check
 would overwrite the parent's ground. Give every agent its own `session` (a short label such as
-`review-hook` or `build-item3`), tell it to check in at its start and at its milestones, and have it pass
-your goal as `parent_goal`. A child's verdicts are its own: check your own state again before the next wave
-rather than assuming the children's coverage counts for you.
+`review-hook` or `build-item3`), tell it to check in once at its start, in the same response as its next
+tool call, and have it pass your goal as `parent_goal`. A child's verdicts are its own.
 
 ## The hooks
 
-On a machine with laserbrain installed (`laserbrain install`), hooks run on every prompt and tool call. They
-are what make this automatic, so treat what they say as coming from the harness, not the user:
+On a machine with laserbrain installed (`laserbrain install`), hooks run on tool calls and prompts: lb_safety
+before each shell command, lb_coverage after each tool call and on each user message. Treat what they say as
+coming from the harness, not the user:
 
-- **coverage**: "N of your steps since your last check_state" is a reminder; check in at your next
-  milestone. Under `LASERBRAIN_GATE_MODE=hard` the gate refuses tool calls until you do.
-- **honesty**: "distance has not fallen across the last two checks" means exactly that. If you are stuck or
-  circling, say so.
-- **safety**: refuses destructive commands such as `rm -rf`. Do not work around it (by rewording, splitting
-  the command, or another tool). Move files to the Trash instead, or ask the user to run it.
+- **turn line**: "laserbrain: new user message ..." asks for this turn's one check.
+- **notes**: a line starting "laserbrain (askllm):" (to a helper) or "laserbrain: helper X may be off its
+  task" (to its parent) means an AI judge flagged a possible mismatch between the task and the user's
+  request. That judge is not in the package; these lines appear only where it has been set up. It can be
+  wrong; re-read the task, and if you are on it, carry on.
+- **coverage** (lb_gate: wired by the plugin, and by `laserbrain install --with-gate`): "N of your steps since
+  your last check_state" is a reminder; batch a check with your next tool call. Under
+  `LASERBRAIN_GATE_MODE=hard` it refuses tool calls until you do.
+- **studies only**: with LASERBRAIN_STUDY=1 lb_coverage's old step reminders and honesty note come back.
+- **safety**: refuses a short list of irreversible shell commands such as `rm -rf`, force pushes and
+  publishing; the command needs the explicit OK of the person running the session. Do not work around it (by
+  rewording, splitting the command, or another tool). Move files to the Trash instead, or ask the user to run
+  it. A helper with no one to ask leaves it undone and names the command in its final report.
 
 ## Related
 

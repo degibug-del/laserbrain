@@ -1,47 +1,50 @@
 # laserbrain
 
-**Laserbrain detects agent drift.**
+laserbrain is a small drift check for AI agents. We measured it over 60 days of real use on
+one machine: the old every-step check caught 1 of 16 drifted helpers and cost about a tenth of
+the agents' responses. What it is, what it is not, and every number:
+[phronesis.world/laserbrain](https://phronesis.world/laserbrain).
 
 Drift is an agent's goal separating from the one it was given, one reasonable step at a time,
 leading to work nobody asked for.
 
-The agent states its task. Laserbrain freezes that statement as the reference. At each
-following step the agent states what it is now pursuing, and laserbrain scores that with the
-frozen statement. If the two have separated far enough, laserbrain refuses the next action.
+The agent states its goal when a task starts. laserbrain freezes that statement as the
+reference and scores each later check-in against it. If the two have separated far enough,
+the verdict says so (reason `goal-drift`, a note with `drifting: false`). A drift verdict is a
+note, not a block.
 
-A goal degrades when it passes between contexts. Laserbrain carries it across. The frozen
-statement comes back to the agent on every verdict, not only the ones that fire.
+Check in when a task starts and when it changes, not after every action. Most checks score
+as grounded and the answer is to continue.
 
-Laserbrain supplies one thing: a fixed criterion, set before the work starts, that the agent's
-own report is scored with. All three inputs are self-reported and stay that way. A self-check
-has no criterion to compare them to. The frozen statement is the criterion.
+The agent cannot edit the reference. It is replaced only by a deliberate `reset_task`, or,
+with the hooks installed, by the agent's own restatement of the new ask at the first check
+after the person sends a new message.
 
-The reference cannot drift. It cannot be edited and no check updates it. It can only be
-erased and replaced, and that takes a deliberate call.
+What it is not:
 
-The check runs on every step. Most steps score as grounded and the answer is to continue.
+- It does not check whether the work is right. An agent doing the wrong thing well and an
+  agent doing the right thing badly score the same.
+- It compares words, so a paraphrase of the same goal can read as a change.
+- Everything it scores is self-reported. The frozen statement is the one thing the agent
+  cannot revise, and that is the whole of what it adds.
 
-It does not check whether the work is correct. An agent doing the wrong thing well and an
-agent doing the right thing badly score the same. It measures alignment with the stated goal
-and nothing else.
-
-No model. No key. A fixed algebraic structure computed locally in single-digit milliseconds,
-over one `grammar.json` that every implementation reads.
+The core check needs no model and no key. It is computed locally in milliseconds, over one
+`grammar.json` that every implementation reads, and it gives the same verdict for the same
+input.
 
 <details>
 <summary>The same thing, precisely</summary>
 
-Laserbrain is a deterministic drift detector for agent loops. At each step the agent supplies
-a tuple of goal, progress and distance. The first such tuple is frozen as the reference; every
-subsequent one is scored against it by
+At each check the agent supplies a tuple of goal, progress and distance. The first such tuple
+is frozen as the reference; every later one is scored against it by
 
 ```
 Φ = 0.5·goalJaccard + 0.3·|Δdistance|/10 + 0.2·[progress differs]
 ```
 
-and resolved to one of nine verdicts, two of which are enforceable. The agent supplies the
-description and has no write access to the reference and no vote on the verdict. Computation
-is offline and closed-form: no model, no network, single-digit milliseconds.
+and resolved to one of nine verdicts. The agent supplies the description and has no write
+access to the reference and no vote on the verdict. Computation is offline and closed-form:
+no model, no network.
 
 </details>
 
@@ -67,46 +70,79 @@ your team's vocabulary. It scores stem overlap, so a paraphrase of your own goal
 swap — the middle step above returns 0.0. If `goal_score` collapses on wording you consider
 identical, you have learned that before installing anything.
 
+This goes to the hosted API, so the goals you send leave your machine. The package below
+does not send them anywhere.
+
 ---
 
 ## Install
 
-**Python** — the complete product: harness, enforcement hooks, MCP server, audit chain.
+**Python** — the check, the hooks, the stdio MCP server and the audit chain.
 
 ```bash
 pip install laserbrain
 laserbrain check --goal "write a poem" --against "build a parser"
-laserbrain demo             # watch an agent drift off-goal and get returned
-laserbrain install          # wires the MCP server + hooks into your agent
+laserbrain demo             # an agent drifts off-goal and is returned
+laserbrain install          # wires Claude Code: the MCP server and two hooks
+laserbrain uninstall        # takes out what install added
 ```
 
-**Claude Code plugin** — the enforced-cadence path, and the one that actually works.
-Discipline alone measured 6% coverage. The gate holds a 20% floor, because an agent that
-has drifted is the one that will not remember to check.
+`laserbrain install` sets up Claude Code only. It backs up `~/.claude/settings.json` first,
+merges rather than overwrites, and checks that the hooks run before it reports success. It
+wires:
+
+- **the MCP server**: the offline stdio server (`laserbrain mcp`). It shows the agent three
+  tools by default: `check_state`, `reset_task` and `get_history`. `LASERBRAIN_TOOLS=all`
+  shows the rest.
+- **`lb_safety`** on `PreToolUse`: a small guard that refuses a short fixed list of shell
+  commands: three force-push forms, a hard reset, a recursive force delete, an unguarded
+  Workers deploy, and package publishing. It reads shell tools only and lets the call
+  through if it errors. It is not a sandbox. Its refusal says the command needs the explicit
+  OK of the person running the session.
+- **`lb_coverage`** after each tool call, through a small launcher (`fast.py`) that skips the
+  package import. It records steps and, when the person sends a new message, marks the next
+  check as a re-ground. It refuses nothing.
+
+`lb_gate` is not wired unless you pass `--with-gate`. With it, the gate reminds the agent to
+check in when its coverage falls and refuses edits inside another agent's claimed scope. It
+refuses on the step count only under `LASERBRAIN_GATE_MODE=hard`, and on a verdict only under
+`LASERBRAIN_GATE_ON_DRIFT=deny` or `LASERBRAIN_GATE_MODE=signal`. (Until 2026-10-16 the step
+count refused by default; in a replay of the logs, 30 of 30 sampled refusals were false
+alarms, so the repository made blocking opt-in. Releases up to 0.57.0 still block by
+default.)
+
+If the interpreter holding the package is not the first `python3` on PATH — a venv, pipx or
+conda — set `LASERBRAIN_PYTHON` to it.
+
+**Allowing one Worker deploy.** `lb_safety` reads one optional file,
+`~/.config/laserbrain/safety.json` (`$LASERBRAIN_HOME/config/safety.json` when that is set):
+
+```json
+{"allow_worker_deploys": ["my-worker"]}
+```
+
+A `wrangler deploy` whose command also names `my-worker` (by `cd` or `--config`) then runs.
+An allowance covers the whole command it matches: a command that contains the allowed name and
+`wrangler deploy` anywhere skips every rule, including one that would also force-push or
+delete. So allow only a distinctive name, for a Worker you would let an agent deploy
+unattended (SECURITY.md has the details). A missing, unreadable or malformed file allows
+nothing. To switch the guard off entirely, set `LASERBRAIN_SAFETY_OFF=1` where
+the agent host is launched; a prefix on the command does nothing.
+
+**Claude Code plugin** — a separate path, not changed in this release.
 
 ```
 /plugin marketplace add degibug-del/laserbrain
 /plugin install laserbrain
 ```
 
-It ships the MCP server and three hooks: `lb_gate` reminds the agent to check in when
-coverage falls and refuses edits inside another agent's claimed scope, `lb_safety` refuses
-destructive commands, `lb_coverage` records. (Until 2026-10-16 `lb_gate` also refused
-side-effecting calls on the step count; the day-one experiment found all 4,775 of its blocks
-came from that rule and 30 of 30 sampled were false alarms, so that is now opt-in:
-`LASERBRAIN_GATE_MODE=hard`.) **The hooks
-are inert until the Python package is installed.** They are guarded, so a missing package is
-silent rather than fatal, and they say so once on stderr naming the interpreter they tried.
-Run both:
+The plugin connects the **hosted** MCP server (`https://api.phronesis.world/mcp`), so the
+goals your agent spells reach that server. It also wires `lb_gate` and `lb_safety` on
+`PreToolUse` and `lb_coverage` after each call and on each message. The hooks are inert until
+the Python package is installed (`pip install laserbrain`); they fail open and say so once on
+stderr, naming the interpreter they tried.
 
-```bash
-pip install laserbrain          # this is what arms the hooks
-```
-
-If the interpreter holding the package is not the first `python3` on PATH — a venv, pipx or
-conda — set `LASERBRAIN_PYTHON` to it.
-
-**TypeScript**
+**TypeScript** — the check only, held to vectors generated from Python.
 
 ```bash
 npm install laserbrain
@@ -122,15 +158,12 @@ git clone https://github.com/degibug-del/laserbrain.git
 cd laserbrain
 
 pip install ./python        # same code as PyPI, plus the hooks
-laserbrain demo             # six lines: an agent drifts off-goal, and is returned
+laserbrain demo
 laserbrain install          # wire it in; verifies the hooks run before reporting success
 
-cd typescript && npm install && npm test    # 276 comparisons against Python
-cd ../javascript && node test/parity.mjs    # 138 comparisons, driven over stdio
+cd typescript && npm install && npm test    # the TypeScript port against Python's vectors
+cd ../javascript && node test/parity.mjs    # the Node server against the same vectors, over stdio
 ```
-
-`laserbrain install` backs up `~/.claude/settings.json` first and prints the undo line.
-To reverse it, restore `settings.json.before-laserbrain`.
 
 **Hosted MCP**, if you would rather not install anything:
 
@@ -140,26 +173,21 @@ https://api.phronesis.world/mcp
 
 No key. Eleven of the fifteen tools run keyless, `check_state` among them. The four that
 touch stored memory — `remember_self`, `resume_self`, `forget_self`, `ask_alice` — take a
-key as a tool argument. This line used to say the hosted MCP needs a free key, which was
-not true.
+key as a tool argument. Whatever you send it leaves your machine.
 
 ---
 
 ## This repository
 
-Three implementations of one grammar, the grammar itself, and the wiring we run ourselves.
+Three implementations of one grammar, the grammar itself, and the wiring.
 
 | path | language | what it is |
 |---|---|---|
-| [`python/`](python) | Python | **the reference.** Harness, enforcement hooks, stdio MCP server, tamper-evident audit chain. Published to PyPI as `laserbrain`. |
+| [`python/`](python) | Python | **the reference.** The check, the hooks, the stdio MCP server, a tamper-evident audit chain. Published to PyPI as `laserbrain`. |
 | [`typescript/`](typescript) | TypeScript | the port, held to vectors generated **from** Python. Published to npm as `laserbrain`. |
-| [`javascript/`](javascript) | JavaScript | the local stdio MCP server we run ourselves, and the `grammar.json` every implementation reads. |
+| [`javascript/`](javascript) | JavaScript | the Node stdio MCP server, and the `grammar.json` every implementation reads. |
 | [`json/`](json) | JSON | **the contract.** `grammar.json`, the measured calibration, and the parity vectors. |
 | [`infra/`](infra) | — | how it wires into an agent host, and which hosts are known. |
-
-```bash
-cd typescript && npm test     # 16 sequences, 276 field comparisons against Python
-```
 
 The logic is deliberately re-implemented per language; the **contract** is not. Every
 implementation reads the same `grammar.json`, and a parity check fails the build when they
@@ -169,12 +197,15 @@ disagree. That is what makes three implementations survivable — and it is also
 ## The nine verdicts
 
 `grounded` `advancing` `reground` `excursion` — carry on
-`stalled` `self-report` — warn, then interrupt
-`ungrammatical` — stop
+`stalled` `self-report` — a warning first, then drifting
+`ungrammatical` — drifting at once: the state could not be spelled
 `goal-drift` — a note, not an interrupt (since 2026-11-15: on real sessions the wording signal
 alone was a redirect far more often than a wander); three in a row with no re-ground escalate
 in `judgment` as `wrong-problem`
 `oscillating` — reads the sequence rather than the step
+
+A verdict refuses nothing by itself. Only the gate, when wired and set to refuse, turns a
+drifting verdict into a refused call.
 
 **Declare `parent_goal` for sub-tasks.** Without it, legitimate sub-work reads as drift.
 It is the most common false positive and the first thing to check.
@@ -186,7 +217,7 @@ It is the most common false positive and the first thing to check.
 The implementations are held to vectors generated **from** the Python package:
 
 ```bash
-npm test    # 16 sequences, 276 field comparisons
+cd typescript && npm test
 ```
 
 A parity check only covers the behaviour its cases ask for. On 2026-08-20 the TypeScript
@@ -202,16 +233,18 @@ It measures **execution**, where the goal is fixed before the run starts. On exp
 figuring out what to build while you build it — it will report drift continuously,
 correctly, and to no purpose.
 
-Inside a single agent that can still see its goal, a stated constraint held **36 of 36**
-times. That bounds the loss rate near 8% rather than at zero, and it means constraint
-retention is a *hand-off* problem. Goal drift is not: it needs only length.
+## What was measured
 
-## What the evidence supports
+Each number carries its grade: where it was measured, how, and by whom.
 
-Against errors something else independently caught, precision has a measured lower bound
-of **4 of 50 — 8%**, across 24 sessions in which it fired. Recall carries no figure:
-everyday runs gate at 20–25% coverage and the scorer needs 50% before a zero-fire result
-means anything. Running the harness costs about **17%** of an agent's tool calls.
+- In a month of labelled real use, the live check caught 1 of 16 drifted helper agents (12
+  had left their task; 4 were handed a task that missed the ask). *Live · one session ·
+  AI-labelled.*
+- Of its 21 live alarms that month, 2 were real. *Live · one session · AI-labelled.*
+- Under the old every-step design, about 10% of the agents' model responses only made a
+  check. *Live · one machine · 60 days.*
+- On 18 open-ended tasks it stopped runs in about half the steps (median 5 against 10). A
+  better result was tested three ways and **not established**. *Offline.*
 
 Where a number would not survive scrutiny, there is no number.
 

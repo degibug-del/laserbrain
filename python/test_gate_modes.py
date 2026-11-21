@@ -58,6 +58,7 @@ def run(kind, tool, mode=None, drift=None, claim=False, args_opt_in=False,
     link.write_text(json.dumps({'kind': 'claim', 'from': 'grok',
                                 'payload': {'paths': ['/tmp/claimed']}}) + '\n' if claim else '')
     env = {k: v for k, v in os.environ.items() if not k.startswith('LASERBRAIN_')}
+    env['LASERBRAIN_STUDY'] = '1'  # the pre-2026-11-19 text; the quiet default is test_quiet_default.py
     env.update(LASERBRAIN_STATE_DIR=str(d), LASERBRAIN_AGENT='claude',
                LASERBRAIN_LINK_LOG=str(link), PYTHONPATH=str(ROOT),
                LASERBRAIN_PROBE_SHARE='0')        # control arm: a fixed threshold of 4
@@ -189,6 +190,7 @@ def stop(mode):
     d = pathlib.Path(tempfile.mkdtemp())
     (d / 'C1.json').write_text(json.dumps({'steps': 30, 'checks': [{'step': 2, 'reason': 'advancing'}]}))
     env = {k: v for k, v in os.environ.items() if not k.startswith('LASERBRAIN_')}
+    env['LASERBRAIN_STUDY'] = '1'  # the pre-2026-11-19 text; the quiet default is test_quiet_default.py
     env.update(LASERBRAIN_STATE_DIR=str(d), PYTHONPATH=str(ROOT))
     if mode:
         env['LASERBRAIN_GATE_MODE'] = mode
@@ -212,6 +214,7 @@ print('\n  5. hard keeps the old hook\'s side effects that 2026-10-16 fixed only
 
 def cov_env(d, mode):
     env = {k: v for k, v in os.environ.items() if not k.startswith('LASERBRAIN_')}
+    env['LASERBRAIN_STUDY'] = '1'  # the pre-2026-11-19 text; the quiet default is test_quiet_default.py
     env.update(LASERBRAIN_STATE_DIR=str(d / 'state'), LASERBRAIN_HOME=str(d / 'home'),
                HOME=str(d / 'home'), PYTHONPATH=str(ROOT), LASERBRAIN_PROBE_SHARE='0')
     if mode:

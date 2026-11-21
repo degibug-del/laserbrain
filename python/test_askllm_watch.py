@@ -1,11 +1,16 @@
-"""The live askllm watch (lb_askllm_watch.py, change A, 2026-11-15..22) runs the FROZEN AI-graded
-ask-mismatch scorer once per helper agent, at its first check_state, in a detached process, and
-says nothing to anyone: no stdout, no stderr, no additionalContext, never a block.
+"""The live askllm check (lb_askllm_watch.py, change A, since 2026-11-15) runs the FROZEN AI-graded
+ask-mismatch scorer once per helper agent, at its first check_state, in a detached process. The
+scoring itself says nothing to anyone: no stdout, no stderr, never a block. In watch mode nothing
+else happens; in note mode (the default since the Unreleased entry) a flag becomes a note, which
+test_askllm_notes.py covers.
 
 Checked here, with a mock backend and no network: trigger-once, main-session skip, silent output
-(lb_coverage's stdout/stderr are byte-identical with the watch on and off), detached launch, the
-daily cap, the kill switches, the automatic end date, the frozen-mismatch skip, redaction of
-secrets in what is logged and what is sent, exception isolation, and the not-first guards.
+in watch mode (lb_coverage's stdout/stderr are byte-identical with the check on and off), detached
+launch, the daily cap, the kill switches, no automatic end date any more, the frozen-mismatch skip,
+redaction of secrets in what is logged and what is sent, exception isolation, the not-first
+guards, and the row stamps: every row carries trigger and policy (null when LASERBRAIN_POLICY is
+unset), every row whose prompt was rendered carries row_sha (16 hex digits of sha256 over the
+system text, a newline and the prompt), and the report splits its counts by trigger and policy.
 
 usage: python3 test_askllm_watch.py [dir holding the laserbrain package]"""
 import datetime
@@ -14,6 +19,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -36,6 +42,33 @@ def check(name, cond, detail=''):
     global ok_all
     ok_all &= bool(cond)
     print(f"  {'✓' if cond else '✗'} {name}" + (f'  — {detail}' if detail and not cond else ''))
+
+
+# Every row this test writes: in process through W._append_log, and the detached workers' rows
+# as they are read back (seen_rows). The stamp checks at the end run over all of them.
+ROWS = []
+_real_append_log = W._append_log
+
+
+def _recording_append_log(state_dir, rec):
+    ROWS.append(json.loads(json.dumps(rec, default=str)))
+    return _real_append_log(state_dir, rec)
+
+
+W._append_log = _recording_append_log
+
+
+def seen_rows(rows):
+    ROWS.extend(rows)
+    return rows
+
+
+def is_row_sha(v):
+    return isinstance(v, str) and re.fullmatch(r'[0-9a-f]{16}', v) is not None
+
+
+def stamped(r, policy=None):
+    return r.get('trigger') == 'check_state' and 'policy' in r and r['policy'] == policy
 
 
 FAKE_ANT = 'sk-ant-' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4'          # an lb_secrets match (labelled openai: sk-)
@@ -129,12 +162,13 @@ def read_log(state):
 
 class Mock:
     def __init__(self, text):
-        self.text, self.calls, self.prompts = text, 0, []
+        self.text, self.calls, self.prompts, self.systems = text, 0, [], []
         self.name, self.model, self.credential = 'mock', 'mock', None
 
     def call(self, system, prompt, schema):
         self.calls += 1
         self.prompts.append(prompt)
+        self.systems.append(system)
         return {'text': self.text, 'usage': None, 'meta': {'cost_usd': 0.0}}
 
 
@@ -173,10 +207,28 @@ with tempfile.TemporaryDirectory() as td:
           job['session'] == 'lbtest-watch-1' and job['agent_id'] == 'a1' and job['lane'] == 'build:weekbar'
           and job['goal'] == 'Build the calendar week bar' and job['tool_use_id'] == 'tu1'
           and job['state_dir'] == str(state))
+    check('the job carries trigger check_state and policy null while LASERBRAIN_POLICY is unset',
+          job.get('trigger') == 'check_state' and 'policy' in job and job['policy'] is None, job)
+    os.environ[W.ENV_POLICY] = 'quiet-2026-11-19' + 'x' * 40
+    ev_p = event(main, agent='a-policy')
+    rp_ = W.on_post_tool_use(ev_p, ev_p['tool_name'], ev_p['tool_input'], state, now=NOW)
+    os.environ.pop(W.ENV_POLICY)
+    check('with LASERBRAIN_POLICY set the job carries it, cut to 40 characters',
+          rp_ == 'spawned' and spawned[-1].get('policy') == ('quiet-2026-11-19' + 'x' * 40)[:40]
+          and spawned[-1].get('trigger') == 'check_state', spawned[-1])
     ev_m = event(main, agent=None)
     n0 = len(spawned)
     r = W.on_post_tool_use(ev_m, ev_m['tool_name'], ev_m['tool_input'], state, now=NOW)
     check('main session (no agent_id) is never scored', r == 'main' and len(spawned) == n0, r)
+    # An installed wheel has no research/eval and no eval/: nothing may start (0.58.0).
+    for envk, where in ((W.ENV_EVAL, pathlib.Path(td) / 'no-eval-here'),
+                        (W.ENV_FROZEN, pathlib.Path(td) / 'no-frozen-here.json')):
+        os.environ[envk] = str(where)
+        ev_nj = event(main, agent='a-no-judge-' + envk)
+        r = W.on_post_tool_use(ev_nj, ev_nj['tool_name'], ev_nj['tool_input'], state, now=NOW)
+        os.environ.pop(envk)
+        check(f'with no {"frozen scorer" if envk == W.ENV_EVAL else "frozen block"} on disk: '
+              'no-judge, and no worker started', r == 'no-judge' and len(spawned) == n0, r)
     ev_x = dict(event(main, agent='a3'), tool_name='Bash', tool_input={'command': 'ls'})
     check('a non-check_state call does nothing',
           W.on_post_tool_use(ev_x, 'Bash', {'command': 'ls'}, state, now=NOW) == 'not-check')
@@ -209,21 +261,25 @@ with tempfile.TemporaryDirectory() as td:
     check('run_job also stands down under the file switch', W.run_job(
         {'state_dir': str(state), 'session': 's', 'agent_id': 'a'}, backend=Mock(REPLY_OK), delay=0) is None)
     os.replace(state / W.OFF_NAME, pathlib.Path(td) / 'off.moved')
+    # The 2026-11-22 auto-stop is replaced by note mode, which stays on (test_askllm_notes.py).
     late = datetime.datetime(2026, 11, 23, 0, 0, 0)
-    last = datetime.datetime(2026, 11, 22, 23, 59, 0)
-    check('stops by itself after 2026-11-22 23:59 local',
-          W.switch_reason(state, late) == 'expired' and W.switch_reason(state, last) is None)
-    check('expired at hook time: nothing spawned',
+    check('no longer stops by itself after 2026-11-22: note mode stays on',
+          W.switch_reason(state, late) is None and W.mode(state) == 'note')
+    os.environ[W.ENV_MODE] = 'off'
+    check('LASERBRAIN_ASKLLM_MODE=off: nothing spawned',
           W.on_post_tool_use(ev, ev['tool_name'], ev['tool_input'], state, now=late) == 'off')
-    check('run_job stands down once expired', W.run_job(
+    check('run_job stands down in off mode', W.run_job(
         {'state_dir': str(state), 'session': 's', 'agent_id': 'a'}, backend=Mock(REPLY_OK), delay=0,
         now=late) is None and not read_log(state))
+    os.environ.pop(W.ENV_MODE)
     d = {'seen': {}, 'calls': {NOW.date().isoformat(): W.DAILY_CAP}}
     (state / W.SEEN_NAME).write_text(json.dumps(d))
     r = W.on_post_tool_use(ev, ev['tool_name'], ev['tool_input'], state, now=NOW)
     lg = read_log(state)
     check('at the daily cap the hook spawns nothing and logs one skip',
           r == 'cap' and len(spawned) == n0 and len(lg) == 1 and lg[0]['reason'] == 'daily cap', r)
+    check('the hook-side cap skip row carries trigger and policy (null: unset)',
+          lg and stamped(lg[0]) and 'row_sha' not in lg[0], lg[:1])
     check('reserve_call refuses at the cap and counts nothing',
           W.reserve_call(state, now=NOW) is False and W.calls_today(state, now=NOW) == W.DAILY_CAP)
     check('below the cap reserve_call counts one call',
@@ -263,6 +319,24 @@ with tempfile.TemporaryDirectory() as td:
           and len(rec['frozen_sha'] or '') == 64 and rec['model'] and rec['hook_ms'] == 3.2
           and 'call_s' in rec and rec['variant'] == 'start-only')
     check('snippets are short', all(v is None or len(v) <= 210 for v in rec['snippets'].values()))
+    sys_ = mk.systems[0] if mk.systems else ''
+    want_sha = hashlib.sha256(f'{sys_}\n{pr}'.encode('utf-8')).hexdigest()[:16]
+    check('the scored row carries trigger check_state, policy null (unset) and row_sha',
+          stamped(rec) and is_row_sha(rec.get('row_sha')), {k: rec.get(k) for k in ('trigger', 'policy', 'row_sha')})
+    check('row_sha is sha256(system + newline + prompt) of exactly what the model was sent, 16 hex',
+          rec.get('row_sha') == want_sha == W.row_sha(sys_, pr), f"{rec.get('row_sha')} vs {want_sha}")
+    check('row_sha never raises on a lone surrogate (a JSON escape can make one)',
+          is_row_sha(W.row_sha('s', 'a\ud800b')) and W.row_sha('s', 'a\ud800b') != W.row_sha('s', 'ab'))
+    mk_same = Mock(REPLY_OK)
+    rec_same = W.run_job(dict(job, agent_id='a1', session='lbtest-watch-1'), state_dir=pathlib.Path(td) / 'state-same',
+                         backend=mk_same, delay=0, sleep=lambda s: None)
+    check('the same row rendered again gives the same row_sha (a different reply does not matter)',
+          rec_same.get('row_sha') == rec.get('row_sha') and rec_same['status'] == 'scored', rec_same.get('reason'))
+    rec_pol = W.run_job(dict(job, policy='quiet-2026-11-19', trigger='check_state'),
+                        state_dir=pathlib.Path(td) / 'state-pol', backend=Mock(REPLY_OK), delay=0,
+                        sleep=lambda s: None)
+    check("a job's policy reaches its row", rec_pol['status'] == 'scored'
+          and stamped(rec_pol, 'quiet-2026-11-19') and is_row_sha(rec_pol.get('row_sha')), rec_pol.get('policy'))
     check('the call counted against the cap', W.calls_today(state) == 1)
     mk2 = Mock(REPLY_OK)
     j2 = dict(job, agent_id='a1', tool_use_id='tu2')
@@ -275,6 +349,9 @@ with tempfile.TemporaryDirectory() as td:
     j3 = dict(job, agent_id='nobody')
     rec3 = W.run_job(j3, backend=Mock(REPLY_OK), delay=0, sleep=lambda s: None)
     check('agent transcript missing: skipped and logged', rec3['reason'] == 'agent transcript not found')
+    check('skipped rows (not first, no transcript) carry trigger and policy, and no row_sha before a render',
+          stamped(rec2) and stamped(rec3) and 'row_sha' not in rec2 and 'row_sha' not in rec3,
+          [{k: x.get(k) for k in ('trigger', 'policy', 'row_sha')} for x in (rec2, rec3)])
 
     print('frozen mismatch')
     bad = pathlib.Path(td) / 'frozen-bad.json'
@@ -293,6 +370,7 @@ with tempfile.TemporaryDirectory() as td:
     rec5 = W.run_job(job, backend=Mock(REPLY_DRIFT), delay=0, sleep=lambda s: None)
     check('prompt hash changed: skipped too', rec5['reason'] == 'frozen changed'
           and rec5.get('frozen_bad') == ['prompt_hash'], rec5.get('frozen_bad'))
+    check('frozen-changed skip rows carry trigger and policy', stamped(rec4) and stamped(rec5))
     os.environ[W.ENV_FROZEN] = str(pathlib.Path(td, 'frozen.json'))
 
     print('exception isolation')
@@ -311,6 +389,8 @@ with tempfile.TemporaryDirectory() as td:
     check('an exception in the hook side returns "error", never raises', r == 'error', r)
     check('and is logged, redacted', errs and errs[-1]['reason'] == 'hook: RuntimeError'
           and FAKE_ANT not in (state / W.LOG_NAME).read_text())
+    check('a hook-side error row (no job built yet) still carries trigger and policy',
+          errs and stamped(errs[-1]), errs[-1:])
     real_resolve = W.resolve
     W.resolve = lambda job: (_ for _ in ()).throw(ValueError('bad layout'))
     try:
@@ -320,6 +400,7 @@ with tempfile.TemporaryDirectory() as td:
     W.resolve = real_resolve
     check('an exception in the worker is logged as an error line', rec6['status'] == 'error'
           and rec6['reason'] == 'worker: ValueError', rec6)
+    check('...with trigger and policy', stamped(rec6), rec6)
 
 print('detached launch')
 calls = {}
@@ -389,7 +470,10 @@ with tempfile.TemporaryDirectory() as td:
         state.mkdir()
         home.mkdir()
         main, ap = make_world(td / f'world-{mode}')
-        envx = {W.ENV_MOCK: str(mock), W.ENV_DELAY: '0', W.ENV_FROZEN: str(frz)}
+        # Watch mode, the 2026-11-15 behaviour: scoring is silent. In note mode (the default)
+        # the Read below may carry the note; test_askllm_notes.py covers that.
+        envx = {W.ENV_MOCK: str(mock), W.ENV_DELAY: '0', W.ENV_FROZEN: str(frz), W.ENV_MODE: 'watch',
+                W.ENV_POLICY: 'quiet-2026-11-19'}
         if mode == 'off':
             envx[W.ENV_SWITCH] = 'off'
         seq = [event(main), dict(event(main), tool_name='Read', tool_input={'file_path': '/x'},
@@ -401,9 +485,12 @@ with tempfile.TemporaryDirectory() as td:
     check('lb_coverage stdout, stderr and exit code are identical with the watch on and off',
           outs['on'] == outs['off'], f"{outs['on']} vs {outs['off']}")
     check('and every call exits 0', all(c == 0 for c, _, _ in outs['on']))
-    lg = wait_log(outs['on_state'])
+    lg = seen_rows(wait_log(outs['on_state']))
     check('the detached worker wrote exactly one scored line for the agent',
           len(lg) == 1 and lg[0]['status'] == 'scored' and lg[0]['flag'] is True, lg)
+    check("LASERBRAIN_POLICY in lb_coverage's environment reaches the detached worker's row, "
+          "with trigger and row_sha", lg and stamped(lg[0], 'quiet-2026-11-19') and is_row_sha(lg[0].get('row_sha')),
+          lg[:1])
     check('nothing at all was written with the watch off', not read_log(outs['off_state'])
           and not (outs['off_state'] / W.SEEN_NAME).exists())
     print(f"    hook wall time, first check: on {outs['on_ms']:.0f} ms, off {outs['off_ms']:.0f} ms")
@@ -422,6 +509,33 @@ with tempfile.TemporaryDirectory() as td:
               and sj.get('scored') == 1 and sj.get('flagged') == 1
               and sj.get('per_workflow', {}).get('wf_test-001', {}).get('flagged') == 1,
               rp.stdout[-600:] + rp.stderr[-300:])
+        g1 = {'lines': 1, 'scored': 1, 'flagged': 1, 'skipped': 0, 'errors': 0, 'with_row_sha': 1}
+        check('the report splits the counts by trigger and by policy',
+              sj.get('by_trigger') == {'check_state': g1} and sj.get('by_policy') == {'quiet-2026-11-19': g1}
+              and 'by trigger:' in rp.stdout and 'by policy:' in rp.stdout,
+              {k: sj.get(k) for k in ('by_trigger', 'by_policy')})
+        # A mixed log: the stamped line, a line from before the stamps, a stamped line with no
+        # policy set, and a note delivery (not a judge row, so in neither split).
+        mixed = td / 'mixed.jsonl'
+        legacy = {k: v for k, v in lg[0].items() if k not in ('trigger', 'policy', 'row_sha')}
+        unset = dict(lg[0], policy=None, status='skipped', reason='daily cap', flag=None)
+        unset.pop('row_sha', None)
+        deliv = {'ts': lg[0]['ts'], 'status': 'note_delivered_agent', 'session': 's', 'agent_id': 'a1'}
+        mixed.write_text(''.join(json.dumps(x) + '\n' for x in (lg[0], legacy, unset, deliv)))
+        rm = subprocess.run([PY, str(rep_py), '--log', str(mixed), '--json'], capture_output=True, text=True,
+                            timeout=60)
+        try:
+            sm = json.loads(rm.stdout)
+        except Exception:
+            sm = {}
+        bp, bt = sm.get('by_policy') or {}, sm.get('by_trigger') or {}
+        check("rows without the stamps count as 'unstamped', a null policy as 'none', and note "
+              "deliveries are in neither split",
+              sorted(bp) == ['none', 'quiet-2026-11-19', 'unstamped'] and bp['unstamped']['scored'] == 1
+              and bp['none']['skipped'] == 1 and bp['none']['with_row_sha'] == 0
+              and sorted(bt) == ['check_state', 'unstamped'] and bt['check_state']['lines'] == 2
+              and sum(g['lines'] for g in bp.values()) == 3 and sm.get('lines') == 4,
+              {'by_policy': bp, 'by_trigger': bt, 'err': rm.stderr[-300:]})
 
     # Detached for real: the worker sleeps 3 s, the hook returns long before the line lands.
     state, home = td / 'state-d', td / 'home-d'
@@ -433,7 +547,7 @@ with tempfile.TemporaryDirectory() as td:
                                                 W.ENV_FROZEN: str(frz)})
     t_hook = time.time() - t0
     early = read_log(state)
-    lg = wait_log(state, 1, 20)
+    lg = seen_rows(wait_log(state, 1, 20))
     t_line = time.time() - t0
     check('the hook returns before the worker finishes (detached)',
           r.returncode == 0 and t_hook < 2.5 and not early and lg and t_line >= 3.0,
@@ -482,6 +596,20 @@ if real_fz.exists():
     m, why, info = W.load_frozen()
     check('research/eval/ask_match_llm.py still matches eval/day2-llm-results.json', m is not None,
           f'{why} {info.get("bad")}')
+
+print('row stamps over every row this test wrote')
+n_rows = len(ROWS)
+n_stamped = sum(1 for r in ROWS if r.get('trigger') and 'policy' in r)
+scored_rows = [r for r in ROWS if r.get('status') == 'scored']
+n_sha = sum(1 for r in scored_rows if is_row_sha(r.get('row_sha')))
+by_status = sorted({str(r.get('status')) for r in ROWS})
+print(f'    rows written {n_rows} ({", ".join(by_status)}); with trigger and policy {n_stamped}; '
+      f'scored {len(scored_rows)}, with row_sha {n_sha}')
+check('every row written carries trigger and policy', n_rows > 0 and n_stamped == n_rows,
+      [r for r in ROWS if not (r.get('trigger') and 'policy' in r)][:2])
+check('every scored row carries a 16-hex row_sha', scored_rows and n_sha == len(scored_rows))
+check('the rows include scored, skipped and error lines',
+      {'scored', 'skipped', 'error'} <= set(by_status), by_status)
 
 print('  PASS' if ok_all else '  FAIL')
 raise SystemExit(0 if ok_all else 1)

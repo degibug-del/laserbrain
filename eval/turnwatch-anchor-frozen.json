@@ -1,0 +1,45 @@
+{
+ "frozen": {
+  "at": "2026-11-20T09:11:06+00:00",
+  "scorer": "turnwatch",
+  "model": "claude-haiku-5-5",
+  "effort": "low",
+  "backend": "claude",
+  "prompt_hash": "65e30f5de9bdf3a6a11c556e9742eabc7cda8d958e63f5297778561f475180c7",
+  "thresholds": {
+   "min_drift_score": 90,
+   "flag_verdicts": [
+    "narrowing",
+    "substitution",
+    "misread"
+   ],
+   "substituted_flags": true,
+   "ambiguous_min_score": 0,
+   "ambiguous_needs_bare": true
+  },
+  "limits": {
+   "msg": 1500,
+   "prev_msg": 400,
+   "recent": 5,
+   "proposal": 1500,
+   "goal": 400,
+   "doing": 400,
+   "first": 1000,
+   "first_events": 3
+  },
+  "first_words_window_s": 60,
+  "turn_match_llm_sha256": "31e2879311b0a593b2126d114f0298af3ff3a398c073f4bd0007347ac36b5225",
+  "ask_match_llm_sha256": "e912dafe45badd6e7505ec2bbc64cdf526617fb08fbe5f2ca68c6e76f1ecd093",
+  "eval_files_sha256": {
+   "_common.py": "5fc45384a7f1e87472bdbc4dbe29d381bc3518710fdc89d33a4a44c72b79e038",
+   "ask_match.py": "19c7a87624c281d9f6be877c98cbd78b932417cf9620c203238d92c95e6af7f5",
+   "ask_match_llm.py": "e912dafe45badd6e7505ec2bbc64cdf526617fb08fbe5f2ca68c6e76f1ecd093",
+   "extract_starts.py": "3cfec2fb5bc3bd37254f84585abf254ed0078a865f7ff22019995c0673844b73",
+   "turn_anchor.py": "fb003c14609ae7f1a05a45e5d59951df7cc080714f47f9e9cba4f099c34838f6",
+   "turn_match_llm.py": "31e2879311b0a593b2126d114f0298af3ff3a398c073f4bd0007347ac36b5225"
+  },
+  "note": "The check arm's frozen judge (eval/turnwatch-frozen.json: the same prompt, model, thresholds and first-words window), anchored at the main session's first tool call of any kind after a delivered user message (research/eval/turn_anchor.py). When that tool call is check_state the row is the check arm's row. Otherwise GOAL and NOTE come from the first check_state within the first-words window after the tool call, if there is one. REACH on the realdrift DEV set is measured by turn_anchor.py --reach (DEV_NOT_HELD_OUT: one session, labels known in advance). This arm has NOT been scored: it claims no catches, and its rows are watch-only.",
+  "anchor": "first_tool",
+  "check_frozen_at": "2026-11-19T07:08:25+00:00"
+ }
+}

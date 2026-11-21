@@ -3,8 +3,8 @@
 This shipped as `tandem` and was described as a two-agent channel: two named agents, one
 JSONL between them. The record format was never two-agent — every line already carries
 an `agent` field — so the limit lived in the documentation and the tool names, not in the
-data. Renamed and generalised 2026-07-27 on Diego's instruction: link has to be multiple
-agents.
+data. Renamed and generalised 2026-07-27 on the owner's instruction: link has to be
+multiple agents.
 
     from laserbrain import link_write, link_read, link_agents
 

@@ -35,7 +35,7 @@ import os
 # reads LASERBRAIN_HUB and falls back to the same public path.
 #
 # This defaulted to http://localhost:1618/signal until 2026-07-27, which meant read_field()
-# returned None for every user who pip-installed the package, and for Diego too — the local
+# returned None for every user who pip-installed the package, and for the owner too — the local
 # hub was not running when this was checked. A field reader nobody could reach shipped as
 # though it worked, because None is also what it returns when the field is simply quiet.
 PUBLIC_HUB = 'https://phronesis.world/api/laserbrain'

@@ -21,6 +21,7 @@ R = pathlib.Path(__file__).resolve().parent.parent
 HOOK = R / 'python' / 'laserbrain' / 'hooks' / 'lb_coverage.py'
 H = pathlib.Path(tempfile.mkdtemp(prefix='lbb34-'))
 ENV = {k: v for k, v in os.environ.items() if not k.startswith('LASERBRAIN')}
+ENV['LASERBRAIN_STUDY'] = '1'  # the pre-2026-11-19 text; the quiet default is test_quiet_default.py
 ENV.update(HOME=str(H), PYTHONPATH=str(R / 'python'), PYTHONDONTWRITEBYTECODE='1', LASERBRAIN_AGENT='claude')
 # The fallback runs only when `from laserbrain.runtime import ...` fails. A stub package
 # earlier on the path than any installed copy makes it fail, without touching the code.
@@ -37,7 +38,8 @@ rcs = []
 GATE = ('laserbrain gate: 9 steps since your last check_state (coverage 10% over 40 steps, floor 20%).\n'
         'THIS CALL DID NOT RUN. Nothing was written, executed or sent.')
 DRIFT = 'laserbrain drift gate: goal-drift (phi 0.81).\nTHIS CALL DID NOT RUN. Nothing was written, executed or sent.'
-SAFETY = 'laserbrain safety: blocked rm -rf.\nTHIS CALL DID NOT RUN.\nIf this delete is intended, have DIEGO run it.'
+SAFETY = ('laserbrain safety: blocked rm -rf.\nTHIS CALL DID NOT RUN.\n'
+          'If this delete is intended, the person running this session runs it.')
 RED = ('test_a (t.T.test_a) ... FAIL\n\n' + '=' * 70 + '\nFAIL: test_a (t.T.test_a)\n' + '-' * 70 + '\n'
        'Traceback (most recent call last):\nAssertionError: 1 != 2\n\n' + '-' * 70 + '\n'
        'Ran 3 tests in 0.010s\n\nFAILED (failures=1)\n')
@@ -440,8 +442,14 @@ r = subprocess.run([sys.executable, '-P', '-c', code], capture_output=True, text
 would = [ln.split('would change:', 1)[1].strip() for ln in r.stdout.splitlines() if 'would change:' in ln]
 items = [x.strip() for x in would[0].split(',')] if would else []
 res['wiring-13 install HOOKS has PostToolUseFailure/lb_coverage/*'] = (r.returncode == 0, (r.returncode, r.stderr[-300:]))
-res['wiring-13 dry run on the live shape adds PostToolUseFailure/lb_coverage only'] = (
-    items == ['PostToolUseFailure/lb_coverage'], (items, r.stdout[-300:]))
+# Since 0.58.0 install also writes the lb_safety SessionStart self-test, so an install made
+# before both gains exactly those two (test_install.py pins the rest of the new wiring). It
+# also drops the mcpServers.laserbrain entry an older install left in settings.json, because
+# Claude Code reads user-scope servers from ~/.claude.json, never from settings.json.
+adds = [x for x in items if not x.startswith('mcpServers.laserbrain removed')]
+res['wiring-13 dry run on the live shape adds the self-test and PostToolUseFailure/lb_coverage only'] = (
+    adds == ['SessionStart/lb_safety', 'PostToolUseFailure/lb_coverage']
+    and len(items) - len(adds) <= 1, (items, r.stdout[-300:]))
 res['wiring-13 dry run writes nothing'] = (settings.read_text() == before, 'settings.json changed')
 
 # Every hook call failed open.

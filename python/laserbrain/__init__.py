@@ -37,7 +37,7 @@ __all__ = ['Harness', 'Team', 'Verdict', 'PRESETS', 'norm', 'laserscore', 'conte
            'verify_audit', 'ground_score', 'MAX_DEPTH']
 __version__ = '0.57.0'
 MAX_DEPTH = 50   # nesting deeper than this is a drift signal, not a decomposition
-# THE API'S OWN NAME, since 0.57.0. This was laserbrain-mcp.degibug.workers.dev — a personal
+# THE API'S OWN NAME, since 0.57.0. This was a workers.dev hostname that carried a personal
 # handle, printed in every error that told someone where to get a key.
 #
 # THE OLD HOST IS NOT GOING AWAY. Every version of this package before 0.57.0 has it baked in,
@@ -139,6 +139,11 @@ _STOP = set(_G.get('normalizer', {}).get('stopwords') or _FALLBACK_STOP)
 _STEM = re.compile(_G.get('normalizer', {}).get('stem_pattern')
                    or r"(ings?|edly|ed|ers?|es|s|tion|ment)$")
 _PROGRESS = {'advancing', 'stuck', 'circling'}
+
+# The first reply's advice. Word for word the node server's (mcp-server.mjs, 'grounded'),
+# so every surface gives the same rule: check in when a task starts and when it changes.
+GROUNDED_ADVICE = ('Ground state set: this is where you started. Carry on; check again only '
+                   'if you get stuck, the user changes what they want, or the task changes.')
 
 
 def norm(s):
@@ -1021,7 +1026,7 @@ class _Run:
                        'Half of this score is your own account of yourself, and nothing has '
                        'agreed with it yet.')
         elif judged and goal_drifts >= 3 and goal_drifts > regrounds and pace <= 0:
-            # IT MAY ONLY COMMAND WITH CORROBORATION. Diego's call, 2026-08-16, after this
+            # IT MAY ONLY COMMAND WITH CORROBORATION. The owner's call, 2026-08-16, after this
             # branch told an agent to stop working while it was working correctly. Shipped in
             # lasermind's mcp-server.mjs the same day; this is the same fix in the wheel,
             # which went out as 0.51.0 without it.
@@ -1282,8 +1287,8 @@ class _Run:
             # have killed all twelve of those runs, and reading them they were working —
             # fixing mutate.sh, regenerating a stale fixture, shipping a registry pin. What
             # was wrong with them was never that the work was worthless. It was that the
-            # goal kept moving and nobody said so: the heaviest, run 6718dbcd, ran 40 steps
-            # under 37 distinct goals.
+            # goal kept moving and nobody said so: the heaviest ran 40 steps under 37
+            # distinct goals.
             #
             # The right response to that is to re-establish the ground — reset_task to the
             # goal you actually have now, or hand it to a human — which is a different act
@@ -1500,7 +1505,9 @@ class _Run:
             self.first_goal_text = goal
             self.dist_hist = [] if d is None else [d]
             self.ground_at = len(self.trace)
-            return emit('grounded', False, 'Ground state set — continue, and check each step.',
+            # 0.58.0: the same advice as the node server's first reply. The old text asked
+            # for a check on every step, which the tool description and the skill no longer do.
+            return emit('grounded', False, GROUNDED_ADVICE,
                         why=f'ground is goal={goal!r}, progress={progress!r}, '
                             f'distance={"unknown" if d is None else d}')
         phi = _displacement(goal, progress, d, self.ground, self.sim, self.cal)
@@ -1681,7 +1688,7 @@ class _Run:
             # interrupts on its own, and the advice no longer says "return". Evidence,
             # research/DAY-FIVE-REAL-SESSIONS.md §3: all 7 live goal-drift fires from Oct 17
             # to Nov 15 were false (5 were the user's next ask or a new phase, 1 a rewording,
-            # 1 a redirect he made); the July corpus had it at 24 of 35 fires with 0 real; the
+            # 1 a redirect the person made); the July corpus had it at 24 of 35 fires with 0 real; the
             # user_turn reground above already existed and did not stop them.
             #
             # The second signal is the existing escalation, unchanged: repeated goal-drift
@@ -1734,10 +1741,9 @@ class _Run:
             #
             # Measured on ARC-AGI-3, 2026-08-05: across five agent runs `stalled` fired on 35
             # of 133 steps, and ALL 35 reached a state the run had never seen before. Not one
-            # was a step where nothing was happening. Three agents independently wrote that
-            # the fires were "purposeful walking rather than confusion", "pure execution
-            # toward a target I'd already verified", "execution along a route I already
-            # understood". The rule was right about the number and wrong about the run.
+            # was a step where nothing was happening. Three agents independently described
+            # those steps as purposeful execution along a route they had already verified.
+            # The rule was right about the number and wrong about the run.
             #
             # So the observed channel gets a veto. `saw()` already records what actually
             # happened between checks and `_anchor` already decides per check whether the

@@ -142,6 +142,13 @@ def unwrap_tool_args(tool, args):
     return tool, args
 
 
+def _count_tokens():
+    """False when the hook asked for no token count: LASERBRAIN_TOKENS=0, which lb_coverage sets
+    in quiet mode. The count reads the whole transcript on every check (0.37 s on a 336 MB one),
+    and its only reader was the blind probe, which keeps it (LASERBRAIN_BLIND_PROBE set)."""
+    return (os.environ.get('LASERBRAIN_TOKENS') or '').strip() != '0'
+
+
 def tokens_so_far(ev):
     """Billable tokens spent in this session up to now, from the host's transcript.
 
@@ -405,7 +412,7 @@ def _tool_parts(ev):
 # NO "THIS CALL DID NOT RUN" HERE since the B3/B4 review (2026-11-14). As a line pattern it
 # matched anywhere: a successful `grep -n "THIS CALL DID NOT RUN" lb_safety.py` became a
 # 'denied' catch and an evidence failure, and so did 12 of 12 successful greps and diffs of
-# gate source in Diego's last 30 days of transcripts. A hook's denial is a message that
+# gate source in the owner's last 30 days of transcripts. A hook's denial is a message that
 # BEGINS with its deny text; red_verdict() tests that with _DENIAL_HEAD_RE below.
 _VERDICT_RED_RE = re.compile('|'.join([
     r'^[^\S\n]*(?:\d+[^\S\n]+)?FAILED \((?:failures|errors)=\d+',        # unittest (also after uniq -c)
@@ -428,7 +435,7 @@ _VERDICT_GREEN_RE = re.compile(
 # A refusal or a denial is a MESSAGE THAT BEGINS WITH THE DENY TEXT. Claude Code delivers it
 # bare ("laserbrain gate: ...") or behind its hook prefix ("PreToolUse:Bash hook error: " or
 # "PreToolUse:Edit hook error: [command]: "): those are the only two shapes among the 474
-# hook denials (423 coverage gate, 51 lb_safety) in Diego's last 30 days of transcripts,
+# hook denials (423 coverage gate, 51 lb_safety) in the owner's last 30 days of transcripts,
 # and every one says THIS CALL DID NOT
 # RUN within its first lines. A command that ran and failed starts with "Exit code N"
 # instead, and a command that ran and succeeded starts with whatever it printed. lb_gate's
@@ -1184,6 +1191,10 @@ class Session:
                 rec['tokens'] = int(tokens)
             if judgment:
                 rec['judgment'] = judgment
+            # Which reminder policy was live when this reading was taken. Absent: the policy
+            # before 2026-11-19. Set by lb_coverage in quiet mode only.
+            if os.environ.get('LASERBRAIN_POLICY'):
+                rec['policy'] = os.environ['LASERBRAIN_POLICY'][:40]
             self.d['checks'].append(rec)
             # After a reset the agent's own spelled goal is authoritative — it is the task as
             # the agent states it, which is exactly what a ground should be.
@@ -1308,7 +1319,7 @@ class Session:
                        # Read from the host's own transcript, which is the only first-hand
                        # record of what was billed. The agent cannot report its own spend and
                        # a hook cannot ask the API, so this is the one available source.
-                       tokens=tokens_so_far(ev))
+                       tokens=tokens_so_far(ev) if _count_tokens() else None)
             return None
         if kind == 'tool':
             # A refusal can arrive in the failure event's own `error` field, with no response
@@ -1438,14 +1449,14 @@ def reads_as_report(text: str) -> bool:
 
     WHY THIS IS ADVICE AND NOT A VERDICT
 
-    Reading the fires labelled false showed most were not goals at all: "Confirmed all 31
-    test files pass locally", "Promoted new-repo.json to shipped workflows", "Build blocked
-    by a stale gate", "Diego chose verdict outcome capture". The goal field was being used
-    as a progress-narration slot, so each step reported a different fact, consecutive goals
-    shared few tokens, overlap collapsed, and goal-drift fired.
+    Reading the fires labelled false showed most were not goals at all but reports of what
+    had just happened: a suite that passed, a file that was promoted, a build that a gate
+    blocked, a choice the person had made (paraphrased here, not quoted). The goal field was
+    being used as a progress-narration slot, so each step reported a different fact,
+    consecutive goals shared few tokens, overlap collapsed, and goal-drift fired.
 
-    That is a malformed input, not a wrong verdict. Given ⟨confirmed, 31, test, files,
-    pass⟩ the grammar behaved correctly; it was handed a sentence that cannot stay fixed,
+    That is a malformed input, not a wrong verdict. Given ⟨confirmed, test, files, pass⟩
+    the grammar behaved correctly; it was handed a sentence that cannot stay fixed,
     because by the next step something else has been confirmed.
 
     So this changes nothing the instrument decides. Two reasons, and the second binds:

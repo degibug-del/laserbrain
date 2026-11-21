@@ -1,17 +1,36 @@
 #!/usr/bin/env python3
-"""lb_askllm_watch.py — the frozen AI-graded ask-mismatch check (askllm), live and WATCH-ONLY.
+"""lb_askllm_watch.py — the frozen AI-graded ask-mismatch check (askllm), live.
 
 WHAT. Once per helper agent (a subagent or a workflow agent), at its FIRST check_state, the
 frozen scorer in research/eval/ask_match_llm.py grades whether the agent set out to do what
 the user asked. Offline (research/DAY-FIVE-REAL-SESSIONS.md) it caught 10 of 12 drifted
-agents with 1.5% false flags; this runs it on live starts for one week so the two can be
-compared. Start-only variant: there is no final report yet, so `final_text` is absent.
+agents with 1.5% false flags. Start-only variant: there is no final report yet, so
+`final_text` is absent.
 
-WATCH-ONLY. Nothing here reaches the model or the user: no additionalContext, nothing on
-stdout or stderr, never a block, never an exception into lb_coverage. The hook side does a
-few cheap checks and starts a DETACHED worker (its own session, stdout and stderr to
-/dev/null, the job handed over on a pipe that is closed at once); the worker makes the one
-Haiku call and appends a line to <STATE_DIR>/askllm-watch.jsonl.
+MODES (LASERBRAIN_ASKLLM_MODE):
+  note   (default since the Unreleased entry after 0.58.0) a flag becomes a NOTE: one
+         additionalContext line on the flagged agent's next tool call, and one on the parent
+         (main) session's next tool call or prompt. Never a block. See deliver_notes().
+  watch  the 2026-11-15 behaviour: the verdict is only logged; nothing reaches anyone.
+  off    nothing runs. LASERBRAIN_ASKLLM_WATCH=off and <STATE_DIR>/askllm-watch.off still
+         switch it off too. An unknown value runs as watch (silent), never as note.
+
+SCORING IS SILENT in every mode: the hook side does a few cheap checks and starts a DETACHED
+worker (its own session, stdout and stderr to /dev/null, the job handed over on a pipe that
+is closed at once); the worker makes the one Haiku call and appends a line to
+<STATE_DIR>/askllm-watch.jsonl. In note mode it also writes the pending note files
+(<STATE_DIR>/askllm-notes/<session>/<agent>.agent and .parent, atomically). Delivery runs on
+the hook path inside lb_coverage: a stat, and for a session that has notes a directory
+listing and one small JSON read. No model call, nothing that can raise into lb_coverage.
+Each note is claimed by an atomic rename, so it goes out once even when parallel hook calls
+race for it, and each delivery is logged (status note_delivered_agent / note_delivered_parent).
+Every pass, helper or main, also expires stale notes (an .agent note after 6 h, a .parent note
+after 24 h) and, when the mode is no longer note, drops what is pending (note_dropped_mode), so a
+session folder never outlives its notes. The agent's note points it at its TASK, not at a user
+message quoted in it (see agent_note_text).
+
+THE WORKER'S ENVIRONMENT is cut to an allowlist (restrict_child_env) before the frozen backend
+copies it into `claude -p`; the kept names are logged on each scored line.
 
 THE SCORER IS REUSED, NOT COPIED. The worker loads ask_match_llm.py by absolute path and
 uses its MODEL, render(row, 'askllm'), THRESHOLDS, decide(), parse_json/validate (through
@@ -28,9 +47,18 @@ main_user_messages() on the main session transcript (the user's last 6 messages 
 agent started, within 12 hours), every text through research/eval/_common.redact. The goal
 is the one this first check_state spelled.
 
-LIMITS. 80 model calls per local day (retries count). Off with LASERBRAIN_ASKLLM_WATCH=off
-or the file <STATE_DIR>/askllm-watch.off. Stops by itself after 2026-11-22 23:59 local time.
-60 s per call, one retry, a 300 s watchdog on the worker. Errors are logged, never raised.
+LIMITS. 80 model calls per local day (retries count), at most 2 `claude -p` at once. Off as
+above. 60 s per call, one retry, a 300 s watchdog on the worker. Errors are logged, never
+raised. The one-week watch window that ended it on 2026-11-22 is replaced by note mode, which
+stays on until it is switched off.
+
+STAMPS (since 2026-11-19), so rows from different policies and triggers can be told apart:
+every judge row carries `trigger` (what started the job: 'check_state', a helper's first
+check) and `policy` (LASERBRAIN_POLICY as the hook saw it, cut to 40 characters, or null when
+unset). A row whose prompt was rendered also carries `row_sha`, the first 16 hex digits of
+sha256 over system + '\\n' + prompt (UTF-8): the same rendered row gives the same sha, so a
+live row can be matched with an offline re-render of it. Rows written before 2026-11-19
+have none of the three.
 
 Review: python3 research/eval/askllm_watch_report.py
 """
@@ -39,10 +67,10 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 import time
 
-WATCH_END = datetime.datetime(2026, 11, 22, 23, 59, 59)      # local time; off after this
 DAILY_CAP = 80                    # model calls per local day, retries included
 CALL_TIMEOUT_S = 60               # per `claude -p` call
 RETRIES = 1                       # one retry on a timeout or an unparseable reply
@@ -57,15 +85,26 @@ MAX_JOB_BYTES = 64_000
 SEEN_KEEP = 5000
 
 ENV_SWITCH = 'LASERBRAIN_ASKLLM_WATCH'          # off | 0 | false | no
+ENV_MODE = 'LASERBRAIN_ASKLLM_MODE'             # note (default) | watch | off
+MODES = ('note', 'watch', 'off')
+DEFAULT_MODE = 'note'
 ENV_DELAY = 'LASERBRAIN_ASKLLM_WATCH_DELAY'     # seconds (tests use 0)
 ENV_MOCK = 'LASERBRAIN_ASKLLM_MOCK_REPLY'       # path to a canned reply: tests, no network
 ENV_FROZEN = 'LASERBRAIN_ASKLLM_FROZEN'         # frozen results json (tests)
 ENV_EVAL = 'LASERBRAIN_ASKLLM_EVAL_DIR'         # research/eval (tests)
+ENV_POLICY = 'LASERBRAIN_POLICY'                # the policy stamp on every judge row
+POLICY_CHARS = 40                               # lb_coverage cuts its check-row stamp the same
+TRIGGER = 'check_state'                         # the only trigger: a helper's first check
 
 LOG_NAME = 'askllm-watch.jsonl'
 SEEN_NAME = 'askllm-watch.seen.json'
 OFF_NAME = 'askllm-watch.off'
 CLI_DIR_NAME = 'askllm-watch-cli'
+NOTES_DIR_NAME = 'askllm-notes'     # <STATE_DIR>/askllm-notes/<session>/<agent>.agent|.parent
+NOTE_TTL_S = 6 * 3600               # an agent note nobody picked up by then is dropped
+PARENT_NOTE_TTL_S = 24 * 3600       # a parent note too: a session resumed days later gets none
+NOTE_REASON_CHARS = 260
+PARENT_NOTES_MAX = 4                # per tool call; the rest wait for the next one
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[2]                          # python/laserbrain/hooks -> repo root
@@ -76,6 +115,27 @@ REPO = HERE.parents[2]                          # python/laserbrain/hooks -> rep
 SESSION_LINK_ENV = ('CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN',
                     'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_HOST_SESSION_ID',
                     'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_SESSION_ATTENDED', 'CLAUDE_PID')
+
+# The worker's environment is cut down to this ALLOWLIST before the frozen backend copies it
+# into `claude -p` (whose own drop list then removes any credential variable; the backend
+# hands the Keychain token over itself). Anything a desktop host sets for its own session
+# (effort, simple mode, SDK and auth-refresh flags, a base URL) never reaches the judge, so
+# the frozen identity does not depend on which host started the hook. The kept NAMES (never
+# values) are logged on every scored line as child_env_keys.
+CHILD_ENV_KEEP = ('PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'TZ', 'LANG',
+                  'CLAUDE_CONFIG_DIR', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'https_proxy',
+                  'http_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR')
+CHILD_ENV_KEEP_PREFIX = ('LC_', 'LASERBRAIN_')
+
+
+def restrict_child_env(environ=None):
+    """Drop every variable outside CHILD_ENV_KEEP / CHILD_ENV_KEEP_PREFIX from `environ`
+    (os.environ: call it only in the detached worker). Returns the kept names, sorted."""
+    env = os.environ if environ is None else environ
+    for k in list(env):
+        if k not in CHILD_ENV_KEEP and not k.startswith(CHILD_ENV_KEEP_PREFIX):
+            env.pop(k, None)
+    return sorted(env)
 
 
 def eval_dir():
@@ -94,19 +154,35 @@ def _ts():
     return datetime.datetime.now().astimezone().isoformat(timespec='seconds')
 
 
+_OFF_WORDS = ('off', '0', 'false', 'no', 'disable', 'disabled')
+
+
 def switch_reason(state_dir, now=None):
-    """None when the watch is on, else why it is off ('env', 'file', 'expired')."""
+    """None when askllm runs, else why it is off ('env', 'mode', 'file'). `now` is accepted
+    for callers of the old signature; nothing expires by date any more."""
     v = (os.environ.get(ENV_SWITCH) or '').strip().lower()
-    if v in ('off', '0', 'false', 'no', 'disable', 'disabled'):
+    if v in _OFF_WORDS:
         return 'env'
-    if (now or _now()) > WATCH_END:
-        return 'expired'
+    if (os.environ.get(ENV_MODE) or '').strip().lower() in _OFF_WORDS:
+        return 'mode'
     try:
         if (pathlib.Path(state_dir) / OFF_NAME).exists():
             return 'file'
     except Exception:
         return 'file'
     return None
+
+
+def mode(state_dir=None):
+    """'off', 'note' or 'watch'. Unset is note; an unknown value runs as watch (silent)."""
+    if state_dir is not None and switch_reason(state_dir):
+        return 'off'
+    v = (os.environ.get(ENV_MODE) or '').strip().lower()
+    if not v:
+        return DEFAULT_MODE
+    if v in _OFF_WORDS:
+        return 'off'
+    return v if v in MODES else 'watch'
 
 
 # ── shared bookkeeping: one flock'd JSON for markers and the daily count ─────────────
@@ -217,20 +293,231 @@ def snip(text, n):
     return r if len(r) <= n else r[:n] + '...'
 
 
+def policy_now():
+    """LASERBRAIN_POLICY as this process sees it, cut to POLICY_CHARS, or None when unset."""
+    v = os.environ.get(ENV_POLICY)
+    return v[:POLICY_CHARS] if v else None
+
+
+def row_sha(system, prompt):
+    """16 hex digits of sha256(system + '\\n' + prompt): the identity of one rendered prompt.
+    surrogatepass keeps it from raising on a lone surrogate (a JSON escape can make one); for
+    any other text the bytes are plain UTF-8, so an offline re-render gives the same sha."""
+    data = f'{system}\n{prompt}'.encode('utf-8', 'surrogatepass')
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
 def _base(job):
+    """The fields every judge row starts with. trigger and policy come from the job; a job
+    without a policy key (an error before the job was built, a job from an older hook) takes
+    this process's LASERBRAIN_POLICY."""
     return {'ts': _ts(), 'session': job.get('session'), 'agent_id': job.get('agent_id'),
             'agent_type': job.get('agent_type'), 'lane': job.get('lane'),
-            'variant': 'start-only'}
+            'variant': 'start-only', 'trigger': job.get('trigger') or TRIGGER,
+            'policy': job['policy'] if 'policy' in job else policy_now()}
 
 
-def _log_error(state_dir, job, where, exc):
+def _log_error(state_dir, job, where, exc, hook=False):
+    """One error line. On the HOOK side (hook=True) only the exception's type is logged: the
+    redactor would put research/eval on lb_coverage's sys.path and load _common there."""
     try:
         rec = _base(job or {})
         rec.update(status='error', reason=f'{where}: {type(exc).__name__}',
-                   error=snip(str(exc), 300))
+                   error=None if hook else snip(str(exc), 300))
         _append_log(state_dir, rec)
     except Exception:
         pass
+
+
+# ── notes (note mode): written by the worker, delivered by lb_coverage ──────────────
+
+def safe_name(s):
+    """A session or agent id as one path component. lb_coverage has a copy of this rule
+    (its fast-path stat must name the same folder); test_askllm_notes.py pins the two."""
+    return re.sub(r'[^A-Za-z0-9._-]', '_', str(s or 'unknown'))[:120] or 'unknown'
+
+
+def notes_dir(state_dir, sid):
+    return pathlib.Path(state_dir) / NOTES_DIR_NAME / safe_name(sid)
+
+
+def _write_json_atomic(path, obj):
+    path = pathlib.Path(path)
+    for attempt in (0, 1):                 # the folder may be removed under us once (rmdir)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+            with open(tmp, 'w', encoding='utf-8') as fh:
+                fh.write(json.dumps(obj, ensure_ascii=False))
+            os.replace(tmp, path)
+            return True
+        except FileNotFoundError:
+            if attempt:
+                raise
+    return False
+
+
+def write_note(state_dir, job, rec):
+    """Pending note files for a flagged agent: <agent>.agent and <agent>.parent. Never raises."""
+    try:
+        body = {'session': job.get('session'), 'agent_id': job.get('agent_id'),
+                'label': rec.get('label'), 'lane': rec.get('lane') or job.get('lane'),
+                'workflow': rec.get('workflow'), 'workflow_name': rec.get('workflow_name'),
+                'where': rec.get('where'), 'verdict': rec.get('verdict'),
+                'drift_score': rec.get('drift_score'), 'missing': rec.get('missing') or [],
+                'why': rec.get('why'), 'written_ts': _ts(), 'written_epoch': time.time()}
+        d = notes_dir(state_dir, job.get('session'))
+        a = safe_name(job.get('agent_id'))
+        _write_json_atomic(d / f'{a}.agent', body)
+        _write_json_atomic(d / f'{a}.parent', body)
+        return 'written'
+    except Exception as e:                              # noqa: BLE001
+        return f'error: {type(e).__name__}'
+
+
+def _short(text, n=NOTE_REASON_CHARS):
+    t = ' '.join(str(text or '').split()).strip()
+    return t if len(t) <= n else t[:n - 3].rstrip() + '...'
+
+
+def note_reason(body):
+    """The scorer's missing asks and reason, short. Both were redacted when the row was logged."""
+    parts = []
+    miss = [str(m) for m in (body.get('missing') or []) if m][:3]
+    if miss:
+        parts.append('Left out: ' + '; '.join(miss) + '.')
+    if body.get('why'):
+        parts.append(str(body['why']).strip())
+    return _short(' '.join(parts) or f"verdict {body.get('verdict') or 'drift'}").rstrip('.')
+
+
+def agent_note_text(body):
+    """Points the agent at its TASK, never at the user message quoted in it: askllm's own prompt
+    treats the task as the authority, and the drifts it caught (DAY-FIVE §2-3) were helpers that
+    took a quoted user message, older or about something else, for their job. The asks in
+    `missing` are asks of the task."""
+    return ('laserbrain (askllm): your goal may leave out part of the task you were handed. '
+            f'{note_reason(body)}. The task text is what you were asked to do; a user message '
+            'quoted in it can be older or about something else. Re-read the task before '
+            'continuing; if you are sure you are on it, carry on.')
+
+
+def parent_note_text(body):
+    who = body.get('label') or body.get('lane') or body.get('agent_id') or 'a helper'
+    wf = body.get('workflow_name') or body.get('workflow')
+    where = f' in {wf}' if wf else ''
+    return (f'laserbrain: helper {_short(who, 80)}{where} may be off its task: '
+            f'{note_reason(body)}. Check its result against the task you gave it and the user\'s ask.')
+
+
+def _claim(path):
+    """The note's body if this process claimed it, else None. Claimed by renaming it, which
+    exactly one racing process can do; an unreadable file is set aside and never delivered."""
+    try:
+        body = json.loads(pathlib.Path(path).read_text(encoding='utf-8'))
+        if not isinstance(body, dict):
+            raise ValueError('not an object')
+    except FileNotFoundError:
+        return None
+    except Exception:
+        try:                                            # out of the session folder, kept for a look
+            p = pathlib.Path(path)
+            aside = p.parent.parent / '_set-aside'
+            aside.mkdir(parents=True, exist_ok=True)
+            os.replace(p, aside / f'{p.parent.name}__{p.name}.corrupt')
+        except Exception:
+            pass
+        return None
+    claimed = f'{path}.claimed-{os.getpid()}'
+    try:
+        os.rename(path, claimed)
+    except Exception:
+        return None                                     # another hook call got it first
+    try:
+        os.unlink(claimed)
+    except Exception:
+        pass
+    return body
+
+
+def _delivered(state_dir, body, status, event, **extra):
+    try:
+        we = float(body.get('written_epoch') or 0)
+        rec = {'ts': _ts(), 'status': status, 'session': body.get('session'),
+               'agent_id': body.get('agent_id'), 'label': body.get('label'),
+               'workflow': body.get('workflow'), 'event': event,
+               'note_written_ts': body.get('written_ts'),
+               'delay_s': round(time.time() - we, 1) if we else None}
+        rec.update(extra)
+        _append_log(state_dir, rec)
+    except Exception:
+        pass
+
+
+def _age(path, t_now):
+    try:
+        return t_now - path.stat().st_mtime
+    except Exception:
+        return None
+
+
+def deliver_notes(ev, state_dir, event=None, now=None):
+    """Note texts to hand this tool call or prompt as additionalContext, each claimed once.
+    A helper agent's call takes its own <agent>.agent note; a main-session call or prompt takes
+    the session's pending .parent notes. [] when there are none, when notes are off, and on any
+    error. Never raises; no model call, no transcript read.
+
+    Housekeeping runs on EVERY pass, helper or main, so a session folder never outlives its
+    notes: an .agent note older than NOTE_TTL_S and a .parent note older than PARENT_NOTE_TTL_S
+    expire (note_expired_agent / note_expired_parent) instead of going out, and when the mode is
+    not note (watch, off, either off switch) every pending note is dropped (note_dropped_mode).
+    The folder is removed once it is empty, so afterwards each call costs one stat again."""
+    try:
+        sid = ev.get('session_id') or ev.get('sessionId')
+        if not sid:
+            return []
+        d = notes_dir(state_dir, sid)
+        if not d.is_dir():
+            return []
+        t_now = now if now is not None else time.time()
+        md = mode(state_dir)
+        agent = ev.get('agent_id') or ev.get('agentId')
+        mine = f'{safe_name(agent)}.agent' if agent else None
+        out = []
+        for n in sorted(os.listdir(d)):
+            p = d / n
+            kind = 'agent' if n.endswith('.agent') else 'parent' if n.endswith('.parent') else None
+            if kind is None:
+                continue
+            if md != 'note':
+                body = _claim(p)
+                if body is not None:
+                    _delivered(state_dir, body, 'note_dropped_mode', event, kind=kind, mode=md)
+                continue
+            age = _age(p, t_now)
+            ttl = NOTE_TTL_S if kind == 'agent' else PARENT_NOTE_TTL_S
+            if age is not None and age > ttl:
+                body = _claim(p)
+                if body is not None:
+                    _delivered(state_dir, body, f'note_expired_{kind}', event)
+                continue
+            if kind == 'agent' and n == mine:
+                body = _claim(p)
+                if body is not None:
+                    out.append(agent_note_text(body))
+                    _delivered(state_dir, body, 'note_delivered_agent', event)
+            elif kind == 'parent' and not agent and len(out) < PARENT_NOTES_MAX:
+                body = _claim(p)
+                if body is not None:
+                    out.append(parent_note_text(body))
+                    _delivered(state_dir, body, 'note_delivered_parent', event)
+        try:
+            os.rmdir(d)                                 # only succeeds once nothing is pending
+        except OSError:
+            pass
+        return out
+    except BaseException:                               # noqa: BLE001 — never into lb_coverage
+        return []
 
 
 # ── hook side: cheap, never raises, never prints ────────────────────────────────────
@@ -274,6 +561,11 @@ def on_post_tool_use(ev, tool, args, state_dir, now=None):
             return 'not-check'
         if switch_reason(state_dir, now):
             return 'off'
+        # The same early return as lb_turnwatch's: with no frozen scorer or frozen block on
+        # disk (an installed wheel has neither research/eval nor eval/), the worker could only
+        # log a skip, so no process is started at all.
+        if not (eval_dir() / 'ask_match_llm.py').is_file() or not frozen_path().is_file():
+            return 'no-judge'
         tp = ev.get('transcript_path') or ev.get('transcriptPath')
         if not tp or not os.path.exists(str(tp)):
             return 'no-transcript'
@@ -303,7 +595,8 @@ def on_post_tool_use(ev, tool, args, state_dir, now=None):
                'tool_use_id': ev.get('tool_use_id') or ev.get('toolUseId'),
                'transcript_path': str(tp), 'cwd': ev.get('cwd'),
                'goal': str(args.get('goal'))[:2000] if args.get('goal') is not None else None,
-               'hook_ts': stamp, 'state_dir': str(state_dir)}
+               'hook_ts': stamp, 'state_dir': str(state_dir), 'mode': mode(state_dir),
+               'trigger': TRIGGER, 'policy': policy_now()}
         if st == 'cap':
             rec = _base(job)
             rec.update(status='skipped', reason='daily cap', cap=DAILY_CAP)
@@ -322,7 +615,7 @@ def on_post_tool_use(ev, tool, args, state_dir, now=None):
         return 'spawned'
     except BaseException as e:                          # noqa: BLE001 — never into lb_coverage
         _log_error(state_dir, job or {'session': (ev or {}).get('session_id'),
-                                      'agent_id': (ev or {}).get('agent_id')}, 'hook', e)
+                                      'agent_id': (ev or {}).get('agent_id')}, 'hook', e, hook=True)
         return 'error'
 
 
@@ -498,12 +791,12 @@ def make_backend(m, state_dir):
     if mock:
         text = pathlib.Path(mock).read_text()
         return m.MockBackend(lambda system, prompt, schema: text)
-    for k in SESSION_LINK_ENV:
-        os.environ.pop(k, None)
     cache_dir = pathlib.Path(state_dir) / CLI_DIR_NAME
-    if shutil.which('claude'):
+    on_path = shutil.which('claude')
+    binary = None if on_path else _claude_binary()     # reads CLAUDE_CODE_EXECPATH: before the cut
+    restrict_child_env()                               # SESSION_LINK_ENV and the rest go here
+    if on_path:
         return m.make_backend('claude', m.MODEL, CALL_TIMEOUT_S, cache_dir=cache_dir)
-    binary = _claude_binary()
     if not binary:
         raise m.BackendUnavailable('claude CLI not found on PATH')
     return m.ClaudeCLIBackend(m.MODEL, CALL_TIMEOUT_S, token=m.keychain('claude-oauth-token'),
@@ -614,6 +907,7 @@ def _run_job(job, state_dir, backend, delay, now, sleep, held):
             _append_log(state_dir, rec)
             return rec
         system, prompt, schema = m.render(row, 'askllm')
+        rec['row_sha'] = row_sha(system, prompt)
         tw = time.time()
         slot = acquire_slot(state_dir, sleep)
         rec['slot_wait_s'] = round(time.time() - tw, 2)
@@ -627,6 +921,7 @@ def _run_job(job, state_dir, backend, delay, now, sleep, held):
         capped = CappedBackend(backend, state_dir, m.BackendUnavailable)
         rec['backend'] = capped.name
         rec['credential'] = capped.credential
+        rec['child_env_keys'] = sorted(os.environ) if capped.name != 'mock' else None
         tc = time.time()
         try:
             res, resp, tries = m.call_one(capped, system, prompt, schema, 'askllm',
@@ -656,6 +951,11 @@ def _run_job(job, state_dir, backend, delay, now, sleep, held):
                    tries=tries, calls=capped.calls, call_s=round(time.time() - tc, 2),
                    cost_usd=meta.get('cost_usd'), model_usage=meta.get('model_usage'),
                    child_session_id=meta.get('session_id'))      # the throwaway `claude -p` run
+        # NOTE MODE: a flag becomes a pending note for the agent and its parent. The mode is
+        # read again here, so switching to watch or off while the call ran writes no note.
+        rec['mode'] = mode(state_dir)
+        if rec['flag'] and rec['mode'] == 'note':
+            rec['note'] = write_note(state_dir, job, rec)
     except BaseException as e:                          # noqa: BLE001
         rec.update(status='error', reason=f'worker: {type(e).__name__}', error=snip(str(e), 300))
     rec['total_s'] = round(time.time() - t0, 2)

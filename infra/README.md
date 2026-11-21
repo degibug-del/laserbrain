@@ -22,6 +22,21 @@ drifted is exactly the one that will not remember.
 | `lb_gate.py` | `PreToolUse` | by default (`nudge`) logs each lapse and reminds the agent without refusing; **refuses tool calls** when coverage lapses only under `LASERBRAIN_GATE_MODE=hard`; claims always refuse |
 | `lb_safety.py` | `PreToolUse` | blocks destructive and publish-once actions |
 
+Two AI-graded checks ride on `lb_coverage.py` and need no settings entry of their own. Both
+grade with frozen scorers in `research/eval/` (a repository checkout; an installed wheel has
+none, so they do nothing there), each with one `claude -p` Haiku call in a detached process,
+80 calls a day each, at most 2 at once between them:
+
+| check | when | what it does | off |
+|---|---|---|---|
+| `lb_askllm_watch.py` | a helper agent's first `check_state` | grades whether its goal covers the user's asks; in `note` mode (default) a flag becomes one additionalContext line for that agent and one for its parent session, never a block. `LASERBRAIN_ASKLLM_MODE=watch` only logs | `LASERBRAIN_ASKLLM_MODE=off` |
+| `lb_turnwatch.py` | the main session's first `check_state` after each user message (its PostToolUse, or its PostToolUseFailure when that check failed) | **watch-only**: grades whether the main session set out to do what the user asked (a bare "ok" against the proposal it answered); logs to `turnwatch.jsonl`; bookkeeping in `turnwatch.seen.json` and `turnwatch.calls.json` under `turnwatch.lock` | `LASERBRAIN_TURNWATCH=off` |
+
+Reports: `research/eval/askllm_watch_report.py`, `research/eval/turnwatch_report.py`.
+askllm notes wait in `askllm-notes/<session>/`; an agent note expires after 6 h, a parent note
+after 24 h, and switching away from `note` mode drops what is pending, so the folder never
+outlives its notes.
+
 `lb_gate.py` is the mechanism. Under the old default (now `LASERBRAIN_GATE_MODE=hard`) it
 stopped this harness's own author six times in one session and took an unsaved draft with
 one of them. Since 2026-10-16 the default is `nudge`: the day-one experiment counted 4,775

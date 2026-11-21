@@ -1,0 +1,290 @@
+{
+ "frozen": {
+  "at": "2026-11-19T07:08:25+00:00",
+  "scorer": "turnwatch",
+  "model": "claude-haiku-5-5",
+  "effort": "low",
+  "backend": "claude",
+  "prompt_hash": "65e30f5de9bdf3a6a11c556e9742eabc7cda8d958e63f5297778561f475180c7",
+  "thresholds": {
+   "min_drift_score": 90,
+   "flag_verdicts": [
+    "narrowing",
+    "substitution",
+    "misread"
+   ],
+   "substituted_flags": true,
+   "ambiguous_min_score": 0,
+   "ambiguous_needs_bare": true
+  },
+  "limits": {
+   "msg": 1500,
+   "prev_msg": 400,
+   "recent": 5,
+   "proposal": 1500,
+   "goal": 400,
+   "doing": 400,
+   "first": 1000,
+   "first_events": 3
+  },
+  "first_words_window_s": 60,
+  "turn_match_llm_sha256": "31e2879311b0a593b2126d114f0298af3ff3a398c073f4bd0007347ac36b5225",
+  "ask_match_llm_sha256": "e912dafe45badd6e7505ec2bbc64cdf526617fb08fbe5f2ca68c6e76f1ecd093",
+  "eval_files_sha256": {
+   "_common.py": "5fc45384a7f1e87472bdbc4dbe29d381bc3518710fdc89d33a4a44c72b79e038",
+   "ask_match.py": "19c7a87624c281d9f6be877c98cbd78b932417cf9620c203238d92c95e6af7f5",
+   "ask_match_llm.py": "e912dafe45badd6e7505ec2bbc64cdf526617fb08fbe5f2ca68c6e76f1ecd093",
+   "extract_starts.py": "3cfec2fb5bc3bd37254f84585abf254ed0078a865f7ff22019995c0673844b73",
+   "turn_match_llm.py": "31e2879311b0a593b2126d114f0298af3ff3a398c073f4bd0007347ac36b5225"
+  },
+  "note": "Picked on the realdrift DEV set (one session, 2026-10-17..11-15), whose labels were known before the prompt was written. These are DEV numbers, not a held-out result; the honest test is prospective, on turns after this date. Each catch rests on ONE turn: min_drift_score sits where the non-bare catch scored in run 1 (90; 40 in run 2), and ambiguous_min_score 0 lets in the bare-approval catch, which scored 35 in both runs. Read flags with their reasons: at 40, about 3 of the 8 run-1 false flags had factually wrong reasons and 3 more were deferred side questions, which the prompt says not to flag, and the non-bare catch has the same shape as two of them."
+ },
+ "dev": {
+  "at": "2026-11-19T07:08:25+00:00",
+  "DEV_NOT_HELD_OUT": true,
+  "judged_turns": 498,
+  "drift_turns": 10,
+  "reached_turns": 187,
+  "drift_turns_reached": 6,
+  "metrics": {
+   "positives": 10,
+   "negatives": 488,
+   "positives_reached": 6,
+   "negatives_reached": 181,
+   "tp": 2,
+   "fp": 1,
+   "recall_all": 0.2,
+   "recall_all_ci": [
+    0.057,
+    0.51
+   ],
+   "recall_reached": 0.333,
+   "false_flag_rate_reached": 0.0055,
+   "false_flag_ci_reached": [
+    0.001,
+    0.031
+   ],
+   "precision": 0.667
+  },
+  "per_threshold": [
+   {
+    "min_drift_score": 30,
+    "tp": 2,
+    "fp": 13,
+    "recall_all": 0.2,
+    "recall_reached": 0.333,
+    "false_flag_rate_reached": 0.0718,
+    "precision": 0.133
+   },
+   {
+    "min_drift_score": 40,
+    "tp": 2,
+    "fp": 8,
+    "recall_all": 0.2,
+    "recall_reached": 0.333,
+    "false_flag_rate_reached": 0.0442,
+    "precision": 0.2
+   },
+   {
+    "min_drift_score": 50,
+    "tp": 2,
+    "fp": 8,
+    "recall_all": 0.2,
+    "recall_reached": 0.333,
+    "false_flag_rate_reached": 0.0442,
+    "precision": 0.2
+   },
+   {
+    "min_drift_score": 60,
+    "tp": 2,
+    "fp": 6,
+    "recall_all": 0.2,
+    "recall_reached": 0.333,
+    "false_flag_rate_reached": 0.0331,
+    "precision": 0.25
+   },
+   {
+    "min_drift_score": 70,
+    "tp": 2,
+    "fp": 6,
+    "recall_all": 0.2,
+    "recall_reached": 0.333,
+    "false_flag_rate_reached": 0.0331,
+    "precision": 0.25
+   },
+   {
+    "min_drift_score": 80,
+    "tp": 2,
+    "fp": 5,
+    "recall_all": 0.2,
+    "recall_reached": 0.333,
+    "false_flag_rate_reached": 0.0276,
+    "precision": 0.286
+   },
+   {
+    "min_drift_score": 90,
+    "tp": 2,
+    "fp": 1,
+    "recall_all": 0.2,
+    "recall_reached": 0.333,
+    "false_flag_rate_reached": 0.0055,
+    "precision": 0.667
+   }
+  ],
+  "scored": 187,
+  "cost_usd": 0.1283,
+  "selection_rule": "the most drift turns caught in both of two runs of the same prompt, with at most 5% false flags in the worse run, then the fewest false flags in the worse run",
+  "repeat": {
+   "n": 187,
+   "of_reached": 187,
+   "complete": true,
+   "what": "a second run of every reached row",
+   "abs_delta_median": 0,
+   "abs_delta_p90": 10,
+   "abs_delta_max": 58,
+   "verdict_changed": 19,
+   "flips_at_threshold": {
+    "30": 12,
+    "40": 9,
+    "50": 10,
+    "60": 6,
+    "70": 4,
+    "80": 2,
+    "90": 1
+   },
+   "two_run": [
+    {
+     "min_drift_score": 30,
+     "tp_run1": 2,
+     "tp_run2": 2,
+     "tp_both_runs": 2,
+     "fp_run1": 13,
+     "fp_run2": 13,
+     "false_flag_rate_worse_run": 0.0718
+    },
+    {
+     "min_drift_score": 40,
+     "tp_run1": 2,
+     "tp_run2": 2,
+     "tp_both_runs": 2,
+     "fp_run1": 8,
+     "fp_run2": 11,
+     "false_flag_rate_worse_run": 0.0608
+    },
+    {
+     "min_drift_score": 50,
+     "tp_run1": 2,
+     "tp_run2": 1,
+     "tp_both_runs": 1,
+     "fp_run1": 8,
+     "fp_run2": 9,
+     "false_flag_rate_worse_run": 0.0497
+    },
+    {
+     "min_drift_score": 60,
+     "tp_run1": 2,
+     "tp_run2": 1,
+     "tp_both_runs": 1,
+     "fp_run1": 6,
+     "fp_run2": 7,
+     "false_flag_rate_worse_run": 0.0387
+    },
+    {
+     "min_drift_score": 70,
+     "tp_run1": 2,
+     "tp_run2": 1,
+     "tp_both_runs": 1,
+     "fp_run1": 6,
+     "fp_run2": 5,
+     "false_flag_rate_worse_run": 0.0331
+    },
+    {
+     "min_drift_score": 80,
+     "tp_run1": 2,
+     "tp_run2": 1,
+     "tp_both_runs": 1,
+     "fp_run1": 5,
+     "fp_run2": 4,
+     "false_flag_rate_worse_run": 0.0276
+    },
+    {
+     "min_drift_score": 90,
+     "tp_run1": 2,
+     "tp_run2": 1,
+     "tp_both_runs": 1,
+     "fp_run1": 1,
+     "fp_run2": 1,
+     "false_flag_rate_worse_run": 0.0055
+    }
+   ],
+   "selected_min_drift_score": 90,
+   "drift_turn_scores": [
+    {
+     "tid": "T008",
+     "bare_approval": true,
+     "v1": "ambiguous_approval",
+     "s1": 35,
+     "v2": "ambiguous_approval",
+     "s2": 35
+    },
+    {
+     "tid": "T143",
+     "bare_approval": false,
+     "v1": "aligned",
+     "s1": 8,
+     "v2": "aligned",
+     "s2": 8
+    },
+    {
+     "tid": "T151",
+     "bare_approval": false,
+     "v1": "aligned",
+     "s1": 20,
+     "v2": "aligned",
+     "s2": 15
+    },
+    {
+     "tid": "T455",
+     "bare_approval": false,
+     "v1": "aligned",
+     "s1": 5,
+     "v2": "aligned",
+     "s2": 5
+    },
+    {
+     "tid": "T480",
+     "bare_approval": false,
+     "v1": "substitution",
+     "s1": 90,
+     "v2": "narrowing",
+     "s2": 40
+    },
+    {
+     "tid": "T491",
+     "bare_approval": false,
+     "v1": "aligned",
+     "s1": 5,
+     "v2": "aligned",
+     "s2": 5
+    }
+   ],
+   "bare_approvals": {
+    "reached": 5,
+    "drift": 1,
+    "flagged_run1": 2,
+    "flagged_run2": 2,
+    "flagged_either_run": 3,
+    "flagged_either_run_drift": 1
+   },
+   "cost_usd": 0.044,
+   "sources": {
+    "review pass 2026-11-18 (scratchpad lbreview/rerun.py), same prompt and backend": 150,
+    "turn_dev_eval.py": 37
+   }
+  },
+  "model_calls_ledger": 411,
+  "model_calls_imported": 150,
+  "model_calls_total": 561
+ },
+ "prospective": null
+}

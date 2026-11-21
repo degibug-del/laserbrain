@@ -52,7 +52,10 @@ class Server:
                    LASERBRAIN_HOME=self.home,
                    LASERBRAIN_DRIFT_LOG=str(pathlib.Path(self.home) / 'drift.jsonl'),
                    LASERBRAIN_HUB='http://127.0.0.1:9', LASERBRAIN_API='http://127.0.0.1:9',
-                   LASERBRAIN_AGENT='spelling-test', LASERBRAIN_ARM='open')
+                   LASERBRAIN_AGENT='spelling-test', LASERBRAIN_ARM='open',
+                   # modulate's schema is read from tools/list, and since 0.58.0 the
+                   # default listing is the 3-tool core; ask for the full surface.
+                   LASERBRAIN_TOOLS='all')
         self.p = subprocess.Popen(['node', str(SERVER)], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   text=True, env=env)

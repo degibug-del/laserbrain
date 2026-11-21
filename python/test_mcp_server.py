@@ -23,8 +23,10 @@ WHAT EACH CASE GUARDS
                 server that dies on one bad call takes the agent's whole conversation.
 """
 import json
+import os
 import subprocess
 import sys
+import tempfile
 
 fails = []
 
@@ -35,11 +37,21 @@ def check(label, cond, detail=''):
         fails.append(label)
 
 
-def run(msgs, code=None):
-    """Drive the server as a real client would: a subprocess, over pipes."""
+def run(msgs, code=None, env=None, server_json=None):
+    """Drive the server as a real client would: a subprocess, over pipes.
+
+    Each run gets its own LASERBRAIN_HOME, so a server.json on the machine running the test
+    cannot decide what is listed; `server_json` writes one there, `env` adds variables."""
     inp = '\n'.join(json.dumps(m) for m in msgs) + '\n'
     argv = [sys.executable, '-c', code] if code else [sys.executable, '-m', 'laserbrain.cli', 'mcp']
-    r = subprocess.run(argv, input=inp, capture_output=True, text=True, timeout=90)
+    home = tempfile.mkdtemp(prefix='lb-mcp-test-')
+    os.makedirs(os.path.join(home, 'config'))
+    if server_json is not None:
+        with open(os.path.join(home, 'config', 'server.json'), 'w') as f:
+            f.write(server_json)
+    e = {k: v for k, v in os.environ.items() if k != 'LASERBRAIN_TOOLS'}
+    e.update(LASERBRAIN_HOME=home, **(env or {}))
+    r = subprocess.run(argv, input=inp, capture_output=True, text=True, timeout=90, env=e)
     out = []
     for line in r.stdout.splitlines():
         if line.strip():
@@ -66,6 +78,52 @@ names = [t['name'] for t in out[1]['result']['tools']]
 check('tools are listed with schemas',
       'check_state' in names and all('inputSchema' in t for t in out[1]['result']['tools']),
       f'{len(names)} tools')
+
+# ── what is listed (0.58.0): the 3-tool core by default, the rest one setting away ───
+# The same rule as listedTools() in mcp-server.mjs. An agent pays for every listed
+# definition on every turn; tools/call stays unfiltered.
+CORE = ['check_state', 'reset_task', 'get_history']
+LIST = {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'}
+
+
+def listed(**kw):
+    o, _ = run([INIT, LIST], **kw)
+    return [t['name'] for t in o[1]['result']['tools']]
+
+
+check('with no setting the core is listed', names == CORE, names)
+full = listed(env={'LASERBRAIN_TOOLS': 'all'})
+check('LASERBRAIN_TOOLS=all lists every tool', len(full) >= 20 and set(CORE) <= set(full),
+      f'{len(full)} tools')
+check('"tools": "all" in server.json lists every tool',
+      listed(server_json='{"tools": "all"}') == full)
+check('"all" inside a list or a comma value lists every tool',
+      listed(server_json='{"tools": ["core", "all"]}') == full
+      and listed(env={'LASERBRAIN_TOOLS': 'similarity, ALL'}) == full)
+check('"core" in server.json is the core', listed(server_json='{"tools": "core"}') == CORE)
+check('a named list lists those tools (and core may be in it)',
+      sorted(listed(env={'LASERBRAIN_TOOLS': 'core,similarity'})) == sorted(CORE + ['similarity']))
+check('a value that names no known tool falls back to the core',
+      listed(env={'LASERBRAIN_TOOLS': 'bogus'}) == CORE
+      and listed(server_json='{"tools": true}') == CORE)
+check('a broken server.json reads as no file', listed(server_json='{"tools": "all"') == CORE)
+check('the environment overrides the file',
+      listed(server_json='{"tools": "all"}', env={'LASERBRAIN_TOOLS': 'core'}) == CORE)
+out, _ = run([INIT, call('similarity', {'a': 'build a parser', 'b': 'write a parser'}, 2)])
+check('a hidden tool still answers tools/call by name',
+      'result' in out[1] and not out[1]['result'].get('isError'), str(out[1])[:120])
+
+# ── R7: the description and the first reply say when to check, not "each step" ──────
+out, _ = run([INIT, LIST, call('check_state', {'goal': 'write the docs', 'progress': 'advancing',
+                                               'distance': 5}, 3)])
+desc = next(t['description'] for t in out[1]['result']['tools'] if t['name'] == 'check_state')
+check('check_state says when a task starts and when it changes',
+      'Check in when a task starts and when it changes, not on every step.' in desc, desc[:90])
+check('...and never asks for a check each step', 'each step' not in desc.lower(), desc[:90])
+first = json.loads(out[2]['result']['content'][0]['text'])
+check('the first reply gives the same rule',
+      first['reason'] == 'grounded' and 'each step' not in first['advice'].lower()
+      and 'the task changes' in first['advice'], first['advice'])
 
 # ── the instrument itself, over the wire ─────────────────────────────────────────────
 out, r = run([INIT,

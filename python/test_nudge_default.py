@@ -50,6 +50,7 @@ def session(kind):
 
 def env_for(d, mode=None, drift=None, extra=None):
     env = {k: v for k, v in os.environ.items() if not k.startswith('LASERBRAIN_')}
+    env['LASERBRAIN_STUDY'] = '1'  # the pre-2026-11-19 text; the quiet default is test_quiet_default.py
     env.update(LASERBRAIN_STATE_DIR=str(d), LASERBRAIN_HOME=str(d / 'home'),
                LASERBRAIN_AGENT='claude', LASERBRAIN_LINK_LOG=str(d / 'link.jsonl'),
                PYTHONPATH=str(ROOT), LASERBRAIN_PROBE_SHARE='0')

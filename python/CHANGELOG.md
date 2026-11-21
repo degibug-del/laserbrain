@@ -1,10 +1,359 @@
 # Changelog
 
-## 0.58.0 - 2026-11-17
+## 0.58.0 - 2026-11-20
 
-The first PyPI release since 0.57.0 (2026-08-30). Everything under this heading since then
-ships in it: the nudge-mode gate default, the round-2 fixes B1-B9, goal-drift as a note
-(grammar 2.1.0), the contexts.json cap, the session-file lock, and this entry.
+The first PyPI release since 0.57.0 (2026-08-30). Everything under this heading ships in it:
+the release changes of 2026-11-20 directly below, quiet-by-default lb_coverage and the askllm
+and turnwatch work (2026-11-18 and 19), the nudge-mode gate default, the round-2 fixes B1-B9,
+goal-drift as a note (grammar 2.1.0), the contexts.json cap and the session-file lock.
+
+### Upgrading from 0.57.0
+
+- Run `laserbrain install` again. It moves the hook entries 0.57.0 wrote
+  (`<python> [-P] -m laserbrain.hooks.<hook>`) to the new shape in place, and it removes the
+  lb_gate entry 0.57.0 wrote unless you pass `--with-gate`. Hooks you wrote yourself are left
+  as they are. `laserbrain install --dry-run` shows what it would change.
+- lb_safety's refusal no longer names anyone. Its first two lines (`laserbrain safety: blocked
+  …` and `THIS CALL DID NOT RUN.`) are unchanged, so anything that recognises a refusal by its
+  head still does.
+- No Worker deploy is allowed by the code any more. If you deployed `laserbrain-mcp-remote`
+  through the guard, name it in `~/.config/laserbrain/safety.json` (see below).
+- The node server (`laserbrain install --server node`, or mcp-server.mjs run directly) lists
+  three tools by default. `"tools": "all"` in `<config dir>/server.json`, or
+  `LASERBRAIN_TOOLS=all`, lists the rest.
+- To take it all out: `laserbrain uninstall`, then `pip uninstall laserbrain`.
+
+### lb_safety: the refusal names nobody; Worker allowances come from your config (2026-11-20)
+
+- The refusal used to say that one named person had to give the explicit OK and run the
+  command, and 0.57.0 on PyPI carries that text to every install. It now says the command "is
+  irreversible or destructive, so it needs the explicit OK of the person running this
+  session", and to ask them and have them run it themselves. Every other line of the refusal
+  is byte-identical.
+- The one Worker deploy the code allowed (`laserbrain-mcp-remote`, one machine's standing
+  permission) is no longer built in. A deploy you want to allow is named in your own config,
+  `~/.config/laserbrain/safety.json` (`$LASERBRAIN_HOME/config/safety.json` when that is set):
+
+      {"allow_worker_deploys": ["my-worker"]}
+
+  A `wrangler deploy` then runs when the same command also contains that name, before or after
+  the verb (`cd workers/my-worker && npx wrangler deploy`, or `wrangler deploy --config
+  workers/my-worker/wrangler.toml`). That is the rule the built-in entry used, built per name
+  with the name escaped.
+- It fails closed. A missing, unreadable, non-UTF-8, non-JSON or over-64-KiB file allows
+  nothing; so does a top level that is not an object, or an `allow_worker_deploys` that is not
+  a list. A name that is not a plain path fragment (a letter or digit, then letters, digits,
+  `.`, `_`, `/` or `-`, at most 200 characters) is skipped, so `""` or `".*"` can never allow
+  every deploy. Reading it never raises, so the hook's own fail-open path is unchanged.
+- The file is read only after a deny pattern has matched, so an ordinary call never touches
+  the disk.
+- Limits, the same as the built-in entry had: an allowance covers the whole command it
+  matches, and a name matches as plain text, so `my-worker` also allows `my-worker-2`. The
+  refusal does not mention the file, but an agent with file tools could still write it; this
+  is a guard rail, not a sandbox.
+- Unchanged: the deny patterns and their labels, the B9 text-only scanner, `main()` and the
+  escape-hatch handling.
+
+### `laserbrain install` wires the measured shape; new `laserbrain uninstall` (2026-11-20)
+
+- Each hook runs a file from this install with the interpreter that ran `laserbrain install`,
+  under `-I -S`, with every path shell-quoted:
+  - SessionStart: a self-test. It feeds lb_safety one guarded command and warns once in the
+    session when the command is not refused. Healthy, it prints nothing.
+  - PreToolUse: lb_safety alone, in its own group. It falls back to `python3` on PATH when the
+    interpreter has moved, and a missing hook file exits 1, never 2 (exit 2 would refuse every
+    tool call).
+  - PostToolUse, PostToolUseFailure and UserPromptSubmit: lb_coverage through `hooks/fast.py`,
+    failing open.
+  The `-m` form is gone from the default wiring, so the package `__init__` is no longer
+  imported on every tool call.
+- lb_gate is no longer wired by default. `laserbrain install --with-gate` wires it, in its own
+  group, failing open. Running install again without the flag removes the lb_gate entry an
+  earlier install wrote, and the output names the flag that keeps it.
+- install only touches an entry whose command is exactly one it writes (any interpreter, any
+  `.../laserbrain/hooks/` path) or the 0.57.0 `-m` shape, on the event it writes that entry on.
+  Those are updated in place, and duplicates collapse to one. An entry the user wrote that runs
+  the same hook another way is kept as it is, never doubled, and listed. Other hooks and keys
+  stay where they were. The write is atomic, a symlinked settings.json is written through
+  rather than replaced, non-ASCII text is kept, and `settings.json.before-laserbrain` is a
+  backup of the file that was there. The file is written back as 2-space JSON, without a
+  final newline.
+- Before it reports success, install runs the wired commands: lb_safety must refuse a guarded
+  probe and pass an ordinary one, the self-test must be silent, and lb_coverage must load.
+- On Windows it writes plain quoted commands and no self-test. These forms are unit-tested
+  only; nothing has run on Windows.
+- New `laserbrain uninstall [--dry-run]`. It removes exactly the hook entries and the
+  `mcpServers.laserbrain` entry that install writes (any version), and only the groups, events
+  and empty containers it empties itself. It lists hand-written or edited entries and keeps
+  them, and backs up to `settings.json.before-laserbrain-uninstall`. A missing file is not an
+  error and nothing is created; a broken or non-object file is refused unchanged. A
+  settings.json that install created is left as `{}`.
+- `laserbrain install` and `laserbrain uninstall` are parsed only by install.py, so
+  `laserbrain install --help` shows every flag.
+- Unchanged: install sets up Claude Code only, writes `mcpServers.laserbrain` into
+  `~/.claude/settings.json`, and wires the offline Python server (`laserbrain mcp`) unless
+  given `--server node`.
+
+### The node server lists three tools by default, and says when to check in (2026-11-20)
+
+- mcp-server.mjs (javascript/, shipped as laserbrain/mcp-server.mjs) lists `check_state`,
+  `reset_task` and `get_history` when there is no server.json, or its `tools` is empty or
+  `core`. `"tools": "all"` or `LASERBRAIN_TOOLS=all` lists every tool (32 on stdio). `all` also
+  works inside a comma list, and a value that names no known tool falls back to the core.
+  Hidden tools still answer `tools/call` by name.
+- Its check_state description now starts "Check in when a task starts and when it changes, not
+  on every step." The rest is kept: check once at the start, in the same response as other
+  tool calls; check again when the task changes or when stuck or circling; the goal-drift note.
+- The laserbrain skill (skills/laserbrain/SKILL.md) and both READMEs give the same rule.
+- Not changed in this release: the default Python server (`laserbrain mcp`,
+  python/laserbrain/mcp.py, the one `laserbrain install` wires) lists all 21 of its tools, and
+  its check_state description still asks for a check each step.
+
+### README, SECURITY.md and the skill say only what was measured (2026-11-20)
+
+- The README (repository and PyPI page) opens: "laserbrain is a small drift check for AI
+  agents. We measured it over 60 days of real use on one machine: …", and links
+  phronesis.world/laserbrain.
+- Claims the measurements do not support are gone: the drift-detection headline, the case
+  counts and precision percentages taken from small or unlabelled samples, the attention band
+  table, and the words "proven" and "sound and complete". The numbers that remain are graded
+  live and offline results.
+- The install sections describe the wiring above, `laserbrain uninstall` and the safety.json
+  allowance, and say that the plugin (which uses the hosted MCP server) and the hosted API send
+  what you give them off your machine.
+- SECURITY.md describes what install wires, `laserbrain uninstall`, and the safety.json
+  allowance with its fail-closed rules, including that an agent with file tools could write
+  that file. It says install sets up Claude Code only, and replaces the old precision line
+  with graded live numbers.
+- skills/laserbrain/SKILL.md: check in when a task starts and when it changes, not each step.
+  Its hooks section matches the new wiring, says the outside judge is not in the package, and
+  says a safety refusal needs the OK of the person running the session.
+
+### Shipped comments stop naming and quoting people (2026-11-20)
+
+Comments and docstrings in the Python modules (lb_safety, lb_gate, lb_coverage, `__init__`,
+runtime, link, field, mcp) no longer name or quote the owner, and no longer carry session or
+run ids, a hostname that held a handle, or goal text quoted from real sessions. The three
+mentions of the owner's name in mcp-server.mjs's comments are gone too. The reasoning stays,
+in neutral words. These comments were public in 0.57.0. In those Python files only comments
+and docstrings changed, apart from lb_safety's allowance code above. `test_shipped_text.py`
+pins the cleanup.
+
+### Tests (2026-11-20)
+
+- New `test_install.py` (85 checks, on synthetic settings in temporary HOMEs): the fresh
+  install shape; the wired commands really refuse, allow, stay silent and load; idempotence,
+  byte for byte; merge, then uninstall back to the file it found; 0.57.0 upgrades with and
+  without `--with-gate`; hand-written wiring left alone and not doubled; a moved install;
+  dry runs, a missing file, an edited entry, broken JSON; `--no-hooks` and a symlinked
+  settings file; the Windows forms; CLI routing; no machine paths or names in install.py.
+- New `test_safety_config.py` (42 checks on the allowance file, including that an ordinary
+  call never reads it) and `tests/safety-decisions-5d5b02b.json`: 1,208 synthetic commands as
+  the lb_safety of commit 5d5b02b decided them. With safety.json naming the old Worker all
+  1,208 decide the same; without it, the only changes are the 12 commands that name it.
+- New `test_shipped_text.py` (20 checks): the cleaned comments and the R7 wording.
+- Updated: test_safety_b9.py (the Worker allowance through safety.json), test_round2_b3b4.py
+  (a neutral refusal fixture, and the new wiring), test_tool_surface.py,
+  javascript/test_progress_spelling.py and javascript/test_host_wiring.py.
+
+### Evidence for this release (2026-11-20)
+
+- Safety decisions: 603 Bash commands sampled from real transcripts on one machine went
+  through lb_safety before and after this release's changes, on the same wiring. All 603 were
+  decided the same way (6 refusals on each side). A second 603-command sample through the
+  PreToolUse command a clean install writes was decided the same as the wiring it replaces (4
+  refusals on each side).
+- Hook cost in a 44-call synthetic replay, on the same wiring before and after: 47.5 and 47.8
+  ms per tool call before, 47.7 and 48.0 after (2.0 Python starts per call on both).
+- The test suite (python/, javascript/, the parity scripts and pytest research/eval), run
+  offline in a scratch HOME: 86 rows, 81 pass, 3 skip and 2 fail. Two skips need a sibling
+  repository that was not present and one is opt-in. Both failures are environmental and
+  were there before these changes: one test_gate_hosts.py row expects the step-count gate to
+  refuse (the gate defaults to nudge), and check-all's tool-parity step needs the network (its
+  `--offline` run passes).
+
+### Quiet by default (2026-11-19)
+
+- lb_coverage is quiet by default (nudge mode): no step reminders, honesty note or batching
+  line; one line per user message asks for that turn's check (LASERBRAIN_TURN_LINE=off silences
+  it). LASERBRAIN_STUDY=1 restores lb_coverage's old output exactly. lb_gate, where it is wired
+  (the plugin; `laserbrain install` only with `--with-gate` since 2026-11-20), is unchanged and
+  still reminds in nudge mode.
+  hooks/fast.py starts lb_coverage without the package __init__.
+- The Node MCP server (javascript/mcp-server.mjs, shipped as laserbrain/mcp-server.mjs and
+  wired with `laserbrain install --server node`) reads an optional config/server.json (tools:
+  core|all|list, judgment: off, policy); LASERBRAIN_TOOLS overrides it. Its check_state
+  description and first reply no longer ask for a check every step. The default Python server
+  (mcp.py) and the package __init__ are unchanged.
+- Judge rows carry policy and trigger, and scored rows carry row_sha. Optional first-tool
+  turnwatch trigger: LASERBRAIN_TURNWATCH_TRIGGER=first_tool, with its own pinned anchor arm.
+
+### askllm flags reach the agent and its parent; turnwatch watches the main session (2026-11-18)
+
+Why. The day-five scoring on real sessions (research/DAY-FIVE-REAL-SESSIONS.md, local) found
+that live check_state caught 1 of 16 drifted helper agents and 0 of 10 drifted main-session
+turns: it compares an agent with its own first goal and never sees what the user asked. The
+frozen AI-graded check (askllm) caught 10 of 12 drifted helpers offline at 1.5% false flags,
+and has run live, watch-only, since 2026-11-15 (as of 2026-11-18: 39 agents scored, 0 flagged,
+$0.05). Nothing watched the main session misreading the user.
+
+**A. askllm note mode.** The scorer is unchanged: same file (sha256 `e912dafe…`), prompt, model
+and thresholds, same frozen-hash checks. Only the delivery changes.
+
+- `LASERBRAIN_ASKLLM_MODE` = `note` (new default) | `watch` (the 2026-11-15 behaviour) | `off`.
+  `LASERBRAIN_ASKLLM_WATCH=off` and `<STATE_DIR>/askllm-watch.off` still switch everything off.
+  An unknown value runs as `watch`, never as `note`.
+- When the worker's verdict flags a helper, it writes two pending notes, atomically, under
+  `<STATE_DIR>/askllm-notes/<session>/` (`<agent>.agent`, `<agent>.parent`). On that agent's next
+  PostToolUse, lb_coverage adds one additionalContext line: "laserbrain (askllm): your goal may
+  leave out part of the task you were handed. <the asks left out and the scorer's reason, short,
+  redacted as the log line was>. The task text is what you were asked to do; a user message
+  quoted in it can be older or about something else. Re-read the task before continuing; if
+  you are sure you are on it, carry on." The note points at the TASK on purpose: askllm's own
+  prompt treats the task as the authority, and the drifts it caught were helpers that took a
+  quoted user message for their job, so a note sending them back to "the user's request quoted
+  in it" (the first draft) would have pushed them further off. On the parent (main) session's
+  next PostToolUse or UserPromptSubmit, one line per flagged helper: "laserbrain: helper
+  <label> in <workflow> may be off its task: <reason>. Check its result against the task you
+  gave it and the user's ask." (The text names "the user", not a person: the package ships to
+  other people.)
+- Never a block, never an exception into lb_coverage, no model call and no transcript read on
+  the hook path. A note is claimed by an atomic rename, so it goes out once even when parallel
+  hook calls race for it, and it is claimed just before lb_coverage prints, so a failure earlier
+  in the hook leaves it pending. Not delivered on camelCase hosts, which ignore PostToolUse
+  stdout. A corrupt note file is set aside unread.
+- A session folder never outlives its notes. Every pass, helper or main, expires an agent note
+  older than 6 hours and a parent note older than 24 hours (a session resumed days later gets
+  no stale line), and switching to `watch` or `off` (any of the switches) drops what is pending
+  on the next pass. lb_coverage loads lb_askllm_watch only when the call has work there: this
+  helper's own note, a parent note on a main call, a note past its TTL, or a mode other than
+  note; otherwise a pending folder costs a listdir, so a workflow's helpers do not pay for
+  another agent's note. Measured: 0.004 ms per call with nothing pending, about 0.3 ms to claim
+  a note in process, about +4 ms on a whole lb_coverage call that delivers one.
+- Deliveries are logged in askllm-watch.jsonl (`note_delivered_agent`, `note_delivered_parent`,
+  `note_expired_agent`, `note_expired_parent`, `note_dropped_mode`, with the time written and
+  the delay); `askllm_watch_report.py` shows notes written, delivered, expired, dropped and
+  pending.
+- The 2026-11-22 automatic stop is gone: note mode stays on until it is switched off. The
+  80-calls-a-day cap and the 2-at-once limit are kept.
+
+**B. turnwatch: did the main session misread the user? (WATCH-ONLY, frozen.)**
+
+- `python/laserbrain/hooks/lb_turnwatch.py`, called by lb_coverage on a main-session
+  check_state (no new settings entry): its PostToolUse, and its PostToolUseFailure too, because
+  the dev set counts every check_state the assistant spelled and a failed first check must not
+  leave its turn unjudged. Once per user turn, at the first check_state after the user's message
+  was DELIVERED to the model (a prompt, or a mid-turn `queued_command`; a goal spelled before
+  the model saw a message cannot be judged against it). The hook side reads the last 512 KB (at
+  most 4 MB) of the transcript for the latest delivered message: 0.5 ms on a 333 MB transcript.
+  A detached worker exactly like askllm's (own session, no stdout, `claude -p` that cannot
+  re-enter hooks, 60 s timeout, one retry, 300 s watchdog) waits out a 60 s first-words window,
+  builds the row and appends one line to `<STATE_DIR>/turnwatch.jsonl`. It judges only the
+  first check_state after the message (a later one, say after a lost seen file, is skipped, as
+  on the dev set). Nothing reaches the model or the user. Its own 80-calls-a-day cap; the 2
+  `claude -p` slots are shared with askllm. Off with `LASERBRAIN_TURNWATCH=off` or
+  `<STATE_DIR>/turnwatch.off`. An installed wheel has no research/eval, so there it spawns
+  nothing.
+- The worker reads the transcript backwards, 1 MB at a time, parsing as it goes, and stops once
+  it has the check and enough user messages: on a 40 MB tool-heavy tail its peak memory grew by
+  about 4 MB (reading a 64 MB tail whole grew it by about 260 MB). Bookkeeping is two small
+  files, `turnwatch.seen.json` (the latest 200 sessions) and `turnwatch.calls.json` (the daily
+  count, apart so a lost seen file cannot reset the cap), each replaced through a temp file
+  only when it changed, under `turnwatch.lock` with a bounded wait (a stuck lock costs one turn
+  and an error line, never a hang). A hook-side error logs only its type: the redactor is never
+  loaded into lb_coverage's process.
+- Both workers (askllm's too) cut their environment to an allowlist before `claude -p` starts
+  (PATH, HOME, USER, LOGNAME, SHELL, TMPDIR, TZ, LANG, `LC_*`, proxy and CA settings,
+  `CLAUDE_CONFIG_DIR`, `LASERBRAIN_*`), so host settings such as an effort level, simple mode,
+  SDK flags or a base URL never reach the frozen judge; the kept names are logged as
+  `child_env_keys`. The last 7 dev calls ran under that allowlist (0 errors).
+- The judge is `research/eval/turn_match_llm.py`, built on ask_match_llm.py's backend, parser
+  and cache (imported, not edited: its sha is pinned). Inputs: the latest user message, up to 5
+  earlier ones, the assistant's last message before it, the goal and `doing` just spelled, and
+  the assistant's first words; all through `_common.redact`. It returns asks / covered /
+  missing, `substituted`, a verdict (aligned | narrowing | substitution | misread |
+  ambiguous_approval), a 0-100 drift score and a reason. A bare approval ("ok", "yes", "go
+  ahead", "sure", "continue") is judged against the assistant's previous message; when that
+  offered several items and the reply does not say which, `ambiguous_approval` is a flag.
+- Frozen in `eval/turnwatch-frozen.json` (tracked; hashes and numbers, no text): prompt hash
+  `65e30f5d…`, `claude-haiku-5-5`, `min_drift_score` 90, the narrowing/substitution/misread
+  verdicts and `substituted`, ambiguous_approval only on a bare approval (at any score), a
+  60 s window, and the sha256 of EVERY research/eval file the judge loads (`turn_match_llm.py`
+  `31e28793…`, `ask_match_llm.py`, `ask_match.py`, `_common.py`, `extract_starts.py`). The
+  worker checks those hashes before it executes anything; after loading it refuses any
+  research/eval module the block does not pin and checks the prompt hash, model, thresholds,
+  window and that a synthetic secret still comes back redacted (the patterns live in
+  lb_secrets, outside research/eval). Any difference logs `skipped: frozen changed`. (The first
+  freeze pinned only the two scorer files: an edit to `_common.redact` or `extract_starts`
+  changed the live judge's input, or its redaction, without a skip.)
+- **DEV NUMBERS, NOT A HELD-OUT RESULT.** The prompt (two versions) and the threshold were
+  developed on the realdrift turns of one session (2026-10-17..11-15: 498 judged turns, 10
+  drift), whose labels were known before the first version was written
+  (`research/eval/turn_dev_eval.py`). The trigger reaches 187 of the 498 turns and 6 of the 10
+  drift turns: the other 4 had no check_state after the message. The same prompt was run twice
+  over all 187 reached turns. At the frozen threshold, run 1 flags **2 of the 10 drift turns**
+  (2 of the 6 it sees) with **1 false flag in the 181 clean turns it sees (0.6%, CI 0.1-3.1%)**;
+  run 2 flags **1** of them, again with 1 false flag. The 4 reached drift turns it misses read
+  as aligned at the first check: their goal or note says the ask was taken on.
+- **Each catch is one turn.** The non-bare catch (a start that kept earlier work going instead
+  of taking a new question on) scored 90 in run 1 and 40 in run 2, and 90 is exactly its run-1
+  score, so at 90 it is caught half the time. The bare-approval catch (an "ok" taken for one
+  item of a two-item proposal) scored 35 as ambiguous_approval in both runs and is let in only
+  by `ambiguous_min_score` 0. Every false flag at 90 is a clean bare approval read as
+  ambiguous: of the 5 reached bare approvals, 3 were flagged in at least one run and 1 of them
+  is drift. "Stable in both runs" here is n=1 per catch, not evidence of robustness.
+- **The judge's reasons are often wrong.** Reading the false flags at 40: about 3 of the 8 in
+  run 1 have factually wrong reasons, and 3 more are side questions deferred behind ongoing
+  work, which the prompt says not to flag; the one non-bare catch has the same shape as two of
+  them, and only the label tells them apart. The prompt is left frozen (changing it on these
+  labels would be more dev tuning); the prospective review must label the reasons, not just
+  the flags.
+- The threshold rule, stated before picking: the most drift turns caught in both of two runs,
+  with at most 5% false flags in the worse run, then the fewest false flags. With a full second
+  run, 30 and 40 keep both catches but break the bar (40: 8 false flags in run 1, 11 in run 2,
+  6.1%); from 50 up every threshold keeps 1 catch in both runs, and 90 has the fewest false
+  flags (1 in each run). **Correction:** the first freeze picked 40 and said a second run
+  "flagged the same 2, with 6 false flags". That "second run" re-scored only 30 borderline rows
+  and reused the run-1 reply for the other 157, so run-1 flags could only fall back and new
+  run-2 flags were looked for in 11 rows; a full second run found 11 false flags at 40, 5 of
+  them in rows never re-scored. `turn_dev_eval.py --repeat all` now re-scores every reached row,
+  a partial `--repeat N` reports only a noise estimate (no two-run table, no pick), and
+  `--freeze` refuses unless the second run is complete and the rule picks the threshold in
+  THRESHOLDS.
+- Version 1 of the prompt against version 2, at the same thresholds (2 drift turns caught by
+  each, run 1): at 40, 16 false flags then 8; at 60, 12 then 6; at 90, 3 then 1. Most of
+  version 1's were side questions judged against a long-running goal before the assistant had
+  answered; version 2 says the snapshot is early and widens the first-words window from 20 to
+  60 s.
+- The honest test is prospective: `research/eval/turnwatch_report.py` (counts, flags, latency,
+  cost, a per-day table) over turns after this date. What turnwatch would say to anyone, if
+  anything, is a later decision.
+- Known gaps. A bare approval queued mid-turn is judged against the latest mid-turn narration,
+  which may not be the message the user was answering. askllm's own (older) path still
+  redacts its log snippets with an unpinned `_common.redact`, its seen file is rewritten in
+  place, and a helper whose first check_state fails is not scored. A note for a helper that
+  finished before its note was written waits out the 6-hour TTL (SubagentStop is not wired to
+  lb_coverage).
+- Dev cost: 561 Haiku calls (cap 700): 187 for prompt version 1 ($0.12), 187 for version 2
+  ($0.13), and a second run of version 2 over 187 rows ($0.04: 30 by the builder, 150 by the
+  review pass with the same prompt and backend, 7 here), plus one end-to-end run of the real
+  detached worker on a synthetic transcript (1 call, 2.3 s, $0.0005).
+
+Tests: new `test_askllm_notes.py` (flag -> note -> one delivery to the agent and one to the
+parent, in process and through lb_coverage; the note points at the task; watch writes no note;
+off does nothing; corrupt notes; agent and parent TTLs on any pass; a mode switch drops pending
+notes; lb_coverage's fast path and its pinned TTL copy; the environment allowlist; hook-side
+errors never load the redactor; camelCase hosts; the shared folder-name rule; hook cost) and
+`test_turnwatch.py` (once per delivered user message, never for helpers, a failed first
+check_state judged, the hook side's message rule pinned to the judge's, bare approvals carry
+the previous proposal, every frozen-field mismatch skips with no call, a scratch copy of the
+judge with `_common.redact` neutered, a new `_SKIP_PREFIX`, an unpinned module or emptied
+lb_secrets patterns refused in a fresh interpreter, the backwards reader builds the same row in
+bounded memory, atomic bookkeeping and a cap that survives a corrupt seen file, a held lock
+never hangs, the child environment, redaction, byte-identical lb_coverage output with turnwatch
+on and off, detached launch, switches, cap, report, the dev evaluation's full second run and
+threshold rule, and the real frozen block). `test_askllm_watch.py`: the expiry checks now check
+that note mode stays on, and its byte-identical on/off check runs in watch mode.
 
 ### B9: a quoted phrase is not a command (2026-11-17)
 
@@ -24,7 +373,7 @@ parsing falls back to the old whole-string check. A real recursive delete is ref
 as before, scratch folders included.
 
 The denial now tells a helper agent with no one to ask to leave the command undone and name
-it in its final report, instead of "have Diego run it". The text NOTE appears only when the
+it in its final report, instead of naming who runs it. The text NOTE appears only when the
 phrase really is only text, so a real delete of `"$S"` is not told to rephrase a literal.
 
 Evidence. An adversarial review (3 agents) found that the first version let text through
@@ -111,7 +460,7 @@ for every real check_state too.
 
 ### Round-2 bugs B6 and B7: the inferred trace (2026-11-16)
 
-From research/DAY-FOUR-ROUND2.md section 7, after Diego approved fixing both together.
+From research/DAY-FOUR-ROUND2.md section 7, after the owner approved fixing both together.
 Both are about what the runtime infers from the tool trace. Neither changes a drift verdict;
 B7 also reaches check_state's `observed` contrast and the judgment's `verify` branch.
 - **B6.** `runtime.Session` rebuilt its Observer in every hook process without the trace it
@@ -144,9 +493,9 @@ B7 also reaches check_state's `observed` contrast and the judgment's `verify` br
 
 ### goal-drift is a note, not an interrupt (2026-11-15, change B)
 
-From research/DAY-FIVE-REAL-SESSIONS.md sections 3 to 5, approved by Diego on 2026-11-15.
-All 7 live goal-drift fires from Oct 17 to Nov 15 were false: 5 were his
-next ask or a new phase, 1 was a rewording, 1 was a redirect he made. In the July corpus
+From research/DAY-FIVE-REAL-SESSIONS.md sections 3 to 5, approved by the owner on 2026-11-15.
+All 7 live goal-drift fires from Oct 17 to Nov 15 were false: 5 were the
+person's next ask or a new phase, 1 was a rewording, 1 was a redirect they made. In the July corpus
 goal-drift was 24 of 35 fires with 0 real. The reground-on-user-turn rule
 (consumeUserTurn / `user_turn=True`) already existed and did not stop them.
 
@@ -284,7 +633,7 @@ The claim gate's and lb_safety's refusals stay catches.
 **A refusal is recognised by its head.** A message (the event's `error`, or a text field of
 the response) is a refusal when it BEGINS with the deny text, bare or behind Claude Code's
 `PreToolUse:<Tool> hook error: [cmd]: ` prefix, and says THIS CALL DID NOT RUN within its
-first lines. All 474 hook denials in Diego's last 30 days of transcripts have that shape. A
+first lines. All 474 hook denials in the owner's last 30 days of transcripts have that shape. A
 command that ran and failed starts with "Exit code N" instead. Quoting the deny text later
 does not count, which matters because laserbrain's own source, logs and suites quote it:
 - a red suite whose output quotes the gate stays a catch and an evidence `fail`;

@@ -69,7 +69,7 @@ TEXT = [
 ]
 # text only, but deliberately still refused (the exemption is narrow on purpose)
 CONSERVATIVE = [
-    f"tee notes.md <<'EOF' >/dev/null\n{NP} needs Diego\nEOF",                # tee names files
+    f"tee notes.md <<'EOF' >/dev/null\n{NP} needs an OK\nEOF",                # tee names files
     f"sed -n '/{RF}/p' notes.md",                                              # sed script in quotes
     f"python3 -c \"print('{RF}')\"",                                          # an interpreter
     f'echo "{RF}" > notes.sh',                                                 # not .md/.txt
@@ -175,9 +175,25 @@ for c in REAL:
 # ── unchanged rulings from before B9 ──────────────────────────────────────────────────────
 show('git push without force runs', S.blocked_reason('git push origin main') is None)
 show('wrangler deploy --dry-run runs', S.blocked_reason('npx wrangler deploy --dry-run') is None)
-show('the authorized Worker deploy runs',
-     S.blocked_reason('cd workers/laserbrain-mcp-remote && npx wrangler deploy') is None)
-show('another Worker deploy is still blocked', S.blocked_reason('cd workers/other && npx wrangler deploy') is not None)
+# Since 0.58.0 a Worker deploy is allowed only by name in the user's safety.json (R3; the full
+# coverage is test_safety_config.py). LASERBRAIN_HOME points both lookups at a scratch root.
+import tempfile                                                                      # noqa: E402
+_keep = os.environ.get('LASERBRAIN_HOME')
+with tempfile.TemporaryDirectory() as _h:
+    os.environ['LASERBRAIN_HOME'] = _h
+    show('with no safety.json, every Worker deploy is blocked',
+         S.blocked_reason('cd workers/demo-worker && npx wrangler deploy') is not None)
+    os.makedirs(os.path.join(_h, 'config'))
+    with open(os.path.join(_h, 'config', 'safety.json'), 'w') as _f:
+        json.dump({'allow_worker_deploys': ['demo-worker']}, _f)
+    show('a Worker named in safety.json deploys',
+         S.blocked_reason('cd workers/demo-worker && npx wrangler deploy') is None)
+    show('another Worker deploy is still blocked',
+         S.blocked_reason('cd workers/other && npx wrangler deploy') is not None)
+if _keep is None:
+    os.environ.pop('LASERBRAIN_HOME', None)
+else:
+    os.environ['LASERBRAIN_HOME'] = _keep
 show('a call that names nothing guarded never builds the view',
      S.blocked_reason('ls -la && git status') is None)
 

@@ -1,7 +1,7 @@
 """
 laserbrain command line — the smart recursion harness, in your terminal.
 
-    laserbrain demo                      watch an agent wander off-goal and get returned
+    laserbrain demo                      a scripted agent moves off its goal for one step; see it marked
     laserbrain check --goal "…" [--progress advancing] [--distance 6] [--against "…"]
     laserbrain verify run.json           verify an exported audit chain (tamper-evident)
     laserbrain store [list|find|vend] [--kind workflow|team]   prefabricated methods
@@ -31,15 +31,16 @@ def _c(s: str, code: str) -> str:
 def _demo() -> int:
     hz = Harness()
     print()
-    print("  " + _c("laserbrain", BOLD) + " — the agent wanders off its goal; the harness catches it and returns it.")
+    print("  " + _c("laserbrain", BOLD) + " — a scripted agent changes its goal for one step; laserbrain marks")
+    print("  the move against the frozen goal (a note, not a block).")
     print()
     print(f"    {'the agent is working on…':38} {'dist':>4} {'Φ':>6}  verdict")
     print("    " + _c("─" * 70, DIM))
     script = [
         ("build the JSON parser", 6),
         ("build the JSON parser", 4),
-        ("also add a caching layer and logging", 4),   # ← drifts to a different goal
-        ("build the JSON parser", 2),                   # ← returned to ground
+        ("also add a caching layer and logging", 4),   # ← the script moves to another goal
+        ("build the JSON parser", 2),                   # ← and the script moves back
         ("build the JSON parser", 0),
     ]
     for goal, dist in script:
@@ -58,8 +59,9 @@ def _demo() -> int:
         if v.drifting or v.reason == "goal-drift":
             print(f"    {'':38} {'':>4} {'':>6}  {_c('↩ ' + v.advice, GOLD)}")
     print()
-    print("  It left its goal for a single step. Watching only itself, it wouldn't have noticed —")
-    print("  laserbrain marked the move against the fixed reference, the agent came back, and it " + _c("finished", GREEN) + ".")
+    print("  The script left its goal for one step and then went back to it; the return is part of")
+    print("  the script, not something laserbrain did. What laserbrain added is the mark: the move")
+    print("  was scored against the frozen goal, which the agent cannot edit. The run " + _c("finished", GREEN) + ".")
     print("  (A goal that moves is a note, not an interrupt: on its own the wording was usually a")
     print("  redirect or a new phase. Repeated with no re-ground, it escalates in `judgment`.)")
     print()
@@ -432,10 +434,20 @@ def _read(args):
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # INSTALL AND UNINSTALL OWN THEIR FLAGS. These went through a second parser here that
+    # mirrored install.py's flags and handed them on; a flag added there and not here was
+    # rejected before install.py ever saw it, which is what happened the first time. So both
+    # commands are handed the raw arguments, and install.py's parsers are the only ones
+    # (`laserbrain install --help` prints them). The subparsers below are for the listing.
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] in ("install", "uninstall"):
+        from . import install as _ins
+        return (_ins.main if raw[0] == "install" else _ins.uninstall)(raw[1:])
     p = argparse.ArgumentParser(prog="laserbrain", description="the smart recursion harness — in your terminal")
     p.add_argument("-V", "--version", action="version", version=f"laserbrain {__version__}")
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("demo", help="watch an agent drift off-goal and get returned")
+    sub.add_parser("demo", help="a scripted agent changes its goal for one step; laserbrain "
+                                "marks the move (a note, not a block)")
     c = sub.add_parser("check", help="check one spelled state")
     c.add_argument("--goal", required=True, help="the agent's current goal")
     c.add_argument("--progress", default="advancing", choices=["advancing", "stuck", "circling"])
@@ -491,17 +503,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     help="spectral connectivity 0-1 from the analyzer, if you have it")
     rd.add_argument("--json", action="store_true", help="machine-readable output")
 
-    ins = sub.add_parser("install", help="wire laserbrain into your agent — MCP server + hooks")
-    ins.add_argument("--host", default="claude", choices=["claude"])
-    ins.add_argument("--dry-run", action="store_true")
-    ins.add_argument("--no-hooks", action="store_true",
-                     help="MCP server only — the detector without the enforcement")
-    # Mirrors install.py's own flag. The two parsers are separate — this one is what
-    # `laserbrain install` actually reaches — so a flag added there and not here is
-    # rejected before install.py ever sees it, which is exactly what happened first.
-    ins.add_argument("--server", choices=["python", "node"], default="python",
-                     help="which stdio server to wire. 'python' (default) is offline. "
-                          "'node' serves 7 more tools, six of which reach a hosted service.")
+    # Listed here, parsed by install.py (see the top of main).
+    sub.add_parser("install", add_help=False,
+                   help="wire laserbrain into your agent: MCP server, lb_safety, lb_coverage")
+    sub.add_parser("uninstall", add_help=False,
+                   help="remove what `laserbrain install` wrote, and nothing else")
     sub.add_parser("version", help="print the version")
 
     args = p.parse_args(argv)
@@ -529,13 +535,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Nothing may print to stdout but JSON-RPC — an MCP client parses it.
         from .mcp import serve
         return serve()
-    if args.cmd == "install":
-        from .install import main as _install
-        argv = ["--host", args.host]
-        if args.dry_run: argv.append("--dry-run")
-        if args.no_hooks: argv.append("--no-hooks")
-        argv += ["--server", args.server]
-        return _install(argv)
     if args.cmd == "version":
         print(f"laserbrain {__version__}")
         return 0

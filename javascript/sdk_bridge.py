@@ -49,12 +49,13 @@ _CANDIDATES = [
     # test_server_parity.py asserts they match. One relative expression cannot be right from
     # both. The old single line, parent.parent/'python', resolved correctly from javascript/
     # and pointed at python/python from the other, so on this machine the bridge fell through
-    # to the RETIRED 0.53.0 iCloud tree while sitting inside the 0.55.0 one. Found 2026-08-25
-    # by a collaborator running the tree on Windows, where candidate 3 does not exist either
-    # and nothing resolved at all.
+    # to a retired copy of the SDK elsewhere on the disk while sitting inside the current one.
+    # Found 2026-08-25 by a collaborator running the tree on Windows, where that copy did not
+    # exist either and nothing resolved at all. (A fourth candidate, a fixed folder on one
+    # machine, was removed in 0.58.0: a pip install must not search one person's disk. Point
+    # LASERBRAIN_SDK at a checkout instead.)
     str(Path(__file__).resolve().parent.parent),                    # from python/laserbrain/
     str(Path(__file__).resolve().parent.parent / 'python'),         # from javascript/
-    str(Path.home() / 'Library/Mobile Documents/com~apple~CloudDocs/phronesis/laserbrain-sdk'),
 ]
 _SRC = next((c for c in _CANDIDATES
              if c and (Path(c) / 'laserbrain' / '__init__.py').exists()),

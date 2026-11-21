@@ -15,6 +15,7 @@ import json, os, pathlib, subprocess, sys, tempfile, time
 R = pathlib.Path(__file__).resolve().parent.parent
 H = pathlib.Path(tempfile.mkdtemp(prefix='lbchk-'))
 ENV = {k: v for k, v in os.environ.items() if not k.startswith('LASERBRAIN')}
+ENV['LASERBRAIN_STUDY'] = '1'  # the pre-2026-11-19 text; the quiet default is test_quiet_default.py
 ENV.update(HOME=str(H), PYTHONPATH=str(R / 'python'), PYTHONDONTWRITEBYTECODE='1', LASERBRAIN_AGENT='claude')
 CFG = H / '.config' / 'laserbrain'
 res = {}

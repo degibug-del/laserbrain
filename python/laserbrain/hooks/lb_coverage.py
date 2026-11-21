@@ -41,7 +41,7 @@ try:
     _spec.loader.exec_module(_paths)
 except Exception as _e:                              # noqa: BLE001
     # A HOOK MUST STILL LOAD. lb_paths.py is a FOURTH file the hooks now depend on, and
-    # every way this file travels copies a fixed list: sync_from_icloud.sh named three, and
+    # every way this file travels copies a fixed list: the old sync script named three, and
     # test_proportional_gate copies lb_gate.py alone into a temp directory to corrupt it.
     # An ImportError at module scope happens ABOVE the handler that exists to fail open, so
     # a missing sibling would not fail open — it would take the hook out entirely, and on
@@ -53,7 +53,7 @@ except Exception as _e:                              # noqa: BLE001
     import sys as _sys, types as _t
     print(f'laserbrain: lb_paths.py unavailable ({type(_e).__name__}: {_e}) — using the '
           f'historical defaults; LASERBRAIN_HOME will be IGNORED in this process. '
-          f'Run sync_from_icloud.sh.', file=_sys.stderr)
+          f'Reinstall laserbrain, or copy lb_paths.py next to this hook.', file=_sys.stderr)
     _paths = _t.SimpleNamespace(
         home=lambda: None,
         config_dir=lambda: pathlib.Path.home() / '.config' / 'laserbrain',   # one-root: fallback
@@ -166,8 +166,12 @@ def _daily_harvest(ev):
         pass          # fail open: tomorrow's prompt tries again, and --harvest still works by hand
 
 
-def _mark_user_turn_if_queued(ev):
+def _mark_user_turn_if_queued(ev, tw_sid=None):
     """Catch mid-turn messages, which never reach the UserPromptSubmit hook at all.
+
+    tw_sid (quiet mode with LASERBRAIN_TURNWATCH_TRIGGER=first_tool only): the session whose
+    turnwatch-pending marker a user enqueue (never a <task-notification>) also touches, so
+    turnwatch judges the queued message at the first main tool call after it is delivered.
 
     Measured 2026-07-30 over a full session: 37 top-level user messages produced exactly
     37 UserPromptSubmit firings, a clean 1:1 — while four messages typed *while the agent
@@ -235,7 +239,7 @@ def _mark_user_turn_if_queued(ev):
                             and rec.get('operation') == 'enqueue'):
                         # A finished background task is queued the same way, as a
                         # <task-notification>. It is not the user, and it is not a
-                        # redirection: in session 4038b8f4 358 of 961 enqueues were these, and
+                        # redirection: in one long session 358 of 961 enqueues were these, and
                         # 10 re-grounds in the drift log had only a notification before them.
                         c = rec.get('content')
                         note = isinstance(c, str) and c.lstrip().startswith('<task-notification')
@@ -274,6 +278,79 @@ def _mark_user_turn_if_queued(ev):
 
     if found:
         _mark_user_turn()
+        if tw_sid is not None:
+            _tw_mark_pending(tw_sid)
+
+
+# TURNWATCH FIRST-TOOL TRIGGER (phase 2a, 2026-11-19): only in quiet mode with
+# LASERBRAIN_TURNWATCH_TRIGGER=first_tool. A user message (a real prompt, or a user enqueue the
+# queue scan finds) leaves a marker per session; the main session's next PostToolUse or
+# PostToolUseFailure of any tool, while the marker exists, hands the turn to
+# lb_turnwatch.on_first_tool, which anchors the frozen row at the first tool call after the
+# message. The marker goes once a worker started or nothing can start ('spawned', 'cap', 'off',
+# 'no-judge', 'no-transcript', 'error'), when a <task-notification> prompt shows the turn ended
+# with no tool call, or after TW_PENDING_MAX_AGE_S; it stays while the message is not delivered
+# yet ('same-turn', 'no-user-message'). 'no-transcript' and 'error' clear it so a payload with no
+# transcript, or a fault that repeats, costs one attempt and one error row, not one per tool call
+# for half an hour. Without the env value nothing here runs and no marker is written.
+TW_PENDING_DIR = 'turnwatch-pending'
+TW_PENDING_MAX_AGE_S = 1800
+_TW_UNLINK_ON = ('spawned', 'cap', 'off', 'no-judge', 'no-transcript', 'error')
+
+
+def _tw_first_tool(quiet):
+    return bool(quiet) and (os.environ.get('LASERBRAIN_TURNWATCH_TRIGGER') or '').strip().lower() == 'first_tool'
+
+
+def _tw_marker(sid):
+    # lb_askllm_watch.safe_name's rule, as for the askllm notes folder below.
+    return STATE_DIR / TW_PENDING_DIR / (re.sub(r'[^A-Za-z0-9._-]', '_', str(sid))[:120] or 'unknown')
+
+
+def _tw_mark_pending(sid):
+    try:
+        p = _tw_marker(sid)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.touch()
+    except Exception:
+        pass          # fail open: a lost marker costs this turn's row, never the tool call
+
+
+def _tw_clear_pending(sid):
+    try:
+        _tw_marker(sid).unlink()
+    except Exception:
+        pass
+
+
+def _tw_first_tool_start(ev):
+    """A main-session tool call in first-tool mode: start turnwatch when this session's marker
+    exists. One stat when it does not. Returns the status (for tests). Never raises."""
+    try:
+        sid = _sid(ev)
+        p = _tw_marker(sid)
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            return None
+        import time as _time
+        if _time.time() - mtime > TW_PENDING_MAX_AGE_S:
+            _tw_clear_pending(sid)
+            return 'expired'
+        _sw = _ilu.spec_from_file_location('lb_turnwatch', str(
+            pathlib.Path(__file__).resolve().parent / 'lb_turnwatch.py'))
+        _mw = _ilu.module_from_spec(_sw)
+        _sw.loader.exec_module(_mw)
+        st = _mw.on_first_tool(ev, STATE_DIR)
+        if st in _TW_UNLINK_ON:
+            _tw_clear_pending(sid)
+        return st
+    except BaseException:          # noqa: BLE001 — never into this hook
+        try:
+            _tw_clear_pending(_sid(ev))
+        except BaseException:      # noqa: BLE001
+            pass
+        return 'error'
 
 
 _PROMPT_WRAPPERS = ('user_query', 'user_prompt', 'query', 'prompt')
@@ -456,7 +533,7 @@ def _event_ok(ev, ename):
 # a message that BEGINS with the deny text, bare or behind Claude Code's "PreToolUse:<Tool>
 # hook error: [cmd]: " prefix; a failed command's `error` begins "Exit code N". The old
 # whole-text DOTALL search made every successful Read, grep or Edit of laserbrain's own
-# source stop counting as evidence (63 in Diego's last 30 days of transcripts), took the
+# source stop counting as evidence (63 in the owner's last 30 days of transcripts), took the
 # catch from a red suite that quotes the gate, and cost 2.7 s on 200,000 characters. Every
 # real refusal also says THIS CALL DID NOT RUN within its first lines. Held identical to
 # runtime._SELF_REFUSAL_HEAD_RE and runtime._message_texts; test_round2_b3b4.py compares the
@@ -977,6 +1054,58 @@ def _agent_key(ev):
     return str(a) if a else 'main'
 
 
+# QUIET BY DEFAULT, since 2026-11-19. In nudge mode a tool call gets no laserbrain text unless
+# something was flagged (an askllm note), and a user message gets one short line asking for the
+# check the judges start from. Measured over the 60 days before the change: the step reminders
+# and the honesty note mostly produced check_state calls that said "advancing", and
+# check-only responses were about 10% of tool-using responses.
+# LASERBRAIN_STUDY=1 restores the old text, the blind-arm publish and the per-check token
+# count exactly. hard, watch and signal are never quiet: they must keep reproducing the
+# pre-2026-10-16 hook byte for byte.
+POLICY = 'quiet-2026-11-19'
+_ON_WORDS = ('1', 'on', 'true', 'yes')
+_OFF_WORDS = ('off', '0', 'false', 'no')
+TURN_LINE = ('laserbrain: new user message. Include one check_state (goal: what this message '
+             'asks) with your first tool call, in the same response. No other check_state is '
+             'needed this turn.')
+
+
+def _quiet():
+    """True in nudge mode (the default) unless LASERBRAIN_STUDY asks for the old text."""
+    if _gate_mode_env() != 'nudge':
+        return False
+    return (os.environ.get('LASERBRAIN_STUDY') or '').strip().lower() not in _ON_WORDS
+
+
+def _prompt_text(ev):
+    p = ev.get('prompt')
+    if p is None:
+        p = ev.get('userPrompt') if ev.get('userPrompt') is not None else ev.get('promptText')
+    return p
+
+
+def _real_prompt(ev):
+    """A message the user typed: a prompt string that is not a <task-notification> (a finished
+    background job is delivered the same way, and it is neither the user nor a redirection)."""
+    p = _prompt_text(ev)
+    if not isinstance(p, str):
+        return False
+    return not p.lstrip().startswith('<task-notification')
+
+
+def _turn_line(ev):
+    """The one line a user message gets in quiet mode, or None: not for a <task-notification>,
+    not when LASERBRAIN_TURN_LINE is off, and not when turnwatch starts from the first tool
+    call (LASERBRAIN_TURNWATCH_TRIGGER=first_tool), which needs no check_state at all."""
+    if (os.environ.get('LASERBRAIN_TURN_LINE') or '').strip().lower() in _OFF_WORDS:
+        return None
+    if not _real_prompt(ev):
+        return None
+    if (os.environ.get('LASERBRAIN_TURNWATCH_TRIGGER') or '').strip().lower() == 'first_tool':
+        return None
+    return TURN_LINE
+
+
 def _update_agents(ev, ename):
     """nudge mode: per-agent step counters in <session>.agents.json. Never raises.
 
@@ -1139,19 +1268,103 @@ def _agent_dists(ev):
         return None
 
 
+_ASKLLM_OFF_WORDS = ('off', '0', 'false', 'no', 'disable', 'disabled')
+_ASKLLM_NOTE_TTL_S = {'.agent': 6 * 3600, '.parent': 24 * 3600}   # lb_askllm_watch's TTLs (pinned)
+
+
+def _askllm_notes_due(d, agent):
+    """True when lb_askllm_watch has work in the notes folder `d` for this call: this helper's
+    own note, a parent note (main session only), a note past its TTL, or a mode other than note
+    (the module then drops what is pending). Otherwise the call costs a listdir and a few stats,
+    not a module load: a helper in a workflow does not pay for another agent's pending note."""
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return False
+    if not names:
+        try:
+            os.rmdir(d)
+        except OSError:
+            pass
+        return False
+    m = (os.environ.get('LASERBRAIN_ASKLLM_MODE') or '').strip().lower()
+    if m not in ('', 'note') or (os.environ.get('LASERBRAIN_ASKLLM_WATCH') or '').strip().lower() \
+            in _ASKLLM_OFF_WORDS or (STATE_DIR / 'askllm-watch.off').exists():
+        return True
+    import time as _time
+    mine = (re.sub(r'[^A-Za-z0-9._-]', '_', str(agent))[:120] or 'unknown') + '.agent' if agent else None
+    now = _time.time()
+    for n in names:
+        if mine and n == mine:
+            return True
+        if not agent and n.endswith('.parent'):
+            return True
+        ttl = _ASKLLM_NOTE_TTL_S.get(n[n.rfind('.'):]) if '.' in n else None
+        if ttl:
+            try:
+                if now - os.stat(d / n).st_mtime > ttl:
+                    return True
+            except OSError:
+                pass
+    return False
+
+
+def _askllm_notes(ev, ename, camel_shape):
+    """askllm note mode: the pending notes this call should carry as additionalContext.
+
+    A flagged helper gets ONE note on its next tool call; the parent (main) session gets one
+    per flagged helper on its next tool call or prompt (lb_askllm_watch.deliver_notes, which
+    claims each note by an atomic rename, logs the delivery, expires and drops stale notes, and
+    never raises). The fast path is one stat of <STATE_DIR>/askllm-notes/<session>; when that
+    folder exists, _askllm_notes_due() decides with a listdir whether lb_askllm_watch is loaded
+    at all. The folder name rule is lb_askllm_watch.safe_name; test_askllm_notes.py pins the
+    copy and the TTLs. Not on camelCase hosts, which ignore PostToolUse stdout: a note claimed
+    there would be logged as delivered and reach no one. Never raises."""
+    try:
+        if camel_shape:
+            return []
+        if 'posttooluse' not in ename and 'userpromptsubmit' not in ename.replace('_', ''):
+            return []
+        sid = ev.get('session_id') or ev.get('sessionId')
+        if not sid:
+            return []
+        d = STATE_DIR / 'askllm-notes' / (re.sub(r'[^A-Za-z0-9._-]', '_', str(sid))[:120] or 'unknown')
+        if not d.is_dir() or not _askllm_notes_due(d, ev.get('agent_id') or ev.get('agentId')):
+            return []
+        _sw = _ilu.spec_from_file_location('lb_askllm_watch', str(
+            pathlib.Path(__file__).resolve().parent / 'lb_askllm_watch.py'))
+        _mw = _ilu.module_from_spec(_sw)
+        _sw.loader.exec_module(_mw)
+        notes = _mw.deliver_notes(ev, STATE_DIR, event=ename)
+        return [str(n) for n in notes if n] if isinstance(notes, list) else []
+    except BaseException:              # noqa: BLE001 — a note must never break the hook
+        return []
+
+
 def main():
     raw = sys.stdin.read()
     try:
         ev = json.loads(raw) if raw.strip() else {}
     except Exception:
         ev = {}
+    # Read once: quiet mode (nudge, LASERBRAIN_STUDY unset) says nothing unless flagged.
+    _QUIET = _quiet()
+    # Phase 2a: turnwatch from the first tool call (quiet mode and the env value only).
+    _TW_FT = _tw_first_tool(_QUIET)
 
     # A message typed while the agent is working never arrives as a hook event, so this
     # runs above every branch below: it is the only place a mid-turn redirection can be
     # noticed at all. (The diagnostic that established this was removed 2026-07-30 once
     # it had answered the question — see _mark_user_turn_if_queued for the measurement.)
-    _mark_user_turn_if_queued(ev)
+    _mark_user_turn_if_queued(ev, _sid(ev) if _TW_FT else None)
     _daily_harvest(ev)
+    if _TW_FT and not _tool(ev) and isinstance(_prompt_text(ev), str):
+        # A prompt: a message the user typed leaves the marker; a <task-notification> means the
+        # last turn ended, so a marker it left (a text-only turn) is not carried into this one.
+        if _real_prompt(ev):
+            _tw_mark_pending(_sid(ev))
+        else:
+            _tw_clear_pending(_sid(ev))
 
     # PUBLISH THE BLIND ARM, above every branch, because the MCP server cannot work it out.
     #
@@ -1167,23 +1380,33 @@ def main():
     # One writer here, one reader there — a different shape from the failure record_arm
     # exists to avoid, which was two processes read-modify-writing the same dict.
     #
-    # No-ops entirely unless LASERBRAIN_BLIND_PROBE is set.
-    try:
-        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-        from lb_gate import publish_blind_arm
-        # The segment index is how many runs have already been archived. It advances exactly
-        # when reset_task fires — never mid-task — so the arm is stable for the life of one
-        # task and re-drawn for the next.
-        _sd = _sid(ev)
-        _seg = 0
+    # No-ops entirely unless LASERBRAIN_BLIND_PROBE is set. Quiet mode skips it outright unless
+    # the probe is switched on: no lb_gate import and no session-file parse per call.
+    if not _QUIET or os.environ.get('LASERBRAIN_BLIND_PROBE'):
         try:
-            _st = json.loads((STATE_DIR / f'{_sd}.json').read_text())
-            _seg = len(_st.get('segments') or [])
+            sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+            from lb_gate import publish_blind_arm
+            # The segment index is how many runs have already been archived. It advances
+            # exactly when reset_task fires — never mid-task — so the arm is stable for the
+            # life of one task and re-drawn for the next.
+            _sd = _sid(ev)
+            _seg = 0
+            try:
+                _st = json.loads((STATE_DIR / f'{_sd}.json').read_text())
+                _seg = len(_st.get('segments') or [])
+            except Exception:
+                pass
+            publish_blind_arm(_sd, str(STATE_DIR), segment=_seg)
         except Exception:
-            pass
-        publish_blind_arm(_sd, str(STATE_DIR), segment=_seg)
-    except Exception:
-        pass          # an experiment must never break the harness it is measuring
+            pass          # an experiment must never break the harness it is measuring
+
+    if _QUIET:
+        # Read by runtime.Session.feed: no whole-transcript token count per check (the blind
+        # probe's outcome variable, 0.37 s on a 336 MB transcript), and a policy stamp on every
+        # check row so readings taken under this policy can be told apart.
+        if not os.environ.get('LASERBRAIN_BLIND_PROBE'):
+            os.environ['LASERBRAIN_TOKENS'] = '0'
+        os.environ['LASERBRAIN_POLICY'] = POLICY
 
     # Prefer the shared implementation when the installed package provides it.
     try:
@@ -1235,22 +1458,36 @@ def main():
     _gm_env = _gate_mode_env()
     if _gm_env == 'nudge':
         _update_agents(ev, ename)      # per-agent attribution; hard/watch/signal write nothing new
-    # ASKLLM WATCH, 2026-11-15 to 2026-11-22 (lb_askllm_watch.py). A helper agent's first
-    # check_state starts the frozen AI-graded ask-mismatch check in a detached process that
-    # only writes askllm-watch.jsonl. Nothing it does reaches stdout, the model or the user,
-    # and any failure stops here. Below _update_agents, so the sidecar counts this check.
-    if 'posttooluse' in ename and 'failure' not in ename and (ev.get('agent_id')
-                                                              or ev.get('agentId')):
+    # ASKLLM (lb_askllm_watch.py), since 2026-11-15. A helper agent's first check_state starts
+    # the frozen AI-graded ask-mismatch check in a detached process that writes
+    # askllm-watch.jsonl and, in note mode (the default), pending note files that
+    # _askllm_notes() below hands out. Scoring itself puts nothing on stdout; any failure stops
+    # here. Below _update_agents, so the sidecar counts this check.
+    #
+    # TURNWATCH (lb_turnwatch.py), WATCH-ONLY. The MAIN session's first check_state after a
+    # user message starts the frozen misread judge in a detached process that only writes
+    # turnwatch.jsonl. Nothing it does reaches stdout, the model or the user. It runs on a
+    # failed check_state too (PostToolUseFailure): the dev set counts every check_state the
+    # assistant spelled, so a failed first check must not leave its turn unjudged.
+    #
+    # FIRST-TOOL MODE (_TW_FT, phase 2a): the main session's check_state no longer starts
+    # turnwatch; its first tool call of any kind after a user message does (_tw_first_tool_start,
+    # only while the session's marker exists). askllm is unchanged.
+    if 'posttooluse' in ename:
+        _helper = bool(ev.get('agent_id') or ev.get('agentId'))
         try:
             _tw, _aw = _unwrap(_tool(ev), _args(ev))
-            if _is_check(_tw):
-                _sw = _ilu.spec_from_file_location('lb_askllm_watch', str(
-                    pathlib.Path(__file__).resolve().parent / 'lb_askllm_watch.py'))
+            if _is_check(_tw) and not (_helper and 'failure' in ename) and not (_TW_FT and not _helper):
+                _wname = 'lb_askllm_watch' if _helper else 'lb_turnwatch'
+                _sw = _ilu.spec_from_file_location(_wname, str(
+                    pathlib.Path(__file__).resolve().parent / f'{_wname}.py'))
                 _mw = _ilu.module_from_spec(_sw)
                 _sw.loader.exec_module(_mw)
                 _mw.on_post_tool_use(ev, _tw, _aw, STATE_DIR)
-        except BaseException:          # noqa: BLE001 — watch-only, never into this hook
+        except BaseException:          # noqa: BLE001 — never into this hook
             pass
+        if _TW_FT and not _helper:
+            _tw_first_tool_start(ev)
     # WHICH PROTOCOL SHAPE, not which vendor. camelCase payloads (sessionId, toolName,
     # toolInput) need a different injection path from snake_case ones — that difference is
     # real and stays. Calling the variable `is_grok` made a fact about payload spelling
@@ -1320,7 +1557,9 @@ def main():
                 nudge = from_hook(ev, directory=str(STATE_DIR))
             else:
                 nudge = from_hook(ev, directory=str(STATE_DIR))
-            if _gm_env == 'nudge' and 'prompt' not in ename and _tool(ev):
+            if _QUIET:
+                nudge = None                  # the step is recorded; nothing is said
+            elif _gm_env == 'nudge' and 'prompt' not in ename and _tool(ev):
                 # from_hook still records the step in the session file; the reminder it
                 # returns counts every agent's calls, so say the calling agent's own instead.
                 nudge = _agent_reminder(ev, edge_only=True, fallback=nudge)
@@ -1341,58 +1580,75 @@ def main():
                 # test_reground.py drives the MCP server directly and simulates the flag
                 # itself, so it could not have caught this. Only asking the live hook for
                 # the file did.
-                _mark_user_turn()
-                # The link_read sentence that opened this reminder ("multi-step work in a
-                # shared repo → link_read and answer open claims") was dropped 2026-11-15:
-                # it served Claude–Grok coordination, which is no longer in use, and the
-                # link log had been silent since 2026-08-01. It cost a sentence on every
-                # prompt and a link_read call on most tasks. link_read itself still works.
-                extras.append(
-                    'laserbrain: '
-                    'Gate: never batch non-laserbrain tools with the check_state that '
-                    'clears the gate — check alone, then reissue. '
-                    'Subagents: parent check_state between spawn waves; children do not '
-                    'share parent harness Φ.'
-                )
-            # Subagent spawn: structural reminder (parent must check between waves)
-            try:
-                tname = str(ev.get('tool_name') or ev.get('toolName') or ev.get('name') or '').lower()
-                if any(x in tname for x in (
-                    'spawn_subagent', 'task', 'agent', 'subagent',
-                )) and 'check_state' not in tname:
+                if _QUIET:
+                    # Quiet: only a message the user typed re-grounds the next check (a
+                    # <task-notification> is a finished job, not a redirection), and it gets
+                    # the one turn line in place of the gate text below.
+                    if _real_prompt(ev):
+                        _mark_user_turn()
+                    _tl = _turn_line(ev)
+                    if _tl is not None:
+                        extras.append(_tl)
+                else:
+                    _mark_user_turn()
+                    # The link_read sentence that opened this reminder ("multi-step work in a
+                    # shared repo → link_read and answer open claims") was dropped 2026-11-15:
+                    # it served Claude–Grok coordination, which is no longer in use, and the
+                    # link log had been silent since 2026-08-01. It cost a sentence on every
+                    # prompt and a link_read call on most tasks. link_read itself still works.
                     extras.append(
-                        'laserbrain subagent: child sessions have their own Φ. '
-                        'check_state on the parent before the next spawn wave; '
-                        'do not assume coverage from the child.'
+                        'laserbrain: '
+                        'Gate: never batch non-laserbrain tools with the check_state that '
+                        'clears the gate — check alone, then reissue. '
+                        'Subagents: parent check_state between spawn waves; children do not '
+                        'share parent harness Φ.'
                     )
-            except Exception:
-                pass
-            # Honesty: if last two spelled checks show same distance while not done, nudge.
-            try:
-                sid = session_id_of(ev)
-                s = Session(sid, directory=str(STATE_DIR))
-                checks = s.d.get('checks') or []
-                pair = None
-                if len(checks) >= 2:
-                    pair = (checks[-2].get('distance'), checks[-1].get('distance'))
-                if _gm_env == 'nudge':
-                    # The session's last two checks may belong to two different agents (they
-                    # share a session_id), which made this fire on an agent whose own distance
-                    # was falling. Compare the CALLING agent's own last two when recorded.
-                    own = _agent_dists(ev)
-                    pair = tuple(own) if own else (pair if _agent_key(ev) == 'main' else None)
-                if pair and _gm_env == 'nudge' and not _honesty_due(ev):
-                    pair = None
-                if pair:
-                    da, db = pair
-                    if da is not None and da == db and da not in (0, '0', 0.0):
+            # Quiet mode skips both: no subagent reminder, and no honesty note with its second
+            # parse of the session file.
+            if not _QUIET:
+                # Subagent spawn: structural reminder (parent must check between waves)
+                try:
+                    tname = str(ev.get('tool_name') or ev.get('toolName') or ev.get('name') or '').lower()
+                    if any(x in tname for x in (
+                        'spawn_subagent', 'task', 'agent', 'subagent',
+                    )) and 'check_state' not in tname:
                         extras.append(
-                            'laserbrain honesty: distance has not fallen across the last '
-                            'two checks. If you are circling or stuck, say so — false '
-                            'advancing wastes the dogfood corpus.'
+                            'laserbrain subagent: child sessions have their own Φ. '
+                            'check_state on the parent before the next spawn wave; '
+                            'do not assume coverage from the child.'
                         )
-            except Exception:
-                pass
+                except Exception:
+                    pass
+                # Honesty: if last two spelled checks show same distance while not done, nudge.
+                try:
+                    sid = session_id_of(ev)
+                    s = Session(sid, directory=str(STATE_DIR))
+                    checks = s.d.get('checks') or []
+                    pair = None
+                    if len(checks) >= 2:
+                        pair = (checks[-2].get('distance'), checks[-1].get('distance'))
+                    if _gm_env == 'nudge':
+                        # The session's last two checks may belong to two different agents
+                        # (they share a session_id), which made this fire on an agent whose
+                        # own distance was falling. Compare the CALLING agent's own last two
+                        # when recorded.
+                        own = _agent_dists(ev)
+                        pair = tuple(own) if own else (pair if _agent_key(ev) == 'main' else None)
+                    if pair and _gm_env == 'nudge' and not _honesty_due(ev):
+                        pair = None
+                    if pair:
+                        da, db = pair
+                        if da is not None and da == db and da not in (0, '0', 0.0):
+                            extras.append(
+                                'laserbrain honesty: distance has not fallen across the last '
+                                'two checks. If you are circling or stuck, say so — false '
+                                'advancing wastes the dogfood corpus.'
+                            )
+                except Exception:
+                    pass
+            # askllm notes are claimed HERE, just before the one place this path prints, so a
+            # failure above leaves them pending for the next call instead of losing them.
+            extras.extend(_askllm_notes(ev, ename, camel_shape))
             if extras and not camel_shape:
                 _emit_inline_nudge('\n'.join(extras) + (('\n' + nudge) if nudge else ''),
                                    event=_reply_event(ev, promptish))
@@ -1421,6 +1677,23 @@ def main():
         except Exception:
             pass  # fall through to embedded copy
 
+    # Quiet mode: the runtime path above says the turn line just before it returns. When it
+    # could not run or raised instead (a session file it cannot parse, a state dir it cannot
+    # write), say the line here, before the fallback records what it can, so the check that
+    # phase 1's turnwatch starts from is still asked for. The fallback itself prints nothing
+    # on a prompt, so the line is never said twice.
+    if _QUIET and not _tool(ev):
+        try:
+            _tl = _turn_line(ev)
+            if _tl is not None:
+                if camel_shape:
+                    print(json.dumps({'hookSpecificOutput': {
+                        'hookEventName': 'UserPromptSubmit', 'additionalContext': _tl}}))
+                else:
+                    _emit_inline_nudge(_tl, event=_reply_event(ev, True))
+        except Exception:
+            pass
+
     # ── Embedded fallback (older laserbrain or import failure) ──────────────
     try:
         sid = _sid(ev)
@@ -1448,13 +1721,18 @@ def main():
                 # check_state receives only (goal, progress, distance), and none of those says
                 # whether the goal changed because the user changed it. That missing bit made
                 # goal-drift 24 of 35 fires in the whole recovered corpus with ZERO coinciding
-                # real errors — 22 of the 24 on the first check after Diego spoke. The rule was
-                # faithfully reporting that the subject had changed. It had. He changed it.
+                # real errors — 22 of the 24 on the first check after the person spoke. The rule
+                # was faithfully reporting that the subject had changed. It had: the person
+                # changed it.
                 #
                 # Thresholding on goal overlap cannot substitute: the anchor values at those 24
                 # fires run continuously from 0.00 to 0.29 with no gap, so any cut just weakens
                 # the rule for everyone. The discriminator genuinely lives out here.
-                _mark_user_turn()
+                #
+                # Quiet mode: only a message the user typed, never a <task-notification>, as
+                # on the primary path above.
+                if not _QUIET or _real_prompt(ev):
+                    _mark_user_turn()
                 _save_state(path, s)
                 return
 
@@ -1593,7 +1871,8 @@ def main():
             since = step - last
             _save_state(path, s)
 
-        if since >= NUDGE_AFTER and since % NUDGE_AFTER == 0 and not camel_shape:
+        if since >= NUDGE_AFTER and since % NUDGE_AFTER == 0 and not camel_shape \
+                and not _QUIET:
             cov = len(s['checks']) / step if step else 0
             # Labelled with the event that was asked (B1's rule): on PostToolUseFailure the
             # default 'PostToolUse' label is a mismatch Claude Code throws away.

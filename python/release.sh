@@ -24,6 +24,17 @@ echo "  new     : $VERSION"
 grep -q "^## $VERSION " CHANGELOG.md || { echo "  ✗ CHANGELOG.md has no '## $VERSION' section"; exit 1; }
 echo "  ✓ changelog entry present"
 
+# The wheel is built from the files on disk, and only the version bump is committed after it.
+# So any other uncommitted change under python/ would ship in a release that no commit holds
+# (2026-11-18: work applied live but not yet committed sat on top of the 0.58.0 commit).
+if ! git diff --quiet HEAD -- . || [ -n "$(git ls-files --others --exclude-standard -- .)" ]; then
+  echo "  ✗ python/ has changes no commit holds; the release would ship them:"
+  git status --short -- . | sed 's/^/      /'
+  echo "    commit them or set them aside first — nothing bumped, nothing published"
+  exit 1
+fi
+echo "  ✓ python/ matches the last commit"
+
 # Gate on the tests BEFORE touching the version, so a red suite cannot produce a release.
 echo
 echo "running the suite…"

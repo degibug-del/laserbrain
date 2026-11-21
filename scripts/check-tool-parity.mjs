@@ -42,7 +42,11 @@ const problems = []
 
 /* ── the stdio server, driven the way a host drives it ─────────────────────────── */
 const stdioTools = await new Promise((resolve) => {
-  const p = spawn('node', [join(SERVER, 'mcp-server.mjs')], { stdio: ['pipe', 'pipe', 'ignore'] })
+  const p = spawn('node', [join(SERVER, 'mcp-server.mjs')], {
+    stdio: ['pipe', 'pipe', 'ignore'],
+    // The full surface, whatever ~/.config/laserbrain/server.json hides on this machine.
+    env: { ...process.env, LASERBRAIN_TOOLS: 'all' },
+  })
   let out = ''
   const t = setTimeout(() => { p.kill(); resolve(null) }, 15000)
   p.stdout.on('data', (d) => {
