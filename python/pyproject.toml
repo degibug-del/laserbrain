@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "laserbrain"
-version = "0.58.0"
+version = "0.58.1"
 description = "A small drift check for AI agents: it freezes the goal an agent states for a request and scores later check-ins against it. Measured, with its misses: phronesis.world/laserbrain."
 readme = "README.md"
 requires-python = ">=3.9"
